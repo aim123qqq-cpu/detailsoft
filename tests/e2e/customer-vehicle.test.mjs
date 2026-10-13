@@ -74,6 +74,16 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.locator('.zone-rail').getByRole('button', { name: /Кузов/ }).click();
     await page.screenshot({ path: resolve(artifacts, '07-order-intake.png'), fullPage: true });
 
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const desktopShell = await page.locator('.app-shell').boundingBox();
+    assert.ok(desktopShell && desktopShell.width >= 750, 'desktop intake uses the wider workstation layout');
+    const zoneFontSize = Number.parseFloat(await page.locator('.zone-rail button').first().evaluate((element) => getComputedStyle(element).fontSize));
+    const findingFontSize = Number.parseFloat(await page.locator('.detected-card label').first().evaluate((element) => getComputedStyle(element).fontSize));
+    assert.ok(zoneFontSize >= 12, 'desktop zone labels remain readable');
+    assert.ok(findingFontSize >= 12, 'desktop inspection findings remain readable');
+    await page.screenshot({ path: resolve(artifacts, '07b-order-intake-desktop.png') });
+    await page.setViewportSize({ width: 390, height: 844 });
+
     await page.getByTestId('save-intake').click();
     await page.getByTestId('order-estimate').waitFor();
     assert.match(await page.getByTestId('order-estimate').innerText(), /проверьте состав работ/i);
