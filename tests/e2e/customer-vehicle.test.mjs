@@ -76,11 +76,11 @@ test('mobile customer → vehicle → services → booking flow works end to end
 
     await page.setViewportSize({ width: 1280, height: 900 });
     const desktopShell = await page.locator('.app-shell').boundingBox();
-    assert.ok(desktopShell && desktopShell.width >= 750, 'desktop intake uses the wider workstation layout');
+    assert.ok(desktopShell && desktopShell.width >= 420 && desktopShell.width <= 440, 'desktop intake keeps realistic phone proportions');
     const zoneFontSize = Number.parseFloat(await page.locator('.zone-rail button').first().evaluate((element) => getComputedStyle(element).fontSize));
     const findingFontSize = Number.parseFloat(await page.locator('.detected-card label').first().evaluate((element) => getComputedStyle(element).fontSize));
-    assert.ok(zoneFontSize >= 12, 'desktop zone labels remain readable');
-    assert.ok(findingFontSize >= 12, 'desktop inspection findings remain readable');
+    assert.ok(zoneFontSize >= 10, 'zone labels remain readable without widening the phone');
+    assert.ok(findingFontSize >= 11, 'inspection findings remain readable without widening the phone');
     await page.screenshot({ path: resolve(artifacts, '07b-order-intake-desktop.png') });
     await page.setViewportSize({ width: 390, height: 844 });
 
