@@ -174,18 +174,6 @@ export type WorkOrder = {
     createdAt: string;
     checks: Array<{ code: string; label: string; passed: boolean }>;
   }>;
-  payments: Array<{
-    id: string;
-    amountMinor: number;
-    method: 'cash' | 'card' | 'transfer';
-    responsible: string;
-    createdAt: string;
-  }>;
-  paymentSummary: {
-    totalAmountMinor: number;
-    paidAmountMinor: number;
-    dueAmountMinor: number;
-  };
   handover: null | {
     responsible: string;
     note: string;

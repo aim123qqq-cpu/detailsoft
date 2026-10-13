@@ -129,14 +129,11 @@ test('mobile customer → vehicle → services → booking flow works end to end
 
     await page.getByTestId('open-delivery').click();
     await page.getByTestId('order-delivery').waitFor();
-    assert.match(await page.getByTestId('order-delivery').innerText(), /к оплате/i);
-    assert.equal(await page.getByTestId('close-order').isDisabled(), true);
+    assert.match(await page.getByTestId('order-delivery').innerText(), /перед выдачей/i);
+    assert.doesNotMatch(await page.getByTestId('order-delivery').innerText(), /оплат/i);
+    assert.equal(await page.getByTestId('close-order').isDisabled(), false);
     await page.screenshot({ path: resolve(artifacts, '14-order-delivery.png'), fullPage: true });
 
-    await page.getByTestId('record-payment').click();
-    await page.waitForFunction(() => !(document.querySelector('[data-testid="close-order"]'))?.disabled);
-    assert.match(await page.getByTestId('payment-due').innerText(), /0\s?₽/);
-    assert.equal(await page.getByTestId('close-order').isDisabled(), false);
     await page.getByTestId('close-order').click();
     await page.getByTestId('order-closed').waitFor();
     assert.match(await page.getByTestId('order-closed').innerText(), /заказ закрыт/i);

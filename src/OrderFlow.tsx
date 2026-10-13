@@ -74,10 +74,7 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
     { code: 'handover', label: 'Комплектность и фото проверены', passed: true }
   ]);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'transfer'>('card');
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentResponsible, setPaymentResponsible] = useState('Анна, администратор');
-  const [paymentRequestKey, setPaymentRequestKey] = useState(() => crypto.randomUUID());
+  const [handoverResponsible, setHandoverResponsible] = useState('Анна, администратор');
   const [handoverNote, setHandoverNote] = useState('Клиент осмотрел автомобиль и принял результат работ');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -198,28 +195,9 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
   const submitQc = (decision: 'PASSED' | 'REWORK') => order && runOrderAction(() => api.submitQualityControl(order.id, {
     decision, responsible: qcResponsible, note: qcNote, checks: qcChecks
   }));
-  const openDelivery = () => {
-    if (!order) return;
-    setPaymentAmount(String(order.paymentSummary.dueAmountMinor / 100));
-    setDeliveryOpen(true);
-  };
-  const recordPayment = async () => {
-    if (!order) return;
-    const amountMinor = Math.round(Number(paymentAmount.replace(',', '.')) * 100);
-    if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) return setError('Укажите корректную сумму платежа');
-    setLoading(true); setError('');
-    try {
-      const updated = await api.recordPayment(order.id, {
-        amountMinor, method: paymentMethod, responsible: paymentResponsible
-      }, paymentRequestKey);
-      setOrder(updated);
-      setPaymentAmount(String(updated.paymentSummary.dueAmountMinor / 100));
-      setPaymentRequestKey(crypto.randomUUID());
-    } catch (requestError) { setError((requestError as Error).message); }
-    finally { setLoading(false); }
-  };
+  const openDelivery = () => setDeliveryOpen(true);
   const closeOrder = () => order && runOrderAction(() => api.closeOrder(order.id, {
-    responsible: paymentResponsible, note: handoverNote
+    responsible: handoverResponsible, note: handoverNote
   }));
 
   if (loading && !order) return <section className="screen order-loading"><span className="spinner"/> Создаём заказ из записи</section>;
@@ -229,12 +207,12 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
   if (order.status === 'CLOSED') return (
     <section className="screen closed-screen" data-testid="order-closed">
       <span className="ready-orbit"><i>✓</i></span>
-      <span className="confirmation-kicker">Оплата получена · автомобиль выдан</span>
+      <span className="confirmation-kicker">Автомобиль передан клиенту</span>
       <h2>Заказ закрыт</h2>
       <p>{vehicle.make} {vehicle.model} · {vehicle.plate}</p>
       <div className="closed-receipt">
-        <div><span>Оплачено</span><strong>{money(order.paymentSummary.paidAmountMinor)}</strong></div>
-        <div><span>Платежей</span><strong>{order.payments.length}</strong></div>
+        <div><span>Статус</span><strong>Выдан</strong></div>
+        <div><span>Контроль качества</span><strong>Пройден</strong></div>
         <div><span>Выдал</span><strong>{order.handover?.responsible}</strong></div>
       </div>
       <div className="handover-proof">✓ {order.handover?.note}</div>
@@ -247,23 +225,16 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
       <div className="production-top"><span>Выдача автомобиля</span><b>READY</b></div>
       <div className="order-hero"><small>{customer.name}</small><strong>{vehicle.make} {vehicle.model}</strong><span>{vehicle.plate} · {vehicle.color}</span></div>
       <div className="delivery-photos"><div><span className="mock-photo two"/><small>Фото до</small></div><div><span className="mock-photo three"/><small>Фото после</small></div></div>
-      <div className="payment-card">
-        <div className="payment-total"><span>Итого по смете</span><strong>{money(order.paymentSummary.totalAmountMinor)}</strong></div>
-        <div className="payment-progress"><span style={{ width: `${order.paymentSummary.totalAmountMinor ? Math.min(100, order.paymentSummary.paidAmountMinor / order.paymentSummary.totalAmountMinor * 100) : 100}%` }}/></div>
-        <div className="payment-balance"><span>Оплачено <b>{money(order.paymentSummary.paidAmountMinor)}</b></span><span data-testid="payment-due">К оплате <b>{money(order.paymentSummary.dueAmountMinor)}</b></span></div>
+      <div className="handover-checklist">
+        <span className="delivery-label">Перед выдачей</span>
+        <div><i>✓</i><span>Клиент осмотрел результат работ</span></div>
+        <div><i>✓</i><span>Фото до и после прикреплены</span></div>
+        <div><i>✓</i><span>Комплектность автомобиля проверена</span></div>
       </div>
-      {order.paymentSummary.dueAmountMinor > 0 && <div className="payment-form">
-        <span className="delivery-label">Способ оплаты</span>
-        <div className="payment-methods">{([['card', 'Карта'], ['cash', 'Наличные'], ['transfer', 'Перевод']] as const).map(([value, label]) => <button key={value} className={paymentMethod === value ? 'selected' : ''} onClick={() => setPaymentMethod(value)}>{label}</button>)}</div>
-        <label className="payment-amount"><span>Сумма платежа</span><span><input data-testid="payment-amount" inputMode="decimal" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)}/><em>₽</em></span></label>
-        <button className="primary-button" data-testid="record-payment" disabled={loading || !paymentResponsible.trim()} onClick={recordPayment}>Принять оплату</button>
-      </div>}
-      {!!order.payments.length && <div className="payment-history"><span className="delivery-label">Платежи</span>{order.payments.map((payment) => <div key={payment.id}><i>✓</i><span><strong>{payment.method === 'card' ? 'Карта' : payment.method === 'cash' ? 'Наличные' : 'Перевод'}</strong><small>{payment.responsible}</small></span><b>{money(payment.amountMinor)}</b></div>)}</div>}
-      <label className="order-field">Ответственный<input value={paymentResponsible} onChange={(event) => setPaymentResponsible(event.target.value)}/></label>
+      <label className="order-field">Ответственный<input value={handoverResponsible} onChange={(event) => setHandoverResponsible(event.target.value)}/></label>
       <label className="order-field">Комментарий к выдаче<textarea value={handoverNote} onChange={(event) => setHandoverNote(event.target.value)}/></label>
       {error && <div className="inline-error">{error}</div>}
-      <button className="primary-button close-order-button" data-testid="close-order" disabled={loading || order.paymentSummary.dueAmountMinor > 0 || handoverNote.trim().length < 2} onClick={closeOrder}>Выдать автомобиль и закрыть заказ →</button>
-      {order.paymentSummary.dueAmountMinor > 0 && <p className="delivery-blocker">Закрытие станет доступно после полной оплаты</p>}
+      <button className="primary-button close-order-button" data-testid="close-order" disabled={loading || handoverResponsible.trim().length < 2 || handoverNote.trim().length < 2} onClick={closeOrder}>Выдать автомобиль и закрыть заказ →</button>
     </section>
   );
 
@@ -403,7 +374,7 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
         <div className="estimate-sheet">
           <div className="sheet-number">Смета v{currentEstimate.version}<span>{currentEstimate.lines.length} позиции</span></div>
           {currentEstimate.lines.map((line) => <div className="sheet-line" key={line.id}><span>{line.name}</span><strong>{money(line.amountMinor)}</strong></div>)}
-          <div className="sheet-total"><span>К оплате</span><strong>{money(currentEstimate.totalAmountMinor)}</strong></div>
+          <div className="sheet-total"><span>Итого по смете</span><strong>{money(currentEstimate.totalAmountMinor)}</strong></div>
         </div>
         <label className="order-field">Ответственный<input data-testid="approval-responsible" value={responsible} onChange={(event) => setResponsible(event.target.value)}/></label>
         <div className="approval-methods">{([['in_person', 'Лично'], ['phone', 'Телефон'], ['messenger', 'Мессенджер']] as const).map(([value, label]) => <button key={value} className={method === value ? 'selected' : ''} onClick={() => setMethod(value)}>{label}</button>)}</div>

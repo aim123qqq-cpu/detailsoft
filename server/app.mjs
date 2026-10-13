@@ -241,18 +241,6 @@ export function createDetailFlowServer({
           if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Заполните результат контроля качества' } });
         }
-        const orderPayments = url.pathname.match(/^\/api\/orders\/([^/]+)\/payments$/);
-        if (request.method === 'POST' && orderPayments) {
-          if (!hasRole('admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Недостаточно прав для приёма оплаты' } });
-          const idempotencyHeader = request.headers['idempotency-key'];
-          const idempotencyKey = typeof idempotencyHeader === 'string' ? idempotencyHeader : '';
-          const result = repository.recordOrderPayment(tenantId, orderPayments[1], await readJson(request), idempotencyKey);
-          if (result.kind === 'created') return sendJson(response, 201, result.order);
-          if (result.kind === 'replayed') return sendJson(response, 200, result.order);
-          if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'order_not_found', message: 'Заказ не найден' } });
-          if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
-          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте сумму, способ оплаты и ответственного' } });
-        }
         const orderHandover = url.pathname.match(/^\/api\/orders\/([^/]+)\/handover$/);
         if (request.method === 'POST' && orderHandover) {
           if (!hasRole('admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Недостаточно прав для выдачи автомобиля' } });
