@@ -85,5 +85,45 @@ export const api = {
     return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/estimate-approvals`, {
       method: 'POST', body: JSON.stringify(input)
     });
+  },
+  assignMaster(orderId: string, masterName: string) {
+    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/assignment`, {
+      method: 'PUT', body: JSON.stringify({ masterName })
+    });
+  },
+  startWork(orderId: string) {
+    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/work/start`, {
+      method: 'POST', body: JSON.stringify({})
+    });
+  },
+  updateWorkOperation(orderId: string, operationId: string, status: 'PENDING' | 'DONE' | 'BLOCKED', note = '') {
+    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/work/operations/${encodeURIComponent(operationId)}`, {
+      method: 'PATCH', body: JSON.stringify({ status, note })
+    });
+  },
+  pauseWork(orderId: string, note: string) {
+    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/work/pause`, {
+      method: 'POST', body: JSON.stringify({ note })
+    });
+  },
+  resumeWork(orderId: string) {
+    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/work/resume`, {
+      method: 'POST', body: JSON.stringify({})
+    });
+  },
+  completeWork(orderId: string) {
+    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/work/complete`, {
+      method: 'POST', body: JSON.stringify({})
+    });
+  },
+  submitQualityControl(orderId: string, input: {
+    decision: 'PASSED' | 'REWORK';
+    responsible: string;
+    note: string;
+    checks: Array<{ code: string; label: string; passed: boolean }>;
+  }) {
+    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/qc`, {
+      method: 'POST', body: JSON.stringify(input)
+    });
   }
 };

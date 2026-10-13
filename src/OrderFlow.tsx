@@ -49,7 +49,7 @@ function InspectionCar({ activeZone }: { activeZone: string }) {
   );
 }
 
-export function OrderFlow({ booking, customer, vehicle }: { booking: Booking; customer: Customer; vehicle: Vehicle }) {
+export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booking: Booking; customer: Customer; vehicle: Vehicle; onPhaseChange: (title: string) => void }) {
   const [order, setOrder] = useState<WorkOrder | null>(null);
   const [stage, setStage] = useState<'intake' | 'estimate' | 'approval'>('intake');
   const [summary, setSummary] = useState('Автомобиль принят при клиенте, комплектность проверена');
@@ -64,6 +64,15 @@ export function OrderFlow({ booking, customer, vehicle }: { booking: Booking; cu
   const [extraAmount, setExtraAmount] = useState('900');
   const [responsible, setResponsible] = useState('Анна, администратор');
   const [method, setMethod] = useState<'in_person' | 'phone' | 'messenger'>('in_person');
+  const [masterName, setMasterName] = useState('Дмитрий Соколов');
+  const [pauseNote, setPauseNote] = useState('Ожидаем освобождения зоны сушки');
+  const [qcResponsible, setQcResponsible] = useState('Мария, QC');
+  const [qcNote, setQcNote] = useState('Все поверхности проверены при рабочем освещении');
+  const [qcChecks, setQcChecks] = useState([
+    { code: 'body', label: 'Кузов без разводов и остатков состава', passed: true },
+    { code: 'interior', label: 'Салон и стёкла чистые', passed: true },
+    { code: 'handover', label: 'Комплектность и фото проверены', passed: true }
+  ]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -78,6 +87,21 @@ export function OrderFlow({ booking, customer, vehicle }: { booking: Booking; cu
       .catch((requestError: Error) => setError(requestError.message))
       .finally(() => setLoading(false));
   }, [booking.id]);
+
+  useEffect(() => {
+    if (!order) return;
+    if (order.status === 'IN_PROGRESS') onPhaseChange('Работы мастера');
+    else if (order.status === 'QC') onPhaseChange('Контроль качества');
+    else if (order.status === 'READY') onPhaseChange('Готов к выдаче');
+    else if (order.status === 'APPROVED') onPhaseChange('Назначение мастера');
+    else if (stage === 'estimate') onPhaseChange('Смета заказа');
+    else if (stage === 'approval') onPhaseChange('Согласование сметы');
+    else onPhaseChange('Приёмка автомобиля');
+  }, [onPhaseChange, order, stage]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }, [order?.status, stage]);
 
   const findings = useMemo<IntakeFinding[]>(() => [
     { zone: selectedArea, severity, note },
@@ -149,9 +173,76 @@ export function OrderFlow({ booking, customer, vehicle }: { booking: Booking; cu
     finally { setLoading(false); }
   };
 
+  const runOrderAction = async (action: () => Promise<WorkOrder>) => {
+    setLoading(true); setError('');
+    try { setOrder(await action()); }
+    catch (requestError) { setError((requestError as Error).message); }
+    finally { setLoading(false); }
+  };
+
+  const assignMaster = () => order && runOrderAction(() => api.assignMaster(order.id, masterName));
+  const startWork = () => order && runOrderAction(() => api.startWork(order.id));
+  const toggleOperation = (operationId: string, done: boolean) => order &&
+    runOrderAction(() => api.updateWorkOperation(order.id, operationId, done ? 'PENDING' : 'DONE'));
+  const togglePause = () => order?.work && runOrderAction(() => order.work?.status === 'PAUSED'
+    ? api.resumeWork(order.id)
+    : api.pauseWork(order.id, pauseNote));
+  const completeWork = () => order && runOrderAction(() => api.completeWork(order.id));
+  const submitQc = (decision: 'PASSED' | 'REWORK') => order && runOrderAction(() => api.submitQualityControl(order.id, {
+    decision, responsible: qcResponsible, note: qcNote, checks: qcChecks
+  }));
+
   if (loading && !order) return <section className="screen order-loading"><span className="spinner"/> Создаём заказ из записи</section>;
   if (!order) return <section className="screen"><div className="inline-error">{error || 'Не удалось создать заказ'}</div></section>;
   const currentEstimate = order.estimateVersions.find((item) => item.id === order.currentEstimateVersionId);
+
+  if (order.status === 'READY') return (
+    <section className="screen ready-screen" data-testid="order-ready">
+      <span className="ready-orbit"><i>✓</i></span>
+      <span className="confirmation-kicker">Контроль качества пройден</span>
+      <h2>Автомобиль готов к выдаче</h2>
+      <p>{vehicle.make} {vehicle.model} · {vehicle.plate}</p>
+      <div className="ready-summary">
+        <div><span>Мастер</span><strong>{order.assignment?.masterName}</strong></div>
+        <div><span>Операции</span><strong>{order.work?.operations.length} выполнено</strong></div>
+        <div><span>QC</span><strong>{order.qualityControl.at(-1)?.responsible}</strong></div>
+        <div><span>Статус</span><strong>Готов к выдаче</strong></div>
+      </div>
+      <div className="ready-timeline"><span className="done">Приёмка</span><span className="done">Смета</span><span className="done">Работы</span><span className="active">Выдача</span></div>
+      <button className="primary-button">Перейти к выдаче →</button>
+    </section>
+  );
+
+  if (order.status === 'QC') return (
+    <section className="screen qc-screen" data-testid="order-qc">
+      <div className="production-top"><span>Контроль качества</span><b>QC</b></div>
+      <div className="order-hero"><small>{order.assignment?.masterName} завершил работы</small><strong>{vehicle.make} {vehicle.model}</strong><span>{vehicle.plate} · {order.work?.operations.length} операций</span></div>
+      <div className="qc-heading"><span>Финальная проверка</span><h2>Проверьте результат</h2><p>Непройденный пункт вернёт заказ мастеру как обязательную доработку.</p></div>
+      <div className="qc-checklist">{qcChecks.map((check, index) => <button key={check.code} className={check.passed ? 'passed' : ''} onClick={() => setQcChecks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, passed: !item.passed } : item))}><i>{check.passed ? '✓' : '!'}</i><span>{check.label}</span><em>{check.passed ? 'Пройдено' : 'Замечание'}</em></button>)}</div>
+      <label className="order-field">Ответственный QC<input data-testid="qc-responsible" value={qcResponsible} onChange={(event) => setQcResponsible(event.target.value)}/></label>
+      <label className="order-field">Комментарий<textarea value={qcNote} onChange={(event) => setQcNote(event.target.value)}/></label>
+      {error && <div className="inline-error">{error}</div>}
+      <div className="qc-actions"><button data-testid="qc-rework" disabled={loading || qcChecks.every((item) => item.passed)} onClick={() => submitQc('REWORK')}>Вернуть мастеру</button><button data-testid="qc-pass" disabled={loading || qcChecks.some((item) => !item.passed)} onClick={() => submitQc('PASSED')}>Допустить к выдаче ✓</button></div>
+    </section>
+  );
+
+  if (order.status === 'IN_PROGRESS' && order.work) {
+    const completedCount = order.work.operations.filter((operation) => operation.status === 'DONE').length;
+    const completion = Math.round(completedCount / order.work.operations.length * 100);
+    return (
+      <section className="screen work-screen" data-testid="master-work">
+        <div className="production-top"><span>Работы мастера</span><b className={order.work.status === 'PAUSED' ? 'paused' : ''}>{order.work.status === 'PAUSED' ? 'Пауза' : 'В работе'}</b></div>
+        <div className="work-vehicle"><span className="work-car-icon">⌁</span><span><small>{vehicle.plate}</small><strong>{vehicle.make} {vehicle.model}</strong><em>{vehicle.color}</em></span><i>{completion}%</i></div>
+        <div className="work-progress"><span style={{ width: `${completion}%` }}/></div>
+        <div className="master-line"><span className="master-avatar">ДС</span><span><small>Исполнитель</small><strong>{order.assignment?.masterName}</strong></span><em>{completedCount}/{order.work.operations.length}</em></div>
+        <div className="operation-heading"><span>Чек-лист работ</span><b>{completedCount} выполнено</b></div>
+        <div className="work-operations">{order.work.operations.map((operation, index) => <button key={operation.id} data-testid={`work-operation-${index}`} className={`${operation.status === 'DONE' ? 'done' : ''} ${operation.source === 'qc_rework' ? 'rework' : ''}`} disabled={loading || order.work?.status === 'PAUSED'} onClick={() => toggleOperation(operation.id, operation.status === 'DONE')}><i>{operation.status === 'DONE' ? '✓' : index + 1}</i><span><strong>{operation.name}</strong><small>{operation.source === 'qc_rework' ? 'Возврат с контроля качества' : money(operation.amountMinor)}</small></span><em>{operation.status === 'DONE' ? 'Готово' : 'Выполнить'}</em></button>)}</div>
+        {order.work.status === 'ACTIVE' && <label className="pause-note">Причина паузы<input value={pauseNote} onChange={(event) => setPauseNote(event.target.value)}/></label>}
+        {error && <div className="inline-error">{error}</div>}
+        <div className="work-actions"><button data-testid="toggle-work-pause" disabled={loading} onClick={togglePause}>{order.work.status === 'PAUSED' ? '▶ Продолжить' : 'Ⅱ Пауза'}</button><button data-testid="complete-work" disabled={loading || completedCount !== order.work.operations.length || order.work.status === 'PAUSED'} onClick={completeWork}>Передать в QC →</button></div>
+      </section>
+    );
+  }
 
   if (order.status === 'APPROVED') return (
     <section className="screen order-approved" data-testid="order-approved">
@@ -167,6 +258,17 @@ export function OrderFlow({ booking, customer, vehicle }: { booking: Booking; cu
         <div><span>Ответственный</span><strong>{order.approval?.responsible}</strong></div>
       </div>
       <div className="audit-note">Событие сохранено в журнале заказа · {order.auditTrail.length} записи</div>
+      <div className="assignment-panel">
+        <span>Следующий этап</span><h3>{order.assignment ? 'Мастер назначен' : 'Назначьте мастера'}</h3>
+        {!order.assignment ? <>
+          <div className="master-options">{['Дмитрий Соколов', 'Алексей Волков'].map((name) => <button key={name} className={masterName === name ? 'selected' : ''} onClick={() => setMasterName(name)}><i>{name.split(' ').map((part) => part[0]).join('')}</i><span>{name}<small>{name.startsWith('Дмитрий') ? 'Свободен сейчас' : 'Через 35 мин'}</small></span></button>)}</div>
+          <button className="primary-button" data-testid="assign-master" disabled={loading} onClick={assignMaster}>Назначить мастера →</button>
+        </> : <>
+          <div className="assigned-master"><span className="master-avatar">ДС</span><span><strong>{order.assignment.masterName}</strong><small>Получит {order.work?.operations.length ?? currentEstimate?.lines.length} операции</small></span><b>Назначен</b></div>
+          <button className="primary-button" data-testid="start-work" disabled={loading} onClick={startWork}>Начать работы →</button>
+        </>}
+      </div>
+      {error && <div className="inline-error">{error}</div>}
     </section>
   );
 

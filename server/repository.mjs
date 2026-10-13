@@ -665,6 +665,185 @@ export class DetailFlowRepository {
     };
   }
 
+  assignOrderMaster(tenantId, orderId, input) {
+    const masterName = String(input?.masterName ?? '').trim();
+    if (masterName.length < 2 || masterName.length > 120) return { kind: 'invalid' };
+    const order = this.db.prepare(`SELECT id, status FROM orders WHERE id = ? AND tenant_id = ?`)
+      .get(orderId, tenantId);
+    if (!order) return { kind: 'not_found' };
+    if (order.status !== 'APPROVED') {
+      return { kind: 'conflict', code: 'invalid_order_state', message: 'Мастера можно назначить после согласования сметы' };
+    }
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`INSERT INTO order_assignments (order_id, tenant_id, master_name, assigned_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(order_id) DO UPDATE SET master_name = excluded.master_name, assigned_at = CURRENT_TIMESTAMP`)
+        .run(orderId, tenantId, masterName);
+      this.insertOrderAudit(tenantId, orderId, 'MASTER_ASSIGNED', { masterName });
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'updated', order: this.getOrder(tenantId, orderId) };
+  }
+
+  startOrderWork(tenantId, orderId) {
+    const order = this.db.prepare(`SELECT o.status, w.current_estimate_version_id, a.master_name
+      FROM orders o
+      JOIN order_workflows w ON w.order_id = o.id AND w.tenant_id = o.tenant_id
+      LEFT JOIN order_assignments a ON a.order_id = o.id AND a.tenant_id = o.tenant_id
+      WHERE o.id = ? AND o.tenant_id = ?`).get(orderId, tenantId);
+    if (!order) return { kind: 'not_found' };
+    if (order.status !== 'APPROVED' || !order.master_name || !order.current_estimate_version_id) {
+      return { kind: 'conflict', code: 'invalid_order_state', message: 'Нужны согласованная смета и назначенный мастер' };
+    }
+    if (this.db.prepare('SELECT order_id FROM order_work_runs WHERE order_id = ?').get(orderId)) {
+      return { kind: 'conflict', code: 'work_already_started', message: 'Работы уже начаты' };
+    }
+    const lines = this.db.prepare(`SELECT id, name, amount_minor FROM estimate_lines
+      WHERE estimate_version_id = ? ORDER BY sequence`).all(order.current_estimate_version_id);
+    if (!lines.length) return { kind: 'conflict', code: 'estimate_empty', message: 'В согласованной смете нет операций' };
+
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`INSERT INTO order_work_runs (order_id, tenant_id, status) VALUES (?, ?, 'ACTIVE')`)
+        .run(orderId, tenantId);
+      const insertOperation = this.db.prepare(`INSERT INTO order_work_operations
+        (id, tenant_id, order_id, estimate_line_id, source, sequence, name, amount_minor)
+        VALUES (?, ?, ?, ?, 'estimate', ?, ?, ?)`);
+      lines.forEach((line, index) => insertOperation.run(
+        `work_operation_${randomUUID()}`, tenantId, orderId, line.id, index + 1, line.name, line.amount_minor
+      ));
+      this.db.prepare(`UPDATE orders SET status = 'IN_PROGRESS' WHERE id = ? AND tenant_id = ?`).run(orderId, tenantId);
+      this.insertOrderAudit(tenantId, orderId, 'WORK_STARTED', { masterName: order.master_name });
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'updated', order: this.getOrder(tenantId, orderId) };
+  }
+
+  updateWorkOperation(tenantId, orderId, operationId, input) {
+    const status = input?.status;
+    const note = String(input?.note ?? '').trim();
+    if (!['PENDING', 'DONE', 'BLOCKED'].includes(status) || note.length > 500) return { kind: 'invalid' };
+    const order = this.db.prepare(`SELECT o.status, r.status work_status FROM orders o
+      JOIN order_work_runs r ON r.order_id = o.id AND r.tenant_id = o.tenant_id
+      WHERE o.id = ? AND o.tenant_id = ?`).get(orderId, tenantId);
+    if (!order) return { kind: 'not_found' };
+    if (order.status !== 'IN_PROGRESS' || order.work_status !== 'ACTIVE') {
+      return { kind: 'conflict', code: 'invalid_order_state', message: 'Операции доступны только во время работ' };
+    }
+    const result = this.db.prepare(`UPDATE order_work_operations
+      SET status = ?, note = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND order_id = ? AND tenant_id = ?`).run(status, note || null, operationId, orderId, tenantId);
+    if (!result.changes) return { kind: 'not_found' };
+    this.insertOrderAudit(tenantId, orderId, 'WORK_OPERATION_UPDATED', { operationId, status });
+    return { kind: 'updated', order: this.getOrder(tenantId, orderId) };
+  }
+
+  setWorkPause(tenantId, orderId, paused, input = {}) {
+    const note = String(input?.note ?? '').trim();
+    if (paused && (note.length < 3 || note.length > 500)) return { kind: 'invalid' };
+    const order = this.db.prepare(`SELECT o.status, r.status work_status FROM orders o
+      JOIN order_work_runs r ON r.order_id = o.id AND r.tenant_id = o.tenant_id
+      WHERE o.id = ? AND o.tenant_id = ?`).get(orderId, tenantId);
+    if (!order) return { kind: 'not_found' };
+    const expected = paused ? 'ACTIVE' : 'PAUSED';
+    if (order.status !== 'IN_PROGRESS' || order.work_status !== expected) {
+      return { kind: 'conflict', code: 'invalid_order_state', message: paused ? 'Работы нельзя поставить на паузу' : 'Работы не находятся на паузе' };
+    }
+    this.db.prepare(`UPDATE order_work_runs SET status = ?, pause_note = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE order_id = ? AND tenant_id = ?`).run(paused ? 'PAUSED' : 'ACTIVE', paused ? note : null, orderId, tenantId);
+    this.insertOrderAudit(tenantId, orderId, paused ? 'WORK_PAUSED' : 'WORK_RESUMED', paused ? { note } : {});
+    return { kind: 'updated', order: this.getOrder(tenantId, orderId) };
+  }
+
+  completeOrderWork(tenantId, orderId) {
+    const order = this.db.prepare(`SELECT o.status, r.status work_status FROM orders o
+      JOIN order_work_runs r ON r.order_id = o.id AND r.tenant_id = o.tenant_id
+      WHERE o.id = ? AND o.tenant_id = ?`).get(orderId, tenantId);
+    if (!order) return { kind: 'not_found' };
+    if (order.status !== 'IN_PROGRESS' || order.work_status !== 'ACTIVE') {
+      return { kind: 'conflict', code: 'invalid_order_state', message: 'Активные работы не найдены' };
+    }
+    const incomplete = this.db.prepare(`SELECT COUNT(*) count FROM order_work_operations
+      WHERE order_id = ? AND tenant_id = ? AND status != 'DONE'`).get(orderId, tenantId).count;
+    if (incomplete) return { kind: 'conflict', code: 'operations_incomplete', message: 'Завершите все согласованные операции' };
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`UPDATE order_work_runs SET status = 'COMPLETED', completed_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP WHERE order_id = ? AND tenant_id = ?`).run(orderId, tenantId);
+      this.db.prepare(`UPDATE orders SET status = 'QC' WHERE id = ? AND tenant_id = ?`).run(orderId, tenantId);
+      this.insertOrderAudit(tenantId, orderId, 'WORK_COMPLETED', {});
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'updated', order: this.getOrder(tenantId, orderId) };
+  }
+
+  submitQualityControl(tenantId, orderId, input) {
+    const decision = input?.decision;
+    const responsible = String(input?.responsible ?? '').trim();
+    const note = String(input?.note ?? '').trim();
+    const checks = Array.isArray(input?.checks) ? input.checks : null;
+    const validCheck = (check) => check && typeof check.code === 'string' && check.code.trim() &&
+      typeof check.label === 'string' && check.label.trim() && typeof check.passed === 'boolean';
+    if (!['PASSED', 'REWORK'].includes(decision) || responsible.length < 2 || note.length < 2 ||
+      !checks || checks.length < 1 || checks.length > 20 || checks.some((check) => !validCheck(check))) return { kind: 'invalid' };
+    if (decision === 'PASSED' && checks.some((check) => !check.passed)) {
+      return { kind: 'conflict', code: 'qc_checks_failed', message: 'Нельзя допустить к выдаче с непройденными проверками' };
+    }
+    if (decision === 'REWORK' && checks.every((check) => check.passed)) {
+      return { kind: 'conflict', code: 'qc_rework_without_failure', message: 'Укажите замечание для доработки' };
+    }
+    const order = this.db.prepare(`SELECT status FROM orders WHERE id = ? AND tenant_id = ?`).get(orderId, tenantId);
+    if (!order) return { kind: 'not_found' };
+    if (order.status !== 'QC') return { kind: 'conflict', code: 'invalid_order_state', message: 'Заказ не находится на контроле качества' };
+
+    const inspectionId = `qc_${randomUUID()}`;
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`INSERT INTO qc_inspections
+        (id, tenant_id, order_id, decision, responsible, note) VALUES (?, ?, ?, ?, ?, ?)`)
+        .run(inspectionId, tenantId, orderId, decision, responsible, note);
+      const insertCheck = this.db.prepare(`INSERT INTO qc_check_items
+        (id, inspection_id, code, label, passed) VALUES (?, ?, ?, ?, ?)`);
+      for (const check of checks) insertCheck.run(
+        `qc_check_${randomUUID()}`, inspectionId, check.code.trim(), check.label.trim(), check.passed ? 1 : 0
+      );
+      if (decision === 'PASSED') {
+        this.db.prepare(`UPDATE orders SET status = 'READY' WHERE id = ? AND tenant_id = ?`).run(orderId, tenantId);
+      } else {
+        let sequence = this.db.prepare(`SELECT COALESCE(MAX(sequence), 0) max_sequence
+          FROM order_work_operations WHERE order_id = ? AND tenant_id = ?`).get(orderId, tenantId).max_sequence;
+        const insertRework = this.db.prepare(`INSERT INTO order_work_operations
+          (id, tenant_id, order_id, source, sequence, name, amount_minor, status, note)
+          VALUES (?, ?, ?, 'qc_rework', ?, ?, 0, 'PENDING', ?)`);
+        for (const check of checks.filter((item) => !item.passed)) {
+          sequence += 1;
+          insertRework.run(`work_operation_${randomUUID()}`, tenantId, orderId, sequence, `Доработка: ${check.label.trim()}`, note);
+        }
+        this.db.prepare(`UPDATE order_work_runs SET status = 'ACTIVE', completed_at = NULL,
+          updated_at = CURRENT_TIMESTAMP WHERE order_id = ? AND tenant_id = ?`).run(orderId, tenantId);
+        this.db.prepare(`UPDATE orders SET status = 'IN_PROGRESS' WHERE id = ? AND tenant_id = ?`).run(orderId, tenantId);
+      }
+      this.insertOrderAudit(tenantId, orderId, decision === 'PASSED' ? 'QC_PASSED' : 'QC_REWORK', {
+        inspectionId, responsible, failedChecks: checks.filter((check) => !check.passed).map((check) => check.code)
+      });
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'updated', order: this.getOrder(tenantId, orderId) };
+  }
+
   getOrder(tenantId, orderId) {
     const row = this.db.prepare(`SELECT o.id, o.customer_id, o.vehicle_id, o.status, o.created_at,
         w.booking_id, w.current_estimate_version_id
@@ -675,6 +854,10 @@ export class DetailFlowRepository {
     const intake = this.db.prepare(`SELECT condition_summary, completed_at FROM order_intakes WHERE order_id = ?`).get(orderId);
     const approval = this.db.prepare(`SELECT estimate_version_id, decision, method, source, responsible, decided_at
       FROM estimate_approvals WHERE order_id = ? ORDER BY decided_at DESC, rowid DESC LIMIT 1`).get(orderId);
+    const assignment = this.db.prepare(`SELECT master_name, assigned_at FROM order_assignments
+      WHERE order_id = ? AND tenant_id = ?`).get(orderId, tenantId);
+    const workRun = this.db.prepare(`SELECT status, pause_note, started_at, updated_at, completed_at
+      FROM order_work_runs WHERE order_id = ? AND tenant_id = ?`).get(orderId, tenantId);
     return {
       id: row.id,
       customerId: row.customer_id,
@@ -702,6 +885,39 @@ export class DetailFlowRepository {
         responsible: approval.responsible,
         decidedAt: apiTimestamp(approval.decided_at)
       } : null,
+      assignment: assignment ? {
+        masterName: assignment.master_name,
+        assignedAt: apiTimestamp(assignment.assigned_at)
+      } : null,
+      work: workRun ? {
+        status: workRun.status,
+        pauseNote: workRun.pause_note,
+        startedAt: apiTimestamp(workRun.started_at),
+        updatedAt: apiTimestamp(workRun.updated_at),
+        completedAt: apiTimestamp(workRun.completed_at),
+        operations: this.db.prepare(`SELECT id, source, name, amount_minor, status, note, updated_at
+          FROM order_work_operations WHERE order_id = ? AND tenant_id = ? ORDER BY sequence`).all(orderId, tenantId).map((operation) => ({
+            id: operation.id,
+            source: operation.source,
+            name: operation.name,
+            amountMinor: operation.amount_minor,
+            status: operation.status,
+            note: operation.note,
+            updatedAt: apiTimestamp(operation.updated_at)
+          }))
+      } : null,
+      qualityControl: this.db.prepare(`SELECT id, decision, responsible, note, created_at
+        FROM qc_inspections WHERE order_id = ? AND tenant_id = ? ORDER BY created_at, rowid`).all(orderId, tenantId).map((inspection) => ({
+          id: inspection.id,
+          decision: inspection.decision,
+          responsible: inspection.responsible,
+          note: inspection.note,
+          createdAt: apiTimestamp(inspection.created_at),
+          checks: this.db.prepare(`SELECT code, label, passed FROM qc_check_items
+            WHERE inspection_id = ? ORDER BY rowid`).all(inspection.id).map((check) => ({
+              code: check.code, label: check.label, passed: Boolean(check.passed)
+            }))
+        })),
       auditTrail: this.db.prepare(`SELECT event_type, metadata_json, occurred_at FROM order_audit_events
         WHERE order_id = ? AND tenant_id = ? ORDER BY occurred_at, rowid`).all(orderId, tenantId).map((event) => ({
           eventType: event.event_type,

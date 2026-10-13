@@ -34,8 +34,8 @@ export function createDetailFlowServer({
   seed = true,
   staticDir = null,
   authTokens = new Map([
-    ['demo-session-token', 'tenant_demo'],
-    ['other-session-token', 'tenant_other']
+    ['demo-session-token', { tenantId: 'tenant_demo', roles: ['admin', 'intake', 'master', 'qc'] }],
+    ['other-session-token', { tenantId: 'tenant_other', roles: ['admin', 'intake', 'master', 'qc'] }]
   ])
 } = {}) {
   const db = openDatabase(databasePath, { seed });
@@ -51,7 +51,10 @@ export function createDetailFlowServer({
         const token = typeof authorization === 'string' && authorization.startsWith('Bearer ')
           ? authorization.slice('Bearer '.length)
           : '';
-        const tenantId = authTokens.get(token);
+        const session = authTokens.get(token);
+        const tenantId = typeof session === 'string' ? session : session?.tenantId;
+        const roles = typeof session === 'string' ? ['admin', 'intake', 'master', 'qc'] : session?.roles ?? [];
+        const hasRole = (...allowed) => allowed.some((role) => roles.includes(role));
         if (!tenantId) {
           return sendJson(response, 401, { error: { code: 'unauthorized', message: 'Требуется авторизация' } });
         }
@@ -185,6 +188,58 @@ export function createDetailFlowServer({
             error: { code: result.code, message: result.message }
           });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите решение и источник согласования' } });
+        }
+        const orderAssignment = url.pathname.match(/^\/api\/orders\/([^/]+)\/assignment$/);
+        if (request.method === 'PUT' && orderAssignment) {
+          if (!hasRole('admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Недостаточно прав для назначения мастера' } });
+          const result = repository.assignOrderMaster(tenantId, orderAssignment[1], await readJson(request));
+          if (result.kind === 'updated') return sendJson(response, 200, result.order);
+          if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'order_not_found', message: 'Заказ не найден' } });
+          if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите мастера' } });
+        }
+        const workStart = url.pathname.match(/^\/api\/orders\/([^/]+)\/work\/start$/);
+        if (request.method === 'POST' && workStart) {
+          if (!hasRole('master', 'admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только мастеру' } });
+          const result = repository.startOrderWork(tenantId, workStart[1]);
+          if (result.kind === 'updated') return sendJson(response, 200, result.order);
+          if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'order_not_found', message: 'Заказ не найден' } });
+          return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+        }
+        const workOperation = url.pathname.match(/^\/api\/orders\/([^/]+)\/work\/operations\/([^/]+)$/);
+        if (request.method === 'PATCH' && workOperation) {
+          if (!hasRole('master', 'admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только мастеру' } });
+          const result = repository.updateWorkOperation(tenantId, workOperation[1], workOperation[2], await readJson(request));
+          if (result.kind === 'updated') return sendJson(response, 200, result.order);
+          if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'operation_not_found', message: 'Операция не найдена' } });
+          if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте статус операции' } });
+        }
+        const workPause = url.pathname.match(/^\/api\/orders\/([^/]+)\/work\/(pause|resume)$/);
+        if (request.method === 'POST' && workPause) {
+          if (!hasRole('master', 'admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только мастеру' } });
+          const result = repository.setWorkPause(tenantId, workPause[1], workPause[2] === 'pause', await readJson(request));
+          if (result.kind === 'updated') return sendJson(response, 200, result.order);
+          if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'order_not_found', message: 'Заказ не найден' } });
+          if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите причину паузы' } });
+        }
+        const workComplete = url.pathname.match(/^\/api\/orders\/([^/]+)\/work\/complete$/);
+        if (request.method === 'POST' && workComplete) {
+          if (!hasRole('master', 'admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только мастеру' } });
+          const result = repository.completeOrderWork(tenantId, workComplete[1]);
+          if (result.kind === 'updated') return sendJson(response, 200, result.order);
+          if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'order_not_found', message: 'Заказ не найден' } });
+          return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+        }
+        const orderQc = url.pathname.match(/^\/api\/orders\/([^/]+)\/qc$/);
+        if (request.method === 'POST' && orderQc) {
+          if (!hasRole('qc', 'admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только контролю качества' } });
+          const result = repository.submitQualityControl(tenantId, orderQc[1], await readJson(request));
+          if (result.kind === 'updated') return sendJson(response, 200, result.order);
+          if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'order_not_found', message: 'Заказ не найден' } });
+          if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Заполните результат контроля качества' } });
         }
         const orderGet = url.pathname.match(/^\/api\/orders\/([^/]+)$/);
         if (request.method === 'GET' && orderGet) {

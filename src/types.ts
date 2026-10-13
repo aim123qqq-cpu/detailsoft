@@ -132,7 +132,7 @@ export type WorkOrder = {
   bookingId: string | null;
   customerId: string;
   vehicleId: string;
-  status: 'INTAKE' | 'ESTIMATE_DRAFT' | 'APPROVED';
+  status: 'INTAKE' | 'ESTIMATE_DRAFT' | 'APPROVED' | 'IN_PROGRESS' | 'QC' | 'READY';
   currentEstimateVersionId: string | null;
   intake: null | {
     conditionSummary: string;
@@ -149,5 +149,30 @@ export type WorkOrder = {
     responsible: string;
     decidedAt: string;
   };
+  assignment: null | { masterName: string; assignedAt: string };
+  work: null | {
+    status: 'ACTIVE' | 'PAUSED' | 'COMPLETED';
+    pauseNote: string | null;
+    startedAt: string;
+    updatedAt: string;
+    completedAt: string | null;
+    operations: Array<{
+      id: string;
+      source: 'estimate' | 'qc_rework';
+      name: string;
+      amountMinor: number;
+      status: 'PENDING' | 'DONE' | 'BLOCKED';
+      note: string | null;
+      updatedAt: string;
+    }>;
+  };
+  qualityControl: Array<{
+    id: string;
+    decision: 'PASSED' | 'REWORK';
+    responsible: string;
+    note: string;
+    createdAt: string;
+    checks: Array<{ code: string; label: string; passed: boolean }>;
+  }>;
   auditTrail: Array<{ eventType: string; occurredAt: string; metadata: Record<string, unknown> }>;
 };

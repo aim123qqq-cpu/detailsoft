@@ -53,13 +53,13 @@ function VehicleCard({ vehicle, onSelect }: { vehicle: Vehicle; onSelect: () => 
   );
 }
 
-function Header({ step, onBack }: { step: number; onBack: () => void }) {
+function Header({ step, onBack, orderTitle }: { step: number; onBack: () => void; orderTitle?: string }) {
   return (
     <header className="app-header">
       <button className="icon-button" onClick={onBack} aria-label="Назад"><Icon name="arrow"/></button>
       <div>
         <span className="eyebrow">{step === 5 ? 'Рабочий заказ' : 'Новая запись'}</span>
-        <h1>{step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : step === 3 ? 'Услуги' : step === 4 ? 'Дата и время' : 'Приёмка автомобиля'}</h1>
+        <h1>{step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : step === 3 ? 'Услуги' : step === 4 ? 'Дата и время' : orderTitle ?? 'Рабочий заказ'}</h1>
       </div>
       <button className="icon-button" aria-label="Ещё"><Icon name="more"/></button>
       <div className="progress" aria-label={step === 5 ? 'Рабочий заказ' : `Шаг ${step} из 4`}>
@@ -91,6 +91,7 @@ export function App() {
   const [serviceSelections, setServiceSelections] = useState<QuoteSelection[]>([]);
   const [bookingQuote, setBookingQuote] = useState<BookingQuote | null>(null);
   const [activeBooking, setActiveBooking] = useState<Booking | null>(null);
+  const [orderHeader, setOrderHeader] = useState('Приёмка автомобиля');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
@@ -155,7 +156,7 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <Header step={step} onBack={() => step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
+      <Header step={step} orderTitle={orderHeader} onBack={() => step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
       <main>
         {step === 1 && (
           <section className="screen" aria-label="Поиск клиента и автомобиля">
@@ -248,7 +249,7 @@ export function App() {
           />
         )}
         {step === 5 && activeBooking && selectedVehicle && selectedCustomer && (
-          <OrderFlow booking={activeBooking} customer={selectedCustomer} vehicle={selectedVehicle}/>
+          <OrderFlow booking={activeBooking} customer={selectedCustomer} vehicle={selectedVehicle} onPhaseChange={setOrderHeader}/>
         )}
       </main>
       <BottomNav/>

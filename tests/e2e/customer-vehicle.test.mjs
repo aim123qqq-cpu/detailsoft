@@ -90,6 +90,32 @@ test('mobile customer → vehicle → services → booking flow works end to end
     assert.match(await page.getByTestId('order-approved').innerText(), /готов к передаче мастеру/i);
     assert.match(await page.getByTestId('order-approved').innerText(), /Анна, администратор/);
     await page.screenshot({ path: resolve(artifacts, '10-order-approved.png'), fullPage: true });
+
+    await page.getByTestId('assign-master').click();
+    await page.getByTestId('start-work').waitFor();
+    assert.match(await page.getByTestId('order-approved').innerText(), /Дмитрий Соколов/);
+    await page.getByTestId('start-work').click();
+    await page.getByTestId('master-work').waitFor();
+    assert.equal(await page.locator('[data-testid^="work-operation-"]').count(), 2);
+    await page.getByTestId('toggle-work-pause').click();
+    assert.match(await page.getByTestId('master-work').innerText(), /Пауза/);
+    await page.getByTestId('toggle-work-pause').click();
+    await page.getByTestId('work-operation-0').click();
+    await page.waitForFunction(() => document.querySelector('[data-testid="master-work"]')?.textContent?.includes('1 выполнено'));
+    await page.getByTestId('work-operation-1').click();
+    await page.waitForFunction(() => document.querySelector('[data-testid="master-work"]')?.textContent?.includes('2 выполнено'));
+    assert.match(await page.getByTestId('master-work').innerText(), /2 выполнено/i);
+    await page.screenshot({ path: resolve(artifacts, '11-master-work.png'), fullPage: true });
+
+    await page.getByTestId('complete-work').click();
+    await page.getByTestId('order-qc').waitFor();
+    assert.match(await page.getByTestId('order-qc').innerText(), /финальная проверка/i);
+    await page.screenshot({ path: resolve(artifacts, '12-quality-control.png'), fullPage: true });
+
+    await page.getByTestId('qc-pass').click();
+    await page.getByTestId('order-ready').waitFor();
+    assert.match(await page.getByTestId('order-ready').innerText(), /готов к выдаче/i);
+    await page.screenshot({ path: resolve(artifacts, '13-ready-for-delivery.png'), fullPage: true });
   } finally {
     await browser.close();
     await new Promise((done) => server.close(done));
