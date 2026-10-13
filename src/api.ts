@@ -51,6 +51,11 @@ export const api = {
   getBookingAvailability(date: string, durationMinutes: number, signal?: AbortSignal) {
     return request<BookingAvailability>(`/api/bookings/availability?date=${encodeURIComponent(date)}&durationMinutes=${durationMinutes}`, { signal });
   },
+  updateBooking(bookingId: string, input: { startAt: string } | { status: 'CANCELLED' }) {
+    return request<Booking>(`/api/bookings/${encodeURIComponent(bookingId)}`, {
+      method: 'PATCH', body: JSON.stringify(input)
+    });
+  },
   createBooking(input: {
     customerId: string;
     vehicleId: string;

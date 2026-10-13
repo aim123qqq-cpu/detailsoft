@@ -139,6 +139,21 @@ test('mobile customer → vehicle → services → booking flow works end to end
     assert.match(await page.getByTestId('order-closed').innerText(), /заказ закрыт/i);
     await page.screenshot({ path: resolve(artifacts, '15-order-closed.png'), fullPage: true });
 
+    const manageableResponse = await fetch(`http://127.0.0.1:${port}/api/bookings`, {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer demo-session-token',
+        'content-type': 'application/json',
+        'idempotency-key': 'e2e-manage-booking'
+      },
+      body: JSON.stringify({
+        customerId: 'cust_alexey', vehicleId: 'veh_mazda', channel: 'call',
+        startAt: '2026-10-24T09:00:00+03:00',
+        selections: [{ type: 'service', id: 'service_wash' }]
+      })
+    });
+    const manageableBooking = await manageableResponse.json();
+
     await page.getByTestId('bookings-nav').click();
     await page.getByTestId('bookings-workspace').waitFor();
     await page.waitForFunction(() => document.querySelector('[data-testid="bookings-workspace"]')?.textContent?.includes('Алексей Морозов'));
@@ -146,6 +161,24 @@ test('mobile customer → vehicle → services → booking flow works end to end
     assert.match(await page.getByTestId('bookings-workspace').innerText(), /К777КК 55/);
     await page.waitForTimeout(400);
     await page.screenshot({ path: resolve(artifacts, '16-bookings-workspace.png'), fullPage: true });
+
+    await page.getByTestId(`booking-card-${manageableBooking.id}`).click();
+    await page.getByTestId('booking-details').waitFor();
+    await page.waitForTimeout(400);
+    assert.equal(await page.getByTestId('booking-details').isVisible(), true);
+    await page.screenshot({ path: resolve(artifacts, '18-booking-details.png'), fullPage: true });
+    await page.getByRole('button', { name: 'Перенести запись' }).click();
+    await page.getByLabel('Новая дата').fill('2026-10-27');
+    await page.getByRole('button', { name: '12:00' }).click();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: resolve(artifacts, '19-booking-reschedule.png'), fullPage: true });
+    await page.getByRole('button', { name: 'Подтвердить перенос' }).click();
+    await page.waitForFunction(() => document.querySelector('[data-testid="booking-details"]')?.textContent?.includes('27 октября'));
+    await page.getByRole('button', { name: 'Отменить запись' }).click();
+    await page.getByRole('button', { name: 'Да, отменить' }).click();
+    await page.waitForFunction(() => document.querySelector('[data-testid="booking-details"]')?.textContent?.includes('Отменена'));
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: resolve(artifacts, '20-booking-cancelled.png'), fullPage: true });
 
     await page.getByTestId('orders-nav').click();
     await page.getByTestId('orders-workspace').waitFor();

@@ -411,16 +411,17 @@ export class DetailFlowRepository {
     return { kind: 'created', booking: this.getBooking(tenantId, bookingId) };
   }
 
-  isBookingSlotAvailable(tenantId, startAt, durationMinutes) {
+  isBookingSlotAvailable(tenantId, startAt, durationMinutes, excludeBookingId = null) {
     const start = Date.parse(startAt);
     if (!Number.isFinite(start) || !Number.isInteger(durationMinutes) || durationMinutes <= 0) return false;
     const end = start + durationMinutes * 60_000;
     const settings = this.db.prepare('SELECT simultaneous_capacity FROM tenant_booking_settings WHERE tenant_id = ?')
       .get(tenantId);
     const capacity = settings?.simultaneous_capacity ?? 1;
-    const bookings = this.db.prepare(`SELECT start_at, estimated_duration_minutes
+    const bookings = this.db.prepare(`SELECT id, start_at, estimated_duration_minutes
       FROM bookings WHERE tenant_id = ? AND status = 'CONFIRMED'`).all(tenantId);
     const overlapping = bookings.filter((booking) => {
+      if (booking.id === excludeBookingId) return false;
       const bookingStart = Date.parse(booking.start_at);
       const bookingEnd = bookingStart + booking.estimated_duration_minutes * 60_000;
       return bookingStart < end && bookingEnd > start;
@@ -445,10 +446,12 @@ export class DetailFlowRepository {
     return this.db.prepare(`SELECT b.id, b.channel, b.start_at, b.estimated_duration_minutes,
         b.status, b.preliminary_amount_minor,
         c.id customer_id, c.name customer_name, c.phone_display customer_phone,
-        v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color
+        v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color,
+        w.order_id
       FROM bookings b
       JOIN customers c ON c.id = b.customer_id AND c.tenant_id = b.tenant_id
       JOIN vehicles v ON v.id = b.vehicle_id AND v.tenant_id = b.tenant_id
+      LEFT JOIN order_workflows w ON w.booking_id = b.id AND w.tenant_id = b.tenant_id
       WHERE b.tenant_id = ?
       ORDER BY b.start_at DESC, b.rowid DESC
       LIMIT ?`).all(tenantId, boundedLimit).map((row) => ({
@@ -458,6 +461,7 @@ export class DetailFlowRepository {
         estimatedDurationMinutes: row.estimated_duration_minutes,
         status: row.status,
         preliminaryAmountMinor: row.preliminary_amount_minor,
+        orderId: row.order_id ?? null,
         customer: {
           id: row.customer_id,
           name: row.customer_name,
@@ -472,6 +476,37 @@ export class DetailFlowRepository {
           color: row.color
         }
       }));
+  }
+
+  updateBooking(tenantId, bookingId, input) {
+    const booking = this.db.prepare(`SELECT id, status, estimated_duration_minutes
+      FROM bookings WHERE id = ? AND tenant_id = ?`).get(bookingId, tenantId);
+    if (!booking) return { kind: 'not_found' };
+    const order = this.db.prepare(`SELECT order_id FROM order_workflows
+      WHERE booking_id = ? AND tenant_id = ?`).get(bookingId, tenantId);
+    if (order) return { kind: 'conflict', code: 'booking_has_order', message: 'По записи уже создан заказ' };
+    if (booking.status !== 'CONFIRMED') {
+      return { kind: 'conflict', code: 'invalid_booking_state', message: 'Изменить можно только подтверждённую запись' };
+    }
+
+    const hasStartAt = Object.prototype.hasOwnProperty.call(input, 'startAt');
+    const hasStatus = Object.prototype.hasOwnProperty.call(input, 'status');
+    if (hasStartAt === hasStatus) return { kind: 'invalid' };
+
+    if (hasStatus) {
+      if (input.status !== 'CANCELLED') return { kind: 'invalid' };
+      this.db.prepare(`UPDATE bookings SET status = 'CANCELLED'
+        WHERE id = ? AND tenant_id = ?`).run(bookingId, tenantId);
+      return { kind: 'updated', booking: this.getBooking(tenantId, bookingId) };
+    }
+
+    if (typeof input.startAt !== 'string' || Number.isNaN(Date.parse(input.startAt))) return { kind: 'invalid' };
+    if (!this.isBookingSlotAvailable(tenantId, input.startAt, booking.estimated_duration_minutes, bookingId)) {
+      return { kind: 'conflict', code: 'slot_unavailable', message: 'Это время уже занято' };
+    }
+    this.db.prepare(`UPDATE bookings SET start_at = ? WHERE id = ? AND tenant_id = ?`)
+      .run(input.startAt, bookingId, tenantId);
+    return { kind: 'updated', booking: this.getBooking(tenantId, bookingId) };
   }
 
   getBooking(tenantId, bookingId) {

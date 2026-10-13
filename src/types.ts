@@ -74,6 +74,8 @@ export type BookingQuote = {
   warnings: Array<{ code: string; message: string; itemId: string }>;
 };
 
+export type BookingStatus = 'DRAFT' | 'CONFIRMED' | 'ARRIVED' | 'CANCELLED' | 'NO_SHOW';
+
 export type Booking = {
   id: string;
   customerId: string;
@@ -82,7 +84,7 @@ export type Booking = {
   startAt: string;
   timezone: string;
   estimatedDurationMinutes: number;
-  status: 'CONFIRMED';
+  status: BookingStatus;
   preliminaryAmountMinor: number;
   resourceId: string | null;
   lines: QuoteLine[];
@@ -101,6 +103,7 @@ export type BookingListItem = {
   estimatedDurationMinutes: number;
   status: Booking['status'];
   preliminaryAmountMinor: number;
+  orderId: string | null;
   customer: Pick<Customer, 'id' | 'name' | 'phoneDisplay'>;
   vehicle: Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color'>;
 };

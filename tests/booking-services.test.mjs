@@ -6,7 +6,15 @@ let server;
 let baseUrl;
 
 before(async () => {
-  server = createDetailFlowServer({ databasePath: ':memory:', seed: true });
+  server = createDetailFlowServer({
+    databasePath: ':memory:',
+    seed: true,
+    authTokens: new Map([
+      ['demo-session-token', { tenantId: 'tenant_demo', roles: ['admin', 'intake', 'master', 'qc'] }],
+      ['intake-only-token', { tenantId: 'tenant_demo', roles: ['intake'] }],
+      ['other-session-token', { tenantId: 'tenant_other', roles: ['admin'] }]
+    ])
+  });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address();
   baseUrl = `http://127.0.0.1:${port}`;
@@ -16,12 +24,12 @@ after(async () => {
   await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 });
 
-async function api(path, { tenant = 'tenant_demo', method = 'GET', body, headers = {} } = {}) {
-  const token = tenant === 'tenant_other' ? 'other-session-token' : 'demo-session-token';
+async function api(path, { tenant = 'tenant_demo', token, method = 'GET', body, headers = {} } = {}) {
+  const sessionToken = token ?? (tenant === 'tenant_other' ? 'other-session-token' : 'demo-session-token');
   return fetch(`${baseUrl}${path}`, {
     method,
     headers: {
-      authorization: `Bearer ${token}`,
+      authorization: `Bearer ${sessionToken}`,
       ...(body ? { 'content-type': 'application/json' } : {}),
       ...headers
     },
@@ -182,4 +190,78 @@ test('bookings workspace lists only the current tenant records', async () => {
 
   const foreign = await api('/api/bookings?limit=20', { tenant: 'tenant_other' });
   assert.deepEqual((await foreign.json()).items, []);
+});
+
+test('a confirmed booking can be rescheduled and cancelled without losing history', async () => {
+  const createdResponse = await api('/api/bookings', {
+    method: 'POST',
+    headers: { 'idempotency-key': 'booking-manage-1' },
+    body: {
+      customerId: 'cust_alexey',
+      vehicleId: 'veh_mazda',
+      channel: 'call',
+      startAt: '2026-10-24T09:00:00+03:00',
+      selections: [{ type: 'service', id: 'service_wash' }]
+    }
+  });
+  const created = await createdResponse.json();
+
+  const forbidden = await api(`/api/bookings/${created.id}`, {
+    token: 'intake-only-token', method: 'PATCH', body: { status: 'CANCELLED' }
+  });
+  assert.equal(forbidden.status, 403);
+  assert.equal((await forbidden.json()).error.code, 'forbidden');
+
+  const movedResponse = await api(`/api/bookings/${created.id}`, {
+    method: 'PATCH', body: { startAt: '2026-10-24T12:00:00+03:00' }
+  });
+  assert.equal(movedResponse.status, 200);
+  assert.equal((await movedResponse.json()).startAt, '2026-10-24T12:00:00+03:00');
+
+  const cancelledResponse = await api(`/api/bookings/${created.id}`, {
+    method: 'PATCH', body: { status: 'CANCELLED' }
+  });
+  assert.equal(cancelledResponse.status, 200);
+  assert.equal((await cancelledResponse.json()).status, 'CANCELLED');
+
+  const invalidMove = await api(`/api/bookings/${created.id}`, {
+    method: 'PATCH', body: { startAt: '2026-10-24T14:30:00+03:00' }
+  });
+  assert.equal(invalidMove.status, 409);
+  assert.equal((await invalidMove.json()).error.code, 'invalid_booking_state');
+
+  const foreign = await api(`/api/bookings/${created.id}`, {
+    tenant: 'tenant_other', method: 'PATCH', body: { status: 'CANCELLED' }
+  });
+  assert.equal(foreign.status, 404);
+});
+
+test('rescheduling respects center capacity and bookings with orders are locked', async () => {
+  const create = async (key, startAt) => {
+    const response = await api('/api/bookings', {
+      method: 'POST', headers: { 'idempotency-key': key },
+      body: {
+        customerId: 'cust_alexey', vehicleId: 'veh_mazda', channel: 'telegram', startAt,
+        selections: [{ type: 'service', id: 'service_wash' }]
+      }
+    });
+    return response.json();
+  };
+  await create('booking-capacity-target-1', '2026-10-25T14:30:00+03:00');
+  await create('booking-capacity-target-2', '2026-10-25T14:30:00+03:00');
+  const movable = await create('booking-capacity-movable', '2026-10-25T09:00:00+03:00');
+
+  const conflict = await api(`/api/bookings/${movable.id}`, {
+    method: 'PATCH', body: { startAt: '2026-10-25T14:30:00+03:00' }
+  });
+  assert.equal(conflict.status, 409);
+  assert.equal((await conflict.json()).error.code, 'slot_unavailable');
+
+  const order = await api('/api/orders', { method: 'POST', body: { bookingId: movable.id } });
+  assert.equal(order.status, 201);
+  const locked = await api(`/api/bookings/${movable.id}`, {
+    method: 'PATCH', body: { status: 'CANCELLED' }
+  });
+  assert.equal(locked.status, 409);
+  assert.equal((await locked.json()).error.code, 'booking_has_order');
 });

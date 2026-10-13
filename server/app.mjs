@@ -141,6 +141,20 @@ export function createDetailFlowServer({
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте дату, канал и услуги' } });
         }
         const bookingGet = url.pathname.match(/^\/api\/bookings\/([^/]+)$/);
+        if (request.method === 'PATCH' && bookingGet) {
+          if (!hasRole('admin')) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для изменения записи' }
+          });
+          const result = repository.updateBooking(tenantId, bookingGet[1], await readJson(request));
+          if (result.kind === 'updated') return sendJson(response, 200, result.booking);
+          if (result.kind === 'not_found') return sendJson(response, 404, {
+            error: { code: 'booking_not_found', message: 'Запись не найдена' }
+          });
+          if (result.kind === 'conflict') return sendJson(response, 409, {
+            error: { code: result.code, message: result.message }
+          });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте изменение записи' } });
+        }
         if (request.method === 'GET' && bookingGet && bookingGet[1] !== 'quote-preview') {
           const booking = repository.getBooking(tenantId, bookingGet[1]);
           return booking
