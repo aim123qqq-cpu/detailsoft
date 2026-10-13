@@ -120,6 +120,9 @@ export function createDetailFlowServer({
           if (result.kind === 'available') return sendJson(response, 200, result);
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте дату и длительность' } });
         }
+        if (request.method === 'GET' && url.pathname === '/api/bookings') {
+          return sendJson(response, 200, { items: repository.listBookings(tenantId, url.searchParams.get('limit') ?? 20) });
+        }
         if (request.method === 'POST' && url.pathname === '/api/bookings') {
           const idempotencyHeader = request.headers['idempotency-key'];
           const idempotencyKey = typeof idempotencyHeader === 'string' ? idempotencyHeader : '';
@@ -143,6 +146,9 @@ export function createDetailFlowServer({
           return booking
             ? sendJson(response, 200, booking)
             : sendJson(response, 404, { error: { code: 'booking_not_found', message: 'Запись не найдена' } });
+        }
+        if (request.method === 'GET' && url.pathname === '/api/orders') {
+          return sendJson(response, 200, { items: repository.listOrders(tenantId, url.searchParams.get('limit') ?? 20) });
         }
         if (request.method === 'POST' && url.pathname === '/api/orders') {
           const result = repository.createOrderFromBooking(tenantId, await readJson(request));

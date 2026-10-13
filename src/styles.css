@@ -448,8 +448,49 @@ button { color: inherit; }
 .closed-receipt strong { font-size: 13px; }
 .handover-proof { margin-top: 13px; padding: 12px; border: 1px solid rgba(54,201,150,.22); border-radius: 11px; color: #8fd6bd; background: rgba(54,201,150,.06); text-align: left; font-size: 11px; line-height: 1.5; }
 
+.workspace-screen { padding-top: 18px; padding-bottom: 112px; }
+.workspace-hero { overflow: hidden; position: relative; padding: 18px; border: 1px solid #3a4651; border-radius: 18px; background: radial-gradient(circle at 92% 0, rgba(255,121,57,.25), transparent 43%), linear-gradient(145deg, #242e38, #121920); box-shadow: 0 18px 36px rgba(0,0,0,.22); }
+.workspace-hero::after { content: ''; position: absolute; width: 92px; height: 92px; right: -30px; bottom: -50px; border: 18px solid rgba(255,255,255,.035); border-radius: 50%; }
+.workspace-hero > span { display: block; color: #ff9b6c; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
+.workspace-hero > div { display: grid; grid-template-columns: auto 1fr auto 1fr; align-items: baseline; gap: 6px; margin-top: 14px; }
+.workspace-hero strong { font-size: 30px; line-height: 1; letter-spacing: -.05em; }
+.workspace-hero small { color: #9da9b4; font-size: 12px; font-weight: 600; }
+.workspace-hero.orders-hero { background: radial-gradient(circle at 92% 0, rgba(54,201,150,.2), transparent 43%), linear-gradient(145deg, #242e38, #121920); }
+.workspace-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 24px 1px 14px; }
+.workspace-toolbar h2 { margin: 0 0 4px; font-size: 20px; letter-spacing: -.03em; }
+.workspace-toolbar p { margin: 0; color: var(--muted); font-size: 12px; }
+.workspace-toolbar > button, .workspace-state button { flex: 0 0 auto; min-height: 44px; padding: 0 14px; border: 1px solid rgba(255,121,57,.45); border-radius: 11px; color: #ff9a6a; background: rgba(255,121,57,.09); font-size: 12px; font-weight: 800; cursor: pointer; }
+.workspace-filters { display: flex; gap: 7px; overflow-x: auto; margin: 0 -18px 14px; padding: 0 18px 5px; scrollbar-width: none; }
+.workspace-filters button { flex: 0 0 auto; min-height: 40px; padding: 0 14px; border: 1px solid #313d48; border-radius: 20px; color: #9ca8b3; background: #111820; font-size: 12px; font-weight: 700; cursor: pointer; }
+.workspace-filters button.selected { border-color: rgba(255,121,57,.55); color: #ff9a6a; background: rgba(255,121,57,.11); }
+.workspace-list { display: grid; gap: 10px; }
+.workspace-card { display: grid; grid-template-columns: 74px minmax(0,1fr); overflow: hidden; border: 1px solid #2e3a45; border-radius: 15px; background: linear-gradient(115deg, #18212a, #111820); box-shadow: 0 10px 24px rgba(0,0,0,.13); }
+.workspace-card-time { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 14px 8px; border-right: 1px solid #2d3944; background: rgba(255,255,255,.025); text-align: center; }
+.workspace-card-time strong { color: #fff; font-size: 18px; }
+.workspace-card-time span { margin-top: 6px; color: #9aa6b1; font-size: 10px; line-height: 1.35; text-transform: capitalize; }
+.workspace-card-body { min-width: 0; padding: 13px 14px 14px; }
+.workspace-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #74818c; font-size: 10px; }
+.status-pill { display: inline-flex; align-items: center; min-height: 25px; padding: 0 9px; border-radius: 12px; color: #ffad86; background: rgba(255,121,57,.11); font-size: 10px; font-weight: 800; }
+.status-pill.active, .status-pill.confirmed { color: #ffad86; background: rgba(255,121,57,.11); }
+.status-pill.ready { color: #7de0bc; background: rgba(54,201,150,.11); }
+.status-pill.closed { color: #aeb8c2; background: rgba(174,184,194,.1); }
+.workspace-card h3 { margin: 11px 0 3px; overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-card p { margin: 0; overflow: hidden; color: #a4b0ba; font-size: 12px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-card-meta { display: flex; align-items: center; gap: 9px; margin-top: 12px; color: #87939e; font-size: 11px; }
+.workspace-card-meta strong { margin-left: auto; color: #eef2f5; font-size: 12px; }
+.workspace-card-meta .plate { font-size: 10px; }
+.order-card { grid-template-columns: 1fr; }
+.order-card .workspace-card-meta { flex-wrap: wrap; }
+.order-summary { display: flex; align-items: center; justify-content: space-between; margin-top: 13px; padding-top: 11px; border-top: 1px solid #29343e; }
+.order-summary span { color: #84919c; font-size: 11px; }
+.order-summary strong { font-size: 13px; }
+.workspace-state { min-height: 170px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 24px; border: 1px dashed #34414c; border-radius: 15px; color: #8f9ba6; font-size: 12px; text-align: center; }
+.workspace-state strong { color: #eef2f5; font-size: 15px; }
+.workspace-state button { margin-top: 5px; }
+.error-state { color: #ff9b9b; border-color: rgba(233,93,93,.3); }
+
 .bottom-nav { position: fixed; z-index: 30; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%, var(--app-width)); min-height: 76px; padding: 7px 22px max(8px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, 1fr); background: rgba(13,19,25,.94); border-top: 1px solid #27313b; backdrop-filter: blur(18px); }
-.bottom-nav button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #6e7b87; background: transparent; border: 0; font-size: 9px; font-weight: 700; }
+.bottom-nav button { min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #7f8b96; background: transparent; border: 0; font-size: 11px; font-weight: 700; cursor: pointer; }
 .bottom-nav button.active { color: var(--primary); }
 .nav-action { width: 40px; height: 40px; display: grid; place-items: center; margin-top: -26px; background: var(--primary); color: #1b110d; border-radius: 13px; box-shadow: 0 7px 22px rgba(255,121,57,.35); border: 4px solid var(--bg); }
 

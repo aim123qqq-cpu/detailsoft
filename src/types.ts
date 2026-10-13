@@ -94,6 +94,17 @@ export type BookingAvailability = {
   slots: Array<{ time: string; startAt: string; available: boolean }>;
 };
 
+export type BookingListItem = {
+  id: string;
+  channel: string;
+  startAt: string;
+  estimatedDurationMinutes: number;
+  status: Booking['status'];
+  preliminaryAmountMinor: number;
+  customer: Pick<Customer, 'id' | 'name' | 'phoneDisplay'>;
+  vehicle: Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color'>;
+};
+
 export type IntakeFinding = {
   id?: string;
   zone: string;
@@ -180,4 +191,14 @@ export type WorkOrder = {
     handedOverAt: string;
   };
   auditTrail: Array<{ eventType: string; occurredAt: string; metadata: Record<string, unknown> }>;
+};
+
+export type OrderListItem = {
+  id: string;
+  status: WorkOrder['status'];
+  createdAt: string;
+  totalAmountMinor: number | null;
+  masterName: string | null;
+  customer: Pick<Customer, 'id' | 'name' | 'phoneDisplay'>;
+  vehicle: Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color'>;
 };

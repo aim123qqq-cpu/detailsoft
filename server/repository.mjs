@@ -439,6 +439,41 @@ export class DetailFlowRepository {
     return { kind: 'available', date, durationMinutes, slots };
   }
 
+  listBookings(tenantId, limit = 20) {
+    const requestedLimit = Number(limit);
+    const boundedLimit = Number.isInteger(requestedLimit) ? Math.min(50, Math.max(1, requestedLimit)) : 20;
+    return this.db.prepare(`SELECT b.id, b.channel, b.start_at, b.estimated_duration_minutes,
+        b.status, b.preliminary_amount_minor,
+        c.id customer_id, c.name customer_name, c.phone_display customer_phone,
+        v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color
+      FROM bookings b
+      JOIN customers c ON c.id = b.customer_id AND c.tenant_id = b.tenant_id
+      JOIN vehicles v ON v.id = b.vehicle_id AND v.tenant_id = b.tenant_id
+      WHERE b.tenant_id = ?
+      ORDER BY b.start_at DESC, b.rowid DESC
+      LIMIT ?`).all(tenantId, boundedLimit).map((row) => ({
+        id: row.id,
+        channel: row.channel,
+        startAt: row.start_at,
+        estimatedDurationMinutes: row.estimated_duration_minutes,
+        status: row.status,
+        preliminaryAmountMinor: row.preliminary_amount_minor,
+        customer: {
+          id: row.customer_id,
+          name: row.customer_name,
+          phoneDisplay: row.customer_phone
+        },
+        vehicle: {
+          id: row.vehicle_id,
+          make: row.make,
+          model: row.model,
+          generation: row.generation,
+          plate: row.plate_display,
+          color: row.color
+        }
+      }));
+  }
+
   getBooking(tenantId, bookingId) {
     const row = this.db.prepare(`SELECT b.id, b.customer_id, b.vehicle_id, b.channel, b.start_at,
         b.estimated_duration_minutes, b.status, b.preliminary_amount_minor, b.resource_id,
@@ -864,6 +899,43 @@ export class DetailFlowRepository {
       throw error;
     }
     return { kind: 'updated', order: this.getOrder(tenantId, orderId) };
+  }
+
+  listOrders(tenantId, limit = 20) {
+    const requestedLimit = Number(limit);
+    const boundedLimit = Number.isInteger(requestedLimit) ? Math.min(50, Math.max(1, requestedLimit)) : 20;
+    return this.db.prepare(`SELECT o.id, o.status, o.created_at,
+        c.id customer_id, c.name customer_name, c.phone_display customer_phone,
+        v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color,
+        e.total_amount_minor, a.master_name
+      FROM orders o
+      JOIN customers c ON c.id = o.customer_id AND c.tenant_id = o.tenant_id
+      JOIN vehicles v ON v.id = o.vehicle_id AND v.tenant_id = o.tenant_id
+      LEFT JOIN order_workflows w ON w.order_id = o.id AND w.tenant_id = o.tenant_id
+      LEFT JOIN estimate_versions e ON e.id = w.current_estimate_version_id AND e.tenant_id = o.tenant_id
+      LEFT JOIN order_assignments a ON a.order_id = o.id AND a.tenant_id = o.tenant_id
+      WHERE o.tenant_id = ?
+      ORDER BY o.created_at DESC, o.rowid DESC
+      LIMIT ?`).all(tenantId, boundedLimit).map((row) => ({
+        id: row.id,
+        status: row.status,
+        createdAt: apiTimestamp(row.created_at),
+        totalAmountMinor: row.total_amount_minor ?? null,
+        masterName: row.master_name ?? null,
+        customer: {
+          id: row.customer_id,
+          name: row.customer_name,
+          phoneDisplay: row.customer_phone
+        },
+        vehicle: {
+          id: row.vehicle_id,
+          make: row.make,
+          model: row.model,
+          generation: row.generation,
+          plate: row.plate_display,
+          color: row.color
+        }
+      }));
   }
 
   getOrder(tenantId, orderId) {

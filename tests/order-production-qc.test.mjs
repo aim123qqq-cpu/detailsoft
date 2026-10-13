@@ -181,3 +181,18 @@ test('delivery closes a ready order without a payment workflow', async () => {
   assert.equal(closed.handover.responsible, 'Анна');
   assert.ok(closed.auditTrail.some((event) => event.eventType === 'ORDER_CLOSED'));
 });
+
+test('orders workspace returns tenant-scoped operational summaries', async () => {
+  const response = await api('/api/orders?limit=20');
+  assert.equal(response.status, 200);
+  const items = (await response.json()).items;
+  const order = items.find((item) => item.id === orderId);
+  assert.equal(order.status, 'CLOSED');
+  assert.equal(order.customer.name, 'Алексей Морозов');
+  assert.equal(order.vehicle.plate, 'А123АА 55');
+  assert.equal(order.masterName, 'Дмитрий Соколов');
+  assert.equal(order.totalAmountMinor, 230000);
+
+  const foreign = await api('/api/orders?limit=20', { token: 'other-session-token' });
+  assert.deepEqual((await foreign.json()).items, []);
+});

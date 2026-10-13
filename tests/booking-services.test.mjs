@@ -170,3 +170,16 @@ test('center capacity protects a slot without requiring individual boxes', async
   const slot = (await availability.json()).slots.find((item) => item.time === '14:30');
   assert.equal(slot.available, false);
 });
+
+test('bookings workspace lists only the current tenant records', async () => {
+  const response = await api('/api/bookings?limit=20');
+  assert.equal(response.status, 200);
+  const items = (await response.json()).items;
+  assert.ok(items.length >= 3);
+  assert.ok(items.every((item) => item.customer.name === 'Алексей Морозов'));
+  assert.ok(items.some((item) => item.vehicle.plate === 'А123АА 55'));
+  assert.ok(items.every((item) => item.status === 'CONFIRMED'));
+
+  const foreign = await api('/api/bookings?limit=20', { tenant: 'tenant_other' });
+  assert.deepEqual((await foreign.json()).items, []);
+});

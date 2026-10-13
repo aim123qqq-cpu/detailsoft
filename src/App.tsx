@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from './api';
 import { ScheduleStep, ServicesStep } from './BookingFlow';
 import { OrderFlow } from './OrderFlow';
+import { BookingsWorkspace, OrdersWorkspace } from './WorkspaceScreens';
 import type { Booking, BookingQuote, CatalogVariant, Customer, QuoteSelection, Vehicle } from './types';
+
+type Workspace = 'bookings' | 'new' | 'orders';
 
 type IconName = 'arrow' | 'search' | 'phone' | 'car' | 'user' | 'calendar' | 'clipboard' | 'more' | 'plus' | 'check' | 'spark';
 
@@ -53,33 +56,35 @@ function VehicleCard({ vehicle, onSelect }: { vehicle: Vehicle; onSelect: () => 
   );
 }
 
-function Header({ step, onBack, orderTitle }: { step: number; onBack: () => void; orderTitle?: string }) {
+function Header({ step, workspace, onBack, orderTitle }: { step: number; workspace: Workspace; onBack: () => void; orderTitle?: string }) {
+  const workspaceTitle = workspace === 'bookings' ? 'Записи' : 'Заказы';
   return (
     <header className="app-header">
       <button className="icon-button" onClick={onBack} aria-label="Назад"><Icon name="arrow"/></button>
       <div>
-        <span className="eyebrow">{step === 5 ? 'Рабочий заказ' : 'Новая запись'}</span>
-        <h1>{step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : step === 3 ? 'Услуги' : step === 4 ? 'Дата и время' : orderTitle ?? 'Рабочий заказ'}</h1>
+        <span className="eyebrow">{workspace === 'bookings' ? 'Расписание' : workspace === 'orders' ? 'Производство' : step === 5 ? 'Рабочий заказ' : 'Новая запись'}</span>
+        <h1>{workspace !== 'new' ? workspaceTitle : step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : step === 3 ? 'Услуги' : step === 4 ? 'Дата и время' : orderTitle ?? 'Рабочий заказ'}</h1>
       </div>
       <button className="icon-button" aria-label="Ещё"><Icon name="more"/></button>
-      <div className="progress" aria-label={step === 5 ? 'Рабочий заказ' : `Шаг ${step} из 4`}>
+      {workspace === 'new' && <div className="progress" aria-label={step === 5 ? 'Рабочий заказ' : `Шаг ${step} из 4`}>
         {[1, 2, 3, 4].map((item) => <span key={item} className={item <= step ? 'active' : ''}/>) }
-      </div>
+      </div>}
     </header>
   );
 }
 
-function BottomNav() {
+function BottomNav({ active, onSelect }: { active: Workspace; onSelect: (workspace: Workspace) => void }) {
   return (
     <nav className="bottom-nav" aria-label="Основная навигация">
-      <button><Icon name="calendar"/><span>Записи</span></button>
-      <button className="active"><span className="nav-action"><Icon name="plus" size={24}/></span><span>Новая</span></button>
-      <button><Icon name="clipboard"/><span>Заказы</span></button>
+      <button data-testid="bookings-nav" className={active === 'bookings' ? 'active' : ''} aria-current={active === 'bookings' ? 'page' : undefined} onClick={() => onSelect('bookings')}><Icon name="calendar"/><span>Записи</span></button>
+      <button data-testid="new-booking-nav" className={active === 'new' ? 'active' : ''} aria-current={active === 'new' ? 'page' : undefined} onClick={() => onSelect('new')}><span className="nav-action"><Icon name="plus" size={24}/></span><span>Новая</span></button>
+      <button data-testid="orders-nav" className={active === 'orders' ? 'active' : ''} aria-current={active === 'orders' ? 'page' : undefined} onClick={() => onSelect('orders')}><Icon name="clipboard"/><span>Заказы</span></button>
     </nav>
   );
 }
 
 export function App() {
+  const [workspace, setWorkspace] = useState<Workspace>('new');
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [mode, setMode] = useState<'phone' | 'plate'>('phone');
   const [channel, setChannel] = useState('Telegram');
@@ -99,9 +104,10 @@ export function App() {
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'auto' });
-  }, [step]);
+  }, [step, workspace]);
 
   useEffect(() => {
+    if (workspace !== 'new') return;
     setCustomers([]);
     setPlateVehicles([]);
     setSelectedCustomer(null);
@@ -128,7 +134,30 @@ export function App() {
       }
     }, 320);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [query, mode]);
+  }, [query, mode, workspace]);
+
+  const startNewBooking = () => {
+    setWorkspace('new');
+    setStep(1);
+    setMode('phone');
+    setQuery('');
+    setCustomers([]);
+    setPlateVehicles([]);
+    setSelectedCustomer(null);
+    setSelectedVehicle(null);
+    setServiceSelections([]);
+    setBookingQuote(null);
+    setActiveBooking(null);
+    setOrderHeader('Приёмка автомобиля');
+    setError('');
+    setShowCreateCustomer(false);
+    setNewCustomerName('');
+  };
+
+  const selectWorkspace = (nextWorkspace: Workspace) => {
+    if (nextWorkspace === 'new') startNewBooking();
+    else setWorkspace(nextWorkspace);
+  };
 
   const chooseVehicle = (vehicle: Vehicle, customer?: Customer | null) => {
     if (customer) setSelectedCustomer(customer);
@@ -156,9 +185,11 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <Header step={step} orderTitle={orderHeader} onBack={() => step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
+      <Header step={step} workspace={workspace} orderTitle={orderHeader} onBack={() => workspace !== 'new' ? startNewBooking() : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
       <main>
-        {step === 1 && (
+        {workspace === 'bookings' && <BookingsWorkspace onNew={startNewBooking}/>}
+        {workspace === 'orders' && <OrdersWorkspace/>}
+        {workspace === 'new' && step === 1 && (
           <section className="screen" aria-label="Поиск клиента и автомобиля">
             <div className="context-line"><span className="live-dot"/> DetailFlow Studio <span>·</span> Сегодня, 14:30</div>
             <div className="section-block compact">
@@ -223,9 +254,9 @@ export function App() {
           </section>
         )}
 
-        {step === 2 && selectedCustomer && <AddVehicle customer={selectedCustomer} onCancel={() => setStep(1)} onCreated={(vehicle) => chooseVehicle(vehicle, selectedCustomer)}/>}
+        {workspace === 'new' && step === 2 && selectedCustomer && <AddVehicle customer={selectedCustomer} onCancel={() => setStep(1)} onCreated={(vehicle) => chooseVehicle(vehicle, selectedCustomer)}/>}
 
-        {step === 3 && selectedVehicle && (
+        {workspace === 'new' && step === 3 && selectedVehicle && (
           <ServicesStep
             vehicle={selectedVehicle}
             initialSelections={serviceSelections}
@@ -237,7 +268,7 @@ export function App() {
             }}
           />
         )}
-        {step === 4 && selectedVehicle && selectedCustomer && bookingQuote && (
+        {workspace === 'new' && step === 4 && selectedVehicle && selectedCustomer && bookingQuote && (
           <ScheduleStep
             customer={selectedCustomer}
             vehicle={selectedVehicle}
@@ -248,11 +279,11 @@ export function App() {
             onStartIntake={(booking) => { setActiveBooking(booking); setStep(5); }}
           />
         )}
-        {step === 5 && activeBooking && selectedVehicle && selectedCustomer && (
+        {workspace === 'new' && step === 5 && activeBooking && selectedVehicle && selectedCustomer && (
           <OrderFlow booking={activeBooking} customer={selectedCustomer} vehicle={selectedVehicle} onPhaseChange={setOrderHeader}/>
         )}
       </main>
-      <BottomNav/>
+      <BottomNav active={workspace} onSelect={selectWorkspace}/>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { Booking, BookingAvailability, BookingQuote, CatalogVariant, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, OrderRecommendation, QuoteSelection, ServiceCatalog, Vehicle, WorkOrder } from './types';
+import type { Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, OrderListItem, OrderRecommendation, QuoteSelection, ServiceCatalog, Vehicle, WorkOrder } from './types';
 
 const sessionHeaders = { authorization: 'Bearer demo-session-token' };
 
@@ -17,6 +17,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  listBookings(signal?: AbortSignal) {
+    return request<{ items: BookingListItem[] }>('/api/bookings?limit=20', { signal });
+  },
+  listOrders(signal?: AbortSignal) {
+    return request<{ items: OrderListItem[] }>('/api/orders?limit=20', { signal });
+  },
   searchCustomers(phone: string, signal?: AbortSignal) {
     return request<{ items: Customer[] }>(`/api/customers?phone=${encodeURIComponent(phone)}`, { signal });
   },

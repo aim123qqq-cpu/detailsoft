@@ -138,6 +138,23 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.getByTestId('order-closed').waitFor();
     assert.match(await page.getByTestId('order-closed').innerText(), /заказ закрыт/i);
     await page.screenshot({ path: resolve(artifacts, '15-order-closed.png'), fullPage: true });
+
+    await page.getByTestId('bookings-nav').click();
+    await page.getByTestId('bookings-workspace').waitFor();
+    await page.waitForFunction(() => document.querySelector('[data-testid="bookings-workspace"]')?.textContent?.includes('Алексей Морозов'));
+    assert.match(await page.getByTestId('bookings-workspace').innerText(), /Алексей Морозов/);
+    assert.match(await page.getByTestId('bookings-workspace').innerText(), /К777КК 55/);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: resolve(artifacts, '16-bookings-workspace.png'), fullPage: true });
+
+    await page.getByTestId('orders-nav').click();
+    await page.getByTestId('orders-workspace').waitFor();
+    await page.waitForFunction(() => document.querySelector('[data-testid="orders-workspace"]')?.textContent?.includes('Алексей Морозов'));
+    assert.match(await page.getByTestId('orders-workspace').innerText(), /Алексей Морозов/);
+    assert.match(await page.getByTestId('orders-workspace').innerText(), /Закрыт/);
+    assert.match(await page.getByTestId('orders-workspace').innerText(), /К777КК 55/);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: resolve(artifacts, '17-orders-workspace.png'), fullPage: true });
   } finally {
     await browser.close();
     await new Promise((done) => server.close(done));
