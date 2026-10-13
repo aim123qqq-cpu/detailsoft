@@ -1,4 +1,4 @@
-import type { CatalogVariant, Customer, Vehicle } from './types';
+import type { Booking, BookingAvailability, BookingQuote, CatalogVariant, Customer, QuoteSelection, ServiceCatalog, Vehicle } from './types';
 
 const sessionHeaders = { authorization: 'Bearer demo-session-token' };
 
@@ -31,5 +31,31 @@ export const api = {
   },
   createVehicle(input: { customerId: string; catalogVariantId: string; plateDisplay: string; color: string }) {
     return request<{ vehicle: Vehicle }>('/api/vehicles', { method: 'POST', body: JSON.stringify(input) });
+  },
+  getServices(vehicleId: string, signal?: AbortSignal) {
+    return request<ServiceCatalog>(`/api/tenants/current/services?vehicleId=${encodeURIComponent(vehicleId)}`, { signal });
+  },
+  previewQuote(vehicleId: string, selections: QuoteSelection[], signal?: AbortSignal) {
+    return request<BookingQuote>('/api/bookings/quote-preview', {
+      method: 'POST',
+      body: JSON.stringify({ vehicleId, selections }),
+      signal
+    });
+  },
+  getBookingAvailability(date: string, durationMinutes: number, signal?: AbortSignal) {
+    return request<BookingAvailability>(`/api/bookings/availability?date=${encodeURIComponent(date)}&durationMinutes=${durationMinutes}`, { signal });
+  },
+  createBooking(input: {
+    customerId: string;
+    vehicleId: string;
+    channel: string;
+    startAt: string;
+    selections: QuoteSelection[];
+  }, idempotencyKey: string) {
+    return request<Booking>('/api/bookings', {
+      method: 'POST',
+      headers: { 'idempotency-key': idempotencyKey },
+      body: JSON.stringify(input)
+    });
   }
 };

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from './api';
-import type { CatalogVariant, Customer, Vehicle } from './types';
+import { ScheduleStep, ServicesStep } from './BookingFlow';
+import type { BookingQuote, CatalogVariant, Customer, QuoteSelection, Vehicle } from './types';
 
 type IconName = 'arrow' | 'search' | 'phone' | 'car' | 'user' | 'calendar' | 'clipboard' | 'more' | 'plus' | 'check' | 'spark';
 
@@ -57,7 +58,7 @@ function Header({ step, onBack }: { step: number; onBack: () => void }) {
       <button className="icon-button" onClick={onBack} aria-label="Назад"><Icon name="arrow"/></button>
       <div>
         <span className="eyebrow">Новая запись</span>
-        <h1>{step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : 'Услуги'}</h1>
+        <h1>{step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : step === 3 ? 'Услуги' : 'Дата и время'}</h1>
       </div>
       <button className="icon-button" aria-label="Ещё"><Icon name="more"/></button>
       <div className="progress" aria-label={`Шаг ${step} из 4`}>
@@ -78,7 +79,7 @@ function BottomNav() {
 }
 
 export function App() {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [mode, setMode] = useState<'phone' | 'plate'>('phone');
   const [channel, setChannel] = useState('Telegram');
   const [query, setQuery] = useState('');
@@ -86,6 +87,8 @@ export function App() {
   const [plateVehicles, setPlateVehicles] = useState<Array<Vehicle & { customer: Customer | null }>>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [serviceSelections, setServiceSelections] = useState<QuoteSelection[]>([]);
+  const [bookingQuote, setBookingQuote] = useState<BookingQuote | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
@@ -123,6 +126,8 @@ export function App() {
   const chooseVehicle = (vehicle: Vehicle, customer?: Customer | null) => {
     if (customer) setSelectedCustomer(customer);
     setSelectedVehicle(vehicle);
+    setServiceSelections([]);
+    setBookingQuote(null);
     setStep(3);
   };
 
@@ -144,7 +149,7 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <Header step={step} onBack={() => step === 1 ? setQuery('') : setStep(step === 3 ? 1 : 1)}/>
+      <Header step={step} onBack={() => step === 1 ? setQuery('') : setStep(step === 4 ? 3 : 1)}/>
       <main>
         {step === 1 && (
           <section className="screen" aria-label="Поиск клиента и автомобиля">
@@ -214,19 +219,26 @@ export function App() {
         {step === 2 && selectedCustomer && <AddVehicle customer={selectedCustomer} onCancel={() => setStep(1)} onCreated={(vehicle) => chooseVehicle(vehicle, selectedCustomer)}/>}
 
         {step === 3 && selectedVehicle && (
-          <section className="screen service-screen" data-testid="services-screen">
-            <div className="handoff-label"><Icon name="spark"/> Автомобиль выбран</div>
-            <h2>Выберите услуги</h2>
-            <p>Стоимость рассчитаем по классу автомобиля для DetailFlow Studio.</p>
-            <div className="selected-vehicle">
-              <span className="hero-car"><Icon name="car" size={34}/></span>
-              <span><small>{selectedVehicle.plate}</small><strong>{selectedVehicle.make} {selectedVehicle.model} {selectedVehicle.generation}</strong><em>{bodyLabels[selectedVehicle.bodyType ?? ''] ?? selectedVehicle.bodyType} · {selectedVehicle.color} · {selectedVehicle.tenantClass ?? 'класс уточняется'}</em></span>
-              <button onClick={() => setStep(1)}>Изменить</button>
-            </div>
-            <div className="service-list" aria-label="Категории услуг">
-              {['Мойка и уход', 'Детейлинг кузова', 'Салон'].map((item, index) => <div key={item}><span>{String(index + 1).padStart(2, '0')}</span><strong>{item}</strong><small>Будет подключено в итерации 2</small></div>)}
-            </div>
-          </section>
+          <ServicesStep
+            vehicle={selectedVehicle}
+            initialSelections={serviceSelections}
+            onBack={() => setStep(1)}
+            onContinue={(selections, quote) => {
+              setServiceSelections(selections);
+              setBookingQuote(quote);
+              setStep(4);
+            }}
+          />
+        )}
+        {step === 4 && selectedVehicle && selectedCustomer && bookingQuote && (
+          <ScheduleStep
+            customer={selectedCustomer}
+            vehicle={selectedVehicle}
+            channel={channel}
+            selections={serviceSelections}
+            quote={bookingQuote}
+            onBack={() => setStep(3)}
+          />
         )}
       </main>
       <BottomNav/>

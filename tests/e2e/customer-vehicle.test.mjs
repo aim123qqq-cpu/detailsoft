@@ -7,7 +7,7 @@ import { createDetailFlowServer } from '../../server/app.mjs';
 
 const chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 
-test('mobile customer → add vehicle → services flow works without a success screen', async () => {
+test('mobile customer → vehicle → services → booking flow works end to end', async () => {
   const server = createDetailFlowServer({ databasePath: ':memory:', seed: true, staticDir: resolve('dist') });
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
   const { port } = server.address();
@@ -40,6 +40,27 @@ test('mobile customer → add vehicle → services flow works without a success 
     assert.equal(await page.getByText('Успешно добавлено').count(), 0);
     await page.waitForTimeout(400);
     await page.screenshot({ path: resolve(artifacts, '03-services-handoff.png'), fullPage: true });
+
+    await page.getByTestId('offering-package_complex').locator('.offering-main').click();
+    await page.getByTestId('offering-service_wash').locator('.offering-main').click();
+    await page.getByText(/операции из пакета исключены/).waitFor();
+    assert.match(await page.locator('.quote-dock').innerText(), /4\s?200/);
+    assert.match(await page.getByTestId('offering-service_wash').innerText(), /В пакете/);
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: resolve(artifacts, '04-services-quote.png') });
+
+    await page.getByTestId('choose-time').click();
+    await page.getByTestId('schedule-screen').waitFor();
+    await page.getByTestId('slot-16:00').click();
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: resolve(artifacts, '05-booking-time.png') });
+
+    await page.getByTestId('confirm-booking').click();
+    await page.getByTestId('booking-confirmed').waitFor();
+    assert.match(await page.getByTestId('booking-confirmed').innerText(), /запись подтверждена/i);
+    assert.match(await page.getByTestId('booking-confirmed').innerText(), /4\s?200/);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: resolve(artifacts, '06-booking-confirmed.png') });
   } finally {
     await browser.close();
     await new Promise((done) => server.close(done));

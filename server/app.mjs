@@ -92,6 +92,55 @@ export function createDetailFlowServer({
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'vehicle_not_found', message: 'Автомобиль не найден' } });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Неизвестный статус' } });
         }
+        if (request.method === 'GET' && url.pathname === '/api/tenants/current/services') {
+          const result = repository.getServicesCatalog(tenantId, url.searchParams.get('vehicleId'));
+          if (result.kind === 'found') return sendJson(response, 200, {
+            vehicleClass: result.vehicleClass,
+            categories: result.categories
+          });
+          return sendJson(response, 404, { error: { code: 'vehicle_not_found', message: 'Автомобиль не найден' } });
+        }
+        if (request.method === 'POST' && url.pathname === '/api/bookings/quote-preview') {
+          const result = repository.previewBookingQuote(tenantId, await readJson(request));
+          if (result.kind === 'quoted') return sendJson(response, 200, result.quote);
+          if (result.kind === 'conflict') return sendJson(response, 409, {
+            error: { code: result.code, message: result.message }
+          });
+          if (result.kind === 'not_found') return sendJson(response, 404, {
+            error: { code: `${result.resource}_not_found`, message: 'Не удалось рассчитать выбранные услуги' }
+          });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Выберите хотя бы одну услугу' } });
+        }
+        if (request.method === 'GET' && url.pathname === '/api/bookings/availability') {
+          const duration = Number(url.searchParams.get('durationMinutes') ?? 60);
+          const result = repository.getBookingAvailability(tenantId, url.searchParams.get('date') ?? '', duration);
+          if (result.kind === 'available') return sendJson(response, 200, result);
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте дату и длительность' } });
+        }
+        if (request.method === 'POST' && url.pathname === '/api/bookings') {
+          const idempotencyHeader = request.headers['idempotency-key'];
+          const idempotencyKey = typeof idempotencyHeader === 'string' ? idempotencyHeader : '';
+          const result = repository.createBooking(tenantId, await readJson(request), idempotencyKey);
+          if (result.kind === 'created') return sendJson(response, 201, result.booking);
+          if (result.kind === 'replayed') return sendJson(response, 200, result.booking);
+          if (result.kind === 'idempotency_required') return sendJson(response, 400, {
+            error: { code: 'idempotency_key_required', message: 'Повторите запрос с ключом идемпотентности' }
+          });
+          if (result.kind === 'conflict') return sendJson(response, 409, {
+            error: { code: result.code, message: result.message }
+          });
+          if (result.kind === 'not_found') return sendJson(response, 404, {
+            error: { code: `${result.resource}_not_found`, message: 'Клиент, автомобиль или услуга не найдены' }
+          });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте дату, канал и услуги' } });
+        }
+        const bookingGet = url.pathname.match(/^\/api\/bookings\/([^/]+)$/);
+        if (request.method === 'GET' && bookingGet && bookingGet[1] !== 'quote-preview') {
+          const booking = repository.getBooking(tenantId, bookingGet[1]);
+          return booking
+            ? sendJson(response, 200, booking)
+            : sendJson(response, 404, { error: { code: 'booking_not_found', message: 'Запись не найдена' } });
+        }
         const orderGet = url.pathname.match(/^\/api\/orders\/([^/]+)$/);
         if (request.method === 'GET' && orderGet) {
           const order = repository.getOrder(tenantId, orderGet[1]);
