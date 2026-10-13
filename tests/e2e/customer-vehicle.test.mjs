@@ -64,7 +64,14 @@ test('mobile customer → vehicle → services → booking flow works end to end
 
     await page.getByTestId('start-intake').click();
     await page.getByTestId('order-intake').waitFor();
-    assert.match(await page.getByTestId('order-intake').innerText(), /зафиксируйте приёмку/i);
+    const intakeText = await page.getByTestId('order-intake').innerText();
+    assert.match(intakeText, /обнаружено при осмотре/i);
+    assert.match(intakeText, /переднее крыло/i);
+    assert.equal(await page.locator('.inspection-car').count(), 1);
+    assert.equal(await page.locator('.zone-rail button').count(), 5);
+    await page.locator('.zone-rail').getByRole('button', { name: /Диски/ }).click();
+    assert.match(await page.getByTestId('order-intake').innerText(), /передний левый диск/i);
+    await page.locator('.zone-rail').getByRole('button', { name: /Кузов/ }).click();
     await page.screenshot({ path: resolve(artifacts, '07-order-intake.png'), fullPage: true });
 
     await page.getByTestId('save-intake').click();

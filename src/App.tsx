@@ -59,7 +59,7 @@ function Header({ step, onBack }: { step: number; onBack: () => void }) {
       <button className="icon-button" onClick={onBack} aria-label="Назад"><Icon name="arrow"/></button>
       <div>
         <span className="eyebrow">{step === 5 ? 'Рабочий заказ' : 'Новая запись'}</span>
-        <h1>{step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : step === 3 ? 'Услуги' : step === 4 ? 'Дата и время' : 'Приёмка и смета'}</h1>
+        <h1>{step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : step === 3 ? 'Услуги' : step === 4 ? 'Дата и время' : 'Приёмка автомобиля'}</h1>
       </div>
       <button className="icon-button" aria-label="Ещё"><Icon name="more"/></button>
       <div className="progress" aria-label={step === 5 ? 'Рабочий заказ' : `Шаг ${step} из 4`}>
@@ -95,6 +95,10 @@ export function App() {
   const [error, setError] = useState('');
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }, [step]);
 
   useEffect(() => {
     setCustomers([]);

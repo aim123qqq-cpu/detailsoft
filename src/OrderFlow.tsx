@@ -6,11 +6,57 @@ function money(amountMinor: number) {
   return `${Math.round(amountMinor / 100).toLocaleString('ru-RU')} ₽`;
 }
 
+const inspectionZones = [
+  { id: 'Кузов', icon: '▱' },
+  { id: 'Диски', icon: '◉' },
+  { id: 'Стёкла', icon: '▰' },
+  { id: 'Салон', icon: '◇' },
+  { id: 'Прочее', icon: '•••' }
+] as const;
+
+const zoneDefaults: Record<string, { area: string; note: string }> = {
+  Кузов: { area: 'Переднее крыло', note: 'Скол лакокрасочного покрытия справа' },
+  Диски: { area: 'Передний левый диск', note: 'Бордюрная царапина на ободе' },
+  Стёкла: { area: 'Лобовое стекло', note: 'Мелкий скол в нижней части' },
+  Салон: { area: 'Водительское сиденье', note: 'Локальное загрязнение обивки' },
+  Прочее: { area: 'Комплектность', note: 'Требуется уточнение при передаче' }
+};
+
+const quickFindings = [
+  { zone: 'Кузов', severity: 'LOW' as const, note: 'Битумные загрязнения на дисках и крыльях' },
+  { zone: 'Кузов', severity: 'MEDIUM' as const, note: 'Сильные загрязнения кузова' },
+  { zone: 'Стёкла', severity: 'LOW' as const, note: 'Шерсть в салоне' }
+];
+
+function InspectionCar({ activeZone }: { activeZone: string }) {
+  return (
+    <svg className="inspection-car" viewBox="0 0 150 260" role="img" aria-label={`Схема автомобиля, зона ${activeZone}`}>
+      <defs>
+        <linearGradient id="carBody" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#aab0b4"/><stop offset=".46" stopColor="#4f575d"/><stop offset="1" stopColor="#20272c"/></linearGradient>
+        <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#253039"/><stop offset="1" stopColor="#0b1116"/></linearGradient>
+      </defs>
+      <path className="car-shadow" d="M38 18C48 5 102 5 112 18l14 39 8 132-12 49c-4 14-90 14-94 0l-12-49L24 57Z"/>
+      <path className="car-body" d="M42 14C52 5 98 5 108 14l15 41 7 132-14 51c-8 12-74 12-82 0l-14-51 7-132Z"/>
+      <path className="car-glass" d="M45 48c7-17 53-17 60 0l9 41H36Z"/>
+      <path className="car-glass rear" d="M37 170h76l-9 44c-9 14-49 14-58 0Z"/>
+      <path className="car-roof" d="M37 94h77l-2 70H38Z"/>
+      <path className="car-line" d="M75 94v70M27 130h11m74 0h11M37 94l-10-39m87 39 9-39"/>
+      <path className="wheel" d="M15 62h11v38H15zm109 0h11v38h-11zM15 172h11v38H15zm109 0h11v38h-11z"/>
+      <circle className="damage-pin" cx="31" cy="72" r="8"/><text x="31" y="75">1</text>
+      <circle className="damage-pin secondary" cx="104" cy="33" r="8"/><text x="104" y="36">2</text>
+      <circle className="damage-pin secondary" cx="51" cy="215" r="8"/><text x="51" y="218">3</text>
+    </svg>
+  );
+}
+
 export function OrderFlow({ booking, customer, vehicle }: { booking: Booking; customer: Customer; vehicle: Vehicle }) {
   const [order, setOrder] = useState<WorkOrder | null>(null);
   const [stage, setStage] = useState<'intake' | 'estimate' | 'approval'>('intake');
   const [summary, setSummary] = useState('Автомобиль принят при клиенте, комплектность проверена');
-  const [zone, setZone] = useState('Передний бампер');
+  const [zone, setZone] = useState('Кузов');
+  const [inspectionTab, setInspectionTab] = useState<'inspection' | 'photo' | 'recommendations'>('inspection');
+  const [selectedArea, setSelectedArea] = useState('Переднее крыло');
+  const [checkedFindings, setCheckedFindings] = useState(() => new Set([0, 1, 2]));
   const [severity, setSeverity] = useState<IntakeFinding['severity']>('MEDIUM');
   const [note, setNote] = useState('Скол лакокрасочного покрытия справа');
   const [recommendationTitle, setRecommendationTitle] = useState('Локальная защита скола');
@@ -33,7 +79,16 @@ export function OrderFlow({ booking, customer, vehicle }: { booking: Booking; cu
       .finally(() => setLoading(false));
   }, [booking.id]);
 
-  const findings = useMemo<IntakeFinding[]>(() => [{ zone, severity, note }], [zone, severity, note]);
+  const findings = useMemo<IntakeFinding[]>(() => [
+    { zone: selectedArea, severity, note },
+    ...quickFindings.filter((_, index) => checkedFindings.has(index))
+  ], [selectedArea, severity, note, checkedFindings]);
+
+  const selectZone = (nextZone: string) => {
+    setZone(nextZone);
+    setSelectedArea(zoneDefaults[nextZone].area);
+    setNote(zoneDefaults[nextZone].note);
+  };
   const recommendations = useMemo<OrderRecommendation[]>(() => recommendationTitle.trim() ? [{
     title: recommendationTitle,
     reason: recommendationReason,
@@ -121,17 +176,42 @@ export function OrderFlow({ booking, customer, vehicle }: { booking: Booking; cu
       <div className="order-hero"><small>{customer.name}</small><strong>{vehicle.make} {vehicle.model} {vehicle.generation}</strong><span>{vehicle.plate} · {vehicle.color}</span></div>
 
       {stage === 'intake' && <>
-        <div className="flow-heading"><span>01 · Состояние</span><h2>Зафиксируйте приёмку</h2><p>Описание и замечания войдут в историю заказа.</p></div>
-        <label className="order-field">Общее состояние<textarea data-testid="intake-summary" value={summary} onChange={(event) => setSummary(event.target.value)}/></label>
-        <div className="finding-card">
-          <div className="finding-top"><strong>Замечание #1</strong><span>кузов</span></div>
-          <label className="order-field">Зона<input data-testid="finding-zone" value={zone} onChange={(event) => setZone(event.target.value)}/></label>
-          <div className="severity-chips">{(['LOW', 'MEDIUM', 'HIGH'] as const).map((value) => <button key={value} className={severity === value ? 'selected' : ''} onClick={() => setSeverity(value)}>{value === 'LOW' ? 'Низкий' : value === 'MEDIUM' ? 'Средний' : 'Высокий'}</button>)}</div>
-          <label className="order-field">Описание<input data-testid="finding-note" value={note} onChange={(event) => setNote(event.target.value)}/></label>
+        <div className="inspection-tabs" role="tablist">
+          <button className={inspectionTab === 'inspection' ? 'active' : ''} onClick={() => setInspectionTab('inspection')}>Осмотр</button>
+          <button className={inspectionTab === 'photo' ? 'active' : ''} onClick={() => setInspectionTab('photo')}>Фото <span>3</span></button>
+          <button className={inspectionTab === 'recommendations' ? 'active' : ''} onClick={() => setInspectionTab('recommendations')}>Рекомендации <span>1</span></button>
         </div>
-        <div className="recommendation-card"><span>Рекомендация клиенту</span><input data-testid="recommendation-title" value={recommendationTitle} onChange={(event) => setRecommendationTitle(event.target.value)}/><textarea value={recommendationReason} onChange={(event) => setRecommendationReason(event.target.value)}/></div>
+
+        {inspectionTab === 'inspection' && <>
+          <div className="inspection-board">
+            <div className="zone-rail" aria-label="Зоны осмотра">{inspectionZones.map((item) => <button key={item.id} className={zone === item.id ? 'selected' : ''} onClick={() => selectZone(item.id)}><i>{item.icon}</i><span>{item.id}</span></button>)}</div>
+            <div className="car-stage"><InspectionCar activeZone={zone}/><span className="stage-caption">Нажмите на маркер дефекта</span></div>
+            <div className="defect-preview">
+              <span className="preview-photo"><b>1</b><i>⌁</i></span>
+              <strong>{selectedArea}</strong>
+              <small>{note}</small>
+              <div className="defect-tags"><em>{severity === 'HIGH' ? 'Сильное' : severity === 'MEDIUM' ? 'Среднее' : 'Лёгкое'}</em><button onClick={() => setSelectedArea(selectedArea === 'Переднее крыло' ? 'Капот' : 'Переднее крыло')}>Изменить</button></div>
+            </div>
+          </div>
+
+          <div className="severity-line"><span>Статус повреждения</span><div className="severity-chips">{(['LOW', 'MEDIUM', 'HIGH'] as const).map((value) => <button key={value} className={severity === value ? 'selected' : ''} onClick={() => setSeverity(value)}>{value === 'LOW' ? 'Лёгкое' : value === 'MEDIUM' ? 'Среднее' : 'Сильное'}</button>)}</div></div>
+          <label className="compact-note">Комментарий к дефекту<input data-testid="finding-note" value={note} onChange={(event) => setNote(event.target.value)}/></label>
+
+          <div className="inspection-photo-row"><span>Фото дефекта</span><div><button aria-label="Добавить фотографию">＋</button><i className="mock-photo one"/><i className="mock-photo two"/><i className="mock-photo three"/></div></div>
+
+          <div className="detected-card">
+            <div className="detected-title"><span>Обнаружено при осмотре</span><b>{checkedFindings.size + 1}</b></div>
+            {quickFindings.map((finding, index) => <label key={finding.note}><input type="checkbox" checked={checkedFindings.has(index)} onChange={() => setCheckedFindings((current) => { const next = new Set(current); next.has(index) ? next.delete(index) : next.add(index); return next; })}/><span>{finding.note}</span>{index === 0 && <em>＋ Добавить</em>}</label>)}
+          </div>
+
+          <label className="intake-summary-line">Комментарий к приёмке<textarea data-testid="intake-summary" value={summary} onChange={(event) => setSummary(event.target.value)}/></label>
+        </>}
+
+        {inspectionTab === 'photo' && <div className="photo-tab-panel"><div className="photo-tab-head"><span>Фото приёмки</span><button>＋ Добавить</button></div><div className="photo-grid"><i className="mock-photo one"/><i className="mock-photo two"/><i className="mock-photo three"/></div><p>Фото привязываются к выбранной зоне осмотра.</p></div>}
+
+        {inspectionTab === 'recommendations' && <div className="recommendation-card"><span>Рекомендация клиенту</span><input data-testid="recommendation-title" value={recommendationTitle} onChange={(event) => setRecommendationTitle(event.target.value)}/><textarea value={recommendationReason} onChange={(event) => setRecommendationReason(event.target.value)}/></div>}
         {error && <div className="inline-error">{error}</div>}
-        <button className="primary-button" data-testid="save-intake" disabled={loading || !summary.trim() || !zone.trim() || !note.trim()} onClick={saveIntake}>Завершить приёмку →</button>
+        <div className="intake-actions"><button>Сохранить черновик</button><button data-testid="save-intake" disabled={loading || !summary.trim() || !selectedArea.trim() || !note.trim()} onClick={saveIntake}>Перейти к смете →</button></div>
       </>}
 
       {stage === 'estimate' && <>
