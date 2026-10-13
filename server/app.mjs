@@ -141,6 +141,51 @@ export function createDetailFlowServer({
             ? sendJson(response, 200, booking)
             : sendJson(response, 404, { error: { code: 'booking_not_found', message: 'Запись не найдена' } });
         }
+        if (request.method === 'POST' && url.pathname === '/api/orders') {
+          const result = repository.createOrderFromBooking(tenantId, await readJson(request));
+          if (result.kind === 'created') return sendJson(response, 201, result.order);
+          if (result.kind === 'replayed') return sendJson(response, 200, result.order);
+          if (result.kind === 'not_found') return sendJson(response, 404, {
+            error: { code: 'booking_not_found', message: 'Подтверждённая запись не найдена' }
+          });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите запись' } });
+        }
+        const orderIntake = url.pathname.match(/^\/api\/orders\/([^/]+)\/intake$/);
+        if (request.method === 'PUT' && orderIntake) {
+          const result = repository.saveOrderIntake(tenantId, orderIntake[1], await readJson(request));
+          if (result.kind === 'updated') return sendJson(response, 200, result.order);
+          if (result.kind === 'not_found') return sendJson(response, 404, {
+            error: { code: 'order_not_found', message: 'Заказ не найден' }
+          });
+          if (result.kind === 'conflict') return sendJson(response, 409, {
+            error: { code: result.code, message: result.message }
+          });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте данные приёмки' } });
+        }
+        const orderEstimates = url.pathname.match(/^\/api\/orders\/([^/]+)\/estimates$/);
+        if (request.method === 'POST' && orderEstimates) {
+          const result = repository.createEstimateVersion(tenantId, orderEstimates[1], await readJson(request));
+          if (result.kind === 'created') return sendJson(response, 201, result.estimate);
+          if (result.kind === 'not_found') return sendJson(response, 404, {
+            error: { code: 'order_not_found', message: 'Заказ не найден' }
+          });
+          if (result.kind === 'conflict') return sendJson(response, 409, {
+            error: { code: result.code, message: result.message }
+          });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Добавьте корректные строки сметы' } });
+        }
+        const estimateApprovals = url.pathname.match(/^\/api\/orders\/([^/]+)\/estimate-approvals$/);
+        if (request.method === 'POST' && estimateApprovals) {
+          const result = repository.decideEstimate(tenantId, estimateApprovals[1], await readJson(request));
+          if (result.kind === 'updated') return sendJson(response, 200, result.order);
+          if (result.kind === 'not_found') return sendJson(response, 404, {
+            error: { code: 'order_not_found', message: 'Заказ не найден' }
+          });
+          if (result.kind === 'conflict') return sendJson(response, 409, {
+            error: { code: result.code, message: result.message }
+          });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите решение и источник согласования' } });
+        }
         const orderGet = url.pathname.match(/^\/api\/orders\/([^/]+)$/);
         if (request.method === 'GET' && orderGet) {
           const order = repository.getOrder(tenantId, orderGet[1]);

@@ -209,6 +209,67 @@ button { color: inherit; }
 .confirmation-summary span { color: var(--muted); font-size: 8px; text-transform: uppercase; letter-spacing: .06em; }
 .confirmation-summary strong { margin-top: 6px; font-size: 11px; }
 .booking-number { display: block; margin-top: 18px; color: #56636f; font-size: 9px; letter-spacing: .12em; }
+.start-intake { width: 100%; margin-top: 18px; min-height: 52px; }
+
+.order-loading { min-height: 420px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-size: 11px; }
+.order-flow, .order-approved { padding-bottom: 110px; }
+.order-status-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; color: #7f8c97; font-size: 9px; text-transform: uppercase; letter-spacing: .1em; }
+.order-status-row b { padding: 5px 8px; border: 1px solid rgba(255,121,57,.25); border-radius: 999px; color: #ff9868; background: rgba(255,121,57,.08); font-size: 8px; }
+.order-hero { padding: 14px 15px; border: 1px solid #33404b; border-radius: 14px; background: radial-gradient(circle at top right, rgba(255,121,57,.12), transparent 48%), #131b22; }
+.order-hero small, .order-hero strong, .order-hero span { display: block; }
+.order-hero small { color: var(--muted); font-size: 9px; }
+.order-hero strong { margin-top: 5px; font-size: 14px; }
+.order-hero span { margin-top: 5px; color: #87949f; font-size: 9px; }
+.flow-heading { margin: 24px 0 15px; }
+.flow-heading > span { color: var(--primary); font-size: 8px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+.flow-heading h2 { margin: 6px 0 3px; font-size: 19px; }
+.flow-heading p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.order-field { display: grid; gap: 7px; margin-bottom: 12px; color: #98a4ae; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.order-field input, .order-field textarea, .recommendation-card input, .recommendation-card textarea { width: 100%; min-height: 43px; padding: 11px 12px; border: 1px solid #33404b; border-radius: 10px; outline: 0; color: #e9edf0; background: #111920; font: inherit; font-size: 11px; text-transform: none; letter-spacing: 0; resize: vertical; }
+.order-field textarea, .recommendation-card textarea { min-height: 68px; line-height: 1.45; }
+.order-field input:focus, .order-field textarea:focus, .recommendation-card input:focus, .recommendation-card textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(255,121,57,.08); }
+.finding-card { margin-bottom: 12px; padding: 13px; border: 1px solid #3b4650; border-radius: 13px; background: #151d25; }
+.finding-top { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 10px; }
+.finding-top span { color: #7f8a94; font-size: 8px; text-transform: uppercase; letter-spacing: .08em; }
+.severity-chips, .approval-methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: -1px 0 12px; }
+.severity-chips button, .approval-methods button { min-height: 35px; border: 1px solid #34414c; border-radius: 8px; color: #909ca7; background: #11181f; font-size: 9px; cursor: pointer; }
+.severity-chips button.selected, .approval-methods button.selected { border-color: var(--primary); color: #ff9a6d; background: rgba(255,121,57,.1); }
+.recommendation-card { display: grid; gap: 8px; margin-bottom: 15px; padding: 13px; border: 1px solid rgba(54,201,150,.23); border-radius: 13px; background: rgba(54,201,150,.045); }
+.recommendation-card > span { color: var(--success); font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.estimate-list { overflow: hidden; border: 1px solid #33404b; border-radius: 13px; background: #121920; }
+.estimate-list > div { min-height: 61px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px; border-bottom: 1px solid #27323c; }
+.estimate-list > div:last-child { border-bottom: 0; }
+.estimate-list span strong, .estimate-list span small { display: block; }
+.estimate-list span strong { font-size: 11px; }
+.estimate-list span small { margin-top: 4px; color: #788590; font-size: 8px; }
+.estimate-list b { font-size: 11px; white-space: nowrap; }
+.estimate-extra { background: rgba(54,201,150,.035); }
+.estimate-extra label { width: 88px; display: flex; align-items: center; border: 1px solid #3b4b50; border-radius: 8px; background: #0f171d; overflow: hidden; }
+.estimate-extra input { width: 100%; min-width: 0; padding: 9px; border: 0; outline: 0; color: #fff; background: transparent; text-align: right; font-size: 11px; }
+.estimate-extra em { padding-right: 9px; color: #84919b; font-size: 10px; font-style: normal; }
+.estimate-total { display: flex; align-items: center; justify-content: space-between; margin: 12px 0 15px; padding: 15px; border-radius: 12px; color: #929ea8; background: #1c2630; font-size: 9px; text-transform: uppercase; }
+.estimate-total strong { color: #fff; font-size: 17px; }
+.estimate-sheet { margin-bottom: 14px; border: 1px solid #384550; border-radius: 14px; background: linear-gradient(145deg, #18222b, #11181f); overflow: hidden; }
+.sheet-number { display: flex; justify-content: space-between; padding: 13px; color: #ff9868; border-bottom: 1px solid #303b45; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.sheet-number span { color: #798691; font-size: 8px; }
+.sheet-line { display: flex; justify-content: space-between; gap: 10px; padding: 11px 13px 0; color: #b8c2cb; font-size: 10px; }
+.sheet-total { display: flex; justify-content: space-between; align-items: end; margin-top: 13px; padding: 13px; border-top: 1px solid #303b45; color: #8a97a1; font-size: 9px; text-transform: uppercase; }
+.sheet-total strong { color: #fff; font-size: 18px; }
+.decision-actions { display: grid; grid-template-columns: .8fr 1.2fr; gap: 8px; }
+.decision-actions button { min-height: 49px; border: 1px solid #3a4650; border-radius: 11px; color: #9ba6af; background: #151d24; font-size: 10px; font-weight: 800; cursor: pointer; }
+.decision-actions button:last-child { border-color: var(--success); color: #07150f; background: var(--success); }
+.order-approved { padding-top: 35px; text-align: center; }
+.order-approved > h2 { margin: 16px 0 6px; font-size: 20px; }
+.order-approved > p { margin: 0 auto 22px; max-width: 300px; }
+.order-approved .order-hero { text-align: left; }
+.approval-proof { display: grid; grid-template-columns: 1fr 1fr; margin-top: 14px; border: 1px solid #33404b; border-radius: 13px; overflow: hidden; text-align: left; }
+.approval-proof div { min-height: 65px; padding: 12px; border-bottom: 1px solid #29343e; background: #121920; }
+.approval-proof div:nth-child(odd) { border-right: 1px solid #29343e; }
+.approval-proof div:nth-last-child(-n+2) { border-bottom: 0; }
+.approval-proof span, .approval-proof strong { display: block; }
+.approval-proof span { color: #788590; font-size: 8px; text-transform: uppercase; }
+.approval-proof strong { margin-top: 6px; font-size: 11px; }
+.audit-note { margin-top: 13px; padding: 10px; border: 1px solid rgba(54,201,150,.18); border-radius: 10px; color: #75bea5; background: rgba(54,201,150,.045); font-size: 9px; }
 
 .bottom-nav { position: fixed; z-index: 30; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%, 430px); min-height: 76px; padding: 7px 22px max(8px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, 1fr); background: rgba(13,19,25,.94); border-top: 1px solid #27313b; backdrop-filter: blur(18px); }
 .bottom-nav button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #6e7b87; background: transparent; border: 0; font-size: 9px; font-weight: 700; }

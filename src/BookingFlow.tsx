@@ -178,7 +178,8 @@ export function ScheduleStep({
   channel,
   selections,
   quote,
-  onBack
+  onBack,
+  onStartIntake
 }: {
   customer: Customer;
   vehicle: Vehicle;
@@ -186,6 +187,7 @@ export function ScheduleStep({
   selections: QuoteSelection[];
   quote: BookingQuote;
   onBack: () => void;
+  onStartIntake: (booking: Booking) => void;
 }) {
   const dates = useMemo(() => Array.from({ length: 5 }, (_, index) => {
     const date = new Date();
@@ -253,6 +255,7 @@ export function ScheduleStep({
           <div><span>Длительность</span><strong>{formatDuration(booking.estimatedDurationMinutes)}</strong></div>
         </div>
         <small className="booking-number">№ {booking.id.replace('booking_', '').slice(0, 8).toUpperCase()}</small>
+        <button className="primary-button start-intake" data-testid="start-intake" onClick={() => onStartIntake(booking)}>Открыть приёмку →</button>
       </section>
     );
   }

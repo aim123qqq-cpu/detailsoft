@@ -61,6 +61,28 @@ test('mobile customer → vehicle → services → booking flow works end to end
     assert.match(await page.getByTestId('booking-confirmed').innerText(), /4\s?200/);
     await page.waitForTimeout(400);
     await page.screenshot({ path: resolve(artifacts, '06-booking-confirmed.png') });
+
+    await page.getByTestId('start-intake').click();
+    await page.getByTestId('order-intake').waitFor();
+    assert.match(await page.getByTestId('order-intake').innerText(), /зафиксируйте приёмку/i);
+    await page.screenshot({ path: resolve(artifacts, '07-order-intake.png'), fullPage: true });
+
+    await page.getByTestId('save-intake').click();
+    await page.getByTestId('order-estimate').waitFor();
+    assert.match(await page.getByTestId('order-estimate').innerText(), /проверьте состав работ/i);
+    assert.match(await page.getByTestId('order-estimate').innerText(), /5\s?100/);
+    await page.screenshot({ path: resolve(artifacts, '08-estimate-draft.png'), fullPage: true });
+
+    await page.getByTestId('create-estimate').click();
+    await page.getByTestId('order-approval').waitFor();
+    assert.match(await page.getByTestId('order-approval').innerText(), /смета v1/i);
+    await page.screenshot({ path: resolve(artifacts, '09-estimate-approval.png'), fullPage: true });
+
+    await page.getByTestId('approve-estimate').click();
+    await page.getByTestId('order-approved').waitFor();
+    assert.match(await page.getByTestId('order-approved').innerText(), /готов к передаче мастеру/i);
+    assert.match(await page.getByTestId('order-approved').innerText(), /Анна, администратор/);
+    await page.screenshot({ path: resolve(artifacts, '10-order-approved.png'), fullPage: true });
   } finally {
     await browser.close();
     await new Promise((done) => server.close(done));

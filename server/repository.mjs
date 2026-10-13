@@ -22,6 +22,11 @@ function formatMoney(amountMinor, prefix = '') {
   return `${prefix}${rubles} ₽`;
 }
 
+function apiTimestamp(value) {
+  if (!value) return null;
+  return new Date(value.endsWith?.('Z') ? value : `${value.replace(' ', 'T')}Z`).toISOString();
+}
+
 export class DetailFlowRepository {
   constructor(db) {
     this.db = db;
@@ -468,9 +473,241 @@ export class DetailFlowRepository {
     };
   }
 
+  createOrderFromBooking(tenantId, input) {
+    const bookingId = typeof input.bookingId === 'string' ? input.bookingId : '';
+    if (!bookingId) return { kind: 'invalid' };
+    const existing = this.db.prepare(`SELECT order_id FROM order_workflows
+      WHERE tenant_id = ? AND booking_id = ?`).get(tenantId, bookingId);
+    if (existing) return { kind: 'replayed', order: this.getOrder(tenantId, existing.order_id) };
+    const booking = this.db.prepare(`SELECT id, customer_id, vehicle_id, status
+      FROM bookings WHERE id = ? AND tenant_id = ?`).get(bookingId, tenantId);
+    if (!booking || booking.status !== 'CONFIRMED') return { kind: 'not_found', resource: 'booking' };
+
+    const orderId = `order_${randomUUID()}`;
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`INSERT INTO orders (id, tenant_id, customer_id, vehicle_id, status)
+        VALUES (?, ?, ?, ?, 'INTAKE')`).run(orderId, tenantId, booking.customer_id, booking.vehicle_id);
+      this.db.prepare(`INSERT INTO order_workflows (order_id, tenant_id, booking_id)
+        VALUES (?, ?, ?)`).run(orderId, tenantId, bookingId);
+      this.insertOrderAudit(tenantId, orderId, 'ORDER_CREATED', { bookingId });
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'created', order: this.getOrder(tenantId, orderId) };
+  }
+
+  saveOrderIntake(tenantId, orderId, input) {
+    const order = this.db.prepare(`SELECT o.id, o.status FROM orders o
+      JOIN order_workflows w ON w.order_id = o.id AND w.tenant_id = o.tenant_id
+      WHERE o.id = ? AND o.tenant_id = ?`).get(orderId, tenantId);
+    if (!order) return { kind: 'not_found' };
+    if (order.status === 'APPROVED') {
+      return { kind: 'conflict', code: 'invalid_order_state', message: 'Согласованный заказ нельзя вернуть к приёмке' };
+    }
+    const conditionSummary = String(input.conditionSummary ?? '').trim();
+    const findings = Array.isArray(input.findings) ? input.findings : null;
+    const recommendations = Array.isArray(input.recommendations) ? input.recommendations : null;
+    const validFinding = (item) => item && String(item.zone ?? '').trim() &&
+      ['LOW', 'MEDIUM', 'HIGH'].includes(item.severity) && String(item.note ?? '').trim();
+    const validRecommendation = (item) => item && String(item.title ?? '').trim() &&
+      String(item.reason ?? '').trim() && ['OPTIONAL', 'RECOMMENDED', 'URGENT'].includes(item.priority);
+    if (conditionSummary.length < 3 || !findings || !recommendations || findings.length > 20 || recommendations.length > 20 ||
+      findings.some((item) => !validFinding(item)) || recommendations.some((item) => !validRecommendation(item))) {
+      return { kind: 'invalid' };
+    }
+
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`INSERT INTO order_intakes (order_id, condition_summary, completed_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(order_id) DO UPDATE SET condition_summary = excluded.condition_summary, completed_at = CURRENT_TIMESTAMP`)
+        .run(orderId, conditionSummary);
+      this.db.prepare('DELETE FROM inspection_findings WHERE order_id = ?').run(orderId);
+      this.db.prepare('DELETE FROM order_recommendations WHERE order_id = ?').run(orderId);
+      const insertFinding = this.db.prepare(`INSERT INTO inspection_findings
+        (id, order_id, zone, severity, note) VALUES (?, ?, ?, ?, ?)`);
+      for (const finding of findings) insertFinding.run(
+        `finding_${randomUUID()}`, orderId, String(finding.zone).trim(), finding.severity, String(finding.note).trim()
+      );
+      const insertRecommendation = this.db.prepare(`INSERT INTO order_recommendations
+        (id, order_id, title, reason, priority) VALUES (?, ?, ?, ?, ?)`);
+      for (const recommendation of recommendations) insertRecommendation.run(
+        `recommendation_${randomUUID()}`, orderId, String(recommendation.title).trim(),
+        String(recommendation.reason).trim(), recommendation.priority
+      );
+      this.db.prepare(`UPDATE orders SET status = 'ESTIMATE_DRAFT' WHERE id = ? AND tenant_id = ?`)
+        .run(orderId, tenantId);
+      this.db.prepare('UPDATE order_workflows SET updated_at = CURRENT_TIMESTAMP WHERE order_id = ?').run(orderId);
+      this.insertOrderAudit(tenantId, orderId, 'INTAKE_COMPLETED', {
+        findings: findings.length, recommendations: recommendations.length
+      });
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'updated', order: this.getOrder(tenantId, orderId) };
+  }
+
+  createEstimateVersion(tenantId, orderId, input) {
+    const order = this.db.prepare(`SELECT o.id, o.status FROM orders o
+      JOIN order_workflows w ON w.order_id = o.id AND w.tenant_id = o.tenant_id
+      WHERE o.id = ? AND o.tenant_id = ?`).get(orderId, tenantId);
+    if (!order) return { kind: 'not_found' };
+    if (order.status !== 'ESTIMATE_DRAFT') return { kind: 'conflict', code: 'invalid_order_state', message: 'Сначала завершите приёмку' };
+    const lines = Array.isArray(input.lines) ? input.lines : null;
+    const validLine = (line) => line && ['service', 'package', 'recommendation', 'custom'].includes(line.sourceType) &&
+      String(line.name ?? '').trim() && Number.isInteger(line.amountMinor) && line.amountMinor >= 0 &&
+      Number.isInteger(line.durationMinutes) && line.durationMinutes >= 0;
+    if (!lines || lines.length < 1 || lines.length > 30 || lines.some((line) => !validLine(line))) return { kind: 'invalid' };
+
+    const version = this.db.prepare('SELECT COALESCE(MAX(version), 0) + 1 version FROM estimate_versions WHERE order_id = ?')
+      .get(orderId).version;
+    const estimateVersionId = `estimate_${randomUUID()}`;
+    const totalAmountMinor = lines.reduce((sum, line) => sum + line.amountMinor, 0);
+    const totalDurationMinutes = lines.reduce((sum, line) => sum + line.durationMinutes, 0);
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`INSERT INTO estimate_versions
+        (id, tenant_id, order_id, version, total_amount_minor, total_duration_minutes)
+        VALUES (?, ?, ?, ?, ?, ?)`).run(
+          estimateVersionId, tenantId, orderId, version, totalAmountMinor, totalDurationMinutes
+        );
+      const insertLine = this.db.prepare(`INSERT INTO estimate_lines
+        (id, estimate_version_id, sequence, source_type, source_id, name, amount_minor, duration_minutes, reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      lines.forEach((line, index) => insertLine.run(
+        `estimate_line_${randomUUID()}`, estimateVersionId, index + 1, line.sourceType,
+        line.sourceId ?? null, String(line.name).trim(), line.amountMinor, line.durationMinutes,
+        String(line.reason ?? '').trim() || null
+      ));
+      this.db.prepare(`UPDATE order_workflows
+        SET current_estimate_version_id = ?, updated_at = CURRENT_TIMESTAMP WHERE order_id = ?`)
+        .run(estimateVersionId, orderId);
+      this.insertOrderAudit(tenantId, orderId, 'ESTIMATE_VERSION_CREATED', { estimateVersionId, version });
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'created', estimate: this.getEstimateVersion(tenantId, estimateVersionId) };
+  }
+
+  decideEstimate(tenantId, orderId, input) {
+    if (!['APPROVED', 'REJECTED'].includes(input.decision) ||
+      !['in_person', 'phone', 'messenger'].includes(input.method) ||
+      !String(input.estimateVersionId ?? '').trim() || !String(input.source ?? '').trim() || !String(input.responsible ?? '').trim()) {
+      return { kind: 'invalid' };
+    }
+    const order = this.db.prepare(`SELECT o.status, w.current_estimate_version_id
+      FROM orders o JOIN order_workflows w ON w.order_id = o.id AND w.tenant_id = o.tenant_id
+      WHERE o.id = ? AND o.tenant_id = ?`).get(orderId, tenantId);
+    if (!order) return { kind: 'not_found' };
+    if (order.current_estimate_version_id !== input.estimateVersionId) {
+      return { kind: 'conflict', code: 'stale_estimate', message: 'Можно согласовать только актуальную версию сметы' };
+    }
+    const existing = this.db.prepare(`SELECT id FROM estimate_approvals
+      WHERE order_id = ? AND estimate_version_id = ?`).get(orderId, input.estimateVersionId);
+    if (existing) return { kind: 'conflict', code: 'estimate_already_decided', message: 'Решение по этой версии уже сохранено' };
+
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`INSERT INTO estimate_approvals
+        (id, tenant_id, order_id, estimate_version_id, decision, method, source, responsible)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
+          `approval_${randomUUID()}`, tenantId, orderId, input.estimateVersionId, input.decision,
+          input.method, String(input.source).trim(), String(input.responsible).trim()
+        );
+      const nextStatus = input.decision === 'APPROVED' ? 'APPROVED' : 'ESTIMATE_DRAFT';
+      this.db.prepare('UPDATE orders SET status = ? WHERE id = ? AND tenant_id = ?').run(nextStatus, orderId, tenantId);
+      this.db.prepare('UPDATE order_workflows SET updated_at = CURRENT_TIMESTAMP WHERE order_id = ?').run(orderId);
+      this.insertOrderAudit(tenantId, orderId, `ESTIMATE_${input.decision}`, {
+        estimateVersionId: input.estimateVersionId, method: input.method, source: input.source, responsible: input.responsible
+      });
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'updated', order: this.getOrder(tenantId, orderId) };
+  }
+
+  insertOrderAudit(tenantId, orderId, eventType, metadata = {}) {
+    this.db.prepare(`INSERT INTO order_audit_events
+      (id, tenant_id, order_id, event_type, metadata_json) VALUES (?, ?, ?, ?, ?)`)
+      .run(`audit_${randomUUID()}`, tenantId, orderId, eventType, JSON.stringify(metadata));
+  }
+
+  getEstimateVersion(tenantId, estimateVersionId) {
+    const row = this.db.prepare(`SELECT id, order_id, version, total_amount_minor, total_duration_minutes, created_at
+      FROM estimate_versions WHERE id = ? AND tenant_id = ?`).get(estimateVersionId, tenantId);
+    if (!row) return null;
+    return {
+      id: row.id,
+      orderId: row.order_id,
+      version: row.version,
+      totalAmountMinor: row.total_amount_minor,
+      totalDurationMinutes: row.total_duration_minutes,
+      createdAt: apiTimestamp(row.created_at),
+      lines: this.db.prepare(`SELECT id, source_type, source_id, name, amount_minor, duration_minutes, reason
+        FROM estimate_lines WHERE estimate_version_id = ? ORDER BY sequence`).all(row.id).map((line) => ({
+          id: line.id,
+          sourceType: line.source_type,
+          sourceId: line.source_id,
+          name: line.name,
+          amountMinor: line.amount_minor,
+          durationMinutes: line.duration_minutes,
+          reason: line.reason
+        }))
+    };
+  }
+
   getOrder(tenantId, orderId) {
-    const row = this.db.prepare('SELECT id, customer_id, vehicle_id, status FROM orders WHERE id = ? AND tenant_id = ?')
+    const row = this.db.prepare(`SELECT o.id, o.customer_id, o.vehicle_id, o.status, o.created_at,
+        w.booking_id, w.current_estimate_version_id
+      FROM orders o LEFT JOIN order_workflows w ON w.order_id = o.id AND w.tenant_id = o.tenant_id
+      WHERE o.id = ? AND o.tenant_id = ?`)
       .get(orderId, tenantId);
-    return row ? { id: row.id, customerId: row.customer_id, vehicleId: row.vehicle_id, status: row.status } : null;
+    if (!row) return null;
+    const intake = this.db.prepare(`SELECT condition_summary, completed_at FROM order_intakes WHERE order_id = ?`).get(orderId);
+    const approval = this.db.prepare(`SELECT estimate_version_id, decision, method, source, responsible, decided_at
+      FROM estimate_approvals WHERE order_id = ? ORDER BY decided_at DESC, rowid DESC LIMIT 1`).get(orderId);
+    return {
+      id: row.id,
+      customerId: row.customer_id,
+      vehicleId: row.vehicle_id,
+      status: row.status,
+      createdAt: apiTimestamp(row.created_at),
+      bookingId: row.booking_id ?? null,
+      currentEstimateVersionId: row.current_estimate_version_id ?? null,
+      intake: intake ? {
+        conditionSummary: intake.condition_summary,
+        completedAt: apiTimestamp(intake.completed_at),
+        findings: this.db.prepare(`SELECT id, zone, severity, note FROM inspection_findings
+          WHERE order_id = ? ORDER BY created_at, rowid`).all(orderId),
+        recommendations: this.db.prepare(`SELECT id, title, reason, priority FROM order_recommendations
+          WHERE order_id = ? ORDER BY created_at, rowid`).all(orderId)
+      } : null,
+      estimateVersions: this.db.prepare(`SELECT id FROM estimate_versions
+        WHERE order_id = ? AND tenant_id = ? ORDER BY version`).all(orderId, tenantId)
+        .map((estimate) => this.getEstimateVersion(tenantId, estimate.id)),
+      approval: approval ? {
+        estimateVersionId: approval.estimate_version_id,
+        decision: approval.decision,
+        method: approval.method,
+        source: approval.source,
+        responsible: approval.responsible,
+        decidedAt: apiTimestamp(approval.decided_at)
+      } : null,
+      auditTrail: this.db.prepare(`SELECT event_type, metadata_json, occurred_at FROM order_audit_events
+        WHERE order_id = ? AND tenant_id = ? ORDER BY occurred_at, rowid`).all(orderId, tenantId).map((event) => ({
+          eventType: event.event_type,
+          metadata: JSON.parse(event.metadata_json),
+          occurredAt: apiTimestamp(event.occurred_at)
+        }))
+    };
   }
 }

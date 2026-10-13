@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from './api';
 import { ScheduleStep, ServicesStep } from './BookingFlow';
-import type { BookingQuote, CatalogVariant, Customer, QuoteSelection, Vehicle } from './types';
+import { OrderFlow } from './OrderFlow';
+import type { Booking, BookingQuote, CatalogVariant, Customer, QuoteSelection, Vehicle } from './types';
 
 type IconName = 'arrow' | 'search' | 'phone' | 'car' | 'user' | 'calendar' | 'clipboard' | 'more' | 'plus' | 'check' | 'spark';
 
@@ -57,11 +58,11 @@ function Header({ step, onBack }: { step: number; onBack: () => void }) {
     <header className="app-header">
       <button className="icon-button" onClick={onBack} aria-label="Назад"><Icon name="arrow"/></button>
       <div>
-        <span className="eyebrow">Новая запись</span>
-        <h1>{step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : step === 3 ? 'Услуги' : 'Дата и время'}</h1>
+        <span className="eyebrow">{step === 5 ? 'Рабочий заказ' : 'Новая запись'}</span>
+        <h1>{step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : step === 3 ? 'Услуги' : step === 4 ? 'Дата и время' : 'Приёмка и смета'}</h1>
       </div>
       <button className="icon-button" aria-label="Ещё"><Icon name="more"/></button>
-      <div className="progress" aria-label={`Шаг ${step} из 4`}>
+      <div className="progress" aria-label={step === 5 ? 'Рабочий заказ' : `Шаг ${step} из 4`}>
         {[1, 2, 3, 4].map((item) => <span key={item} className={item <= step ? 'active' : ''}/>) }
       </div>
     </header>
@@ -79,7 +80,7 @@ function BottomNav() {
 }
 
 export function App() {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [mode, setMode] = useState<'phone' | 'plate'>('phone');
   const [channel, setChannel] = useState('Telegram');
   const [query, setQuery] = useState('');
@@ -89,6 +90,7 @@ export function App() {
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [serviceSelections, setServiceSelections] = useState<QuoteSelection[]>([]);
   const [bookingQuote, setBookingQuote] = useState<BookingQuote | null>(null);
+  const [activeBooking, setActiveBooking] = useState<Booking | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
@@ -149,7 +151,7 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <Header step={step} onBack={() => step === 1 ? setQuery('') : setStep(step === 4 ? 3 : 1)}/>
+      <Header step={step} onBack={() => step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
       <main>
         {step === 1 && (
           <section className="screen" aria-label="Поиск клиента и автомобиля">
@@ -238,7 +240,11 @@ export function App() {
             selections={serviceSelections}
             quote={bookingQuote}
             onBack={() => setStep(3)}
+            onStartIntake={(booking) => { setActiveBooking(booking); setStep(5); }}
           />
+        )}
+        {step === 5 && activeBooking && selectedVehicle && selectedCustomer && (
+          <OrderFlow booking={activeBooking} customer={selectedCustomer} vehicle={selectedVehicle}/>
         )}
       </main>
       <BottomNav/>

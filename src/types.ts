@@ -93,3 +93,61 @@ export type BookingAvailability = {
   durationMinutes: number;
   slots: Array<{ time: string; startAt: string; available: boolean }>;
 };
+
+export type IntakeFinding = {
+  id?: string;
+  zone: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH';
+  note: string;
+};
+
+export type OrderRecommendation = {
+  id?: string;
+  title: string;
+  reason: string;
+  priority: 'OPTIONAL' | 'RECOMMENDED' | 'URGENT';
+};
+
+export type EstimateLineInput = {
+  sourceType: 'service' | 'package' | 'recommendation' | 'custom';
+  sourceId?: string | null;
+  name: string;
+  amountMinor: number;
+  durationMinutes: number;
+  reason?: string | null;
+};
+
+export type EstimateVersion = {
+  id: string;
+  orderId: string;
+  version: number;
+  totalAmountMinor: number;
+  totalDurationMinutes: number;
+  createdAt: string;
+  lines: Array<EstimateLineInput & { id: string }>;
+};
+
+export type WorkOrder = {
+  id: string;
+  bookingId: string | null;
+  customerId: string;
+  vehicleId: string;
+  status: 'INTAKE' | 'ESTIMATE_DRAFT' | 'APPROVED';
+  currentEstimateVersionId: string | null;
+  intake: null | {
+    conditionSummary: string;
+    completedAt: string;
+    findings: IntakeFinding[];
+    recommendations: OrderRecommendation[];
+  };
+  estimateVersions: EstimateVersion[];
+  approval: null | {
+    estimateVersionId: string;
+    decision: 'APPROVED' | 'REJECTED';
+    method: 'in_person' | 'phone' | 'messenger';
+    source: string;
+    responsible: string;
+    decidedAt: string;
+  };
+  auditTrail: Array<{ eventType: string; occurredAt: string; metadata: Record<string, unknown> }>;
+};

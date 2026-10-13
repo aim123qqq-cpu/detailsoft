@@ -1,4 +1,4 @@
-import type { Booking, BookingAvailability, BookingQuote, CatalogVariant, Customer, QuoteSelection, ServiceCatalog, Vehicle } from './types';
+import type { Booking, BookingAvailability, BookingQuote, CatalogVariant, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, OrderRecommendation, QuoteSelection, ServiceCatalog, Vehicle, WorkOrder } from './types';
 
 const sessionHeaders = { authorization: 'Bearer demo-session-token' };
 
@@ -56,6 +56,34 @@ export const api = {
       method: 'POST',
       headers: { 'idempotency-key': idempotencyKey },
       body: JSON.stringify(input)
+    });
+  },
+  createOrder(bookingId: string) {
+    return request<WorkOrder>('/api/orders', { method: 'POST', body: JSON.stringify({ bookingId }) });
+  },
+  saveIntake(orderId: string, input: {
+    conditionSummary: string;
+    findings: IntakeFinding[];
+    recommendations: OrderRecommendation[];
+  }) {
+    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/intake`, {
+      method: 'PUT', body: JSON.stringify(input)
+    });
+  },
+  createEstimate(orderId: string, lines: EstimateLineInput[]) {
+    return request<EstimateVersion>(`/api/orders/${encodeURIComponent(orderId)}/estimates`, {
+      method: 'POST', body: JSON.stringify({ lines })
+    });
+  },
+  decideEstimate(orderId: string, input: {
+    estimateVersionId: string;
+    decision: 'APPROVED' | 'REJECTED';
+    method: 'in_person' | 'phone' | 'messenger';
+    source: string;
+    responsible: string;
+  }) {
+    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/estimate-approvals`, {
+      method: 'POST', body: JSON.stringify(input)
     });
   }
 };
