@@ -357,7 +357,7 @@ button { color: inherit; }
 .assigned-master span small { margin-top: 3px; color: #77848e; font-size: 7px; }
 .assigned-master b { color: var(--success); font-size: 8px; }
 
-.work-screen, .qc-screen, .ready-screen { padding-bottom: 120px; }
+.work-screen, .qc-screen, .ready-screen, .delivery-screen, .closed-screen { padding-bottom: 120px; }
 .production-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; color: #7d8993; font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
 .production-top b { padding: 5px 8px; border-radius: 999px; color: #07150f; background: var(--success); font-size: 7px; }
 .production-top b.paused { color: #1b110d; background: #f2bd66; }
@@ -428,6 +428,46 @@ button { color: inherit; }
 .ready-timeline span.active { color: var(--primary); }
 .ready-timeline span.active::before { background: var(--primary); box-shadow: 0 0 0 4px rgba(255,121,57,.12); }
 .ready-screen .primary-button { width: 100%; min-height: 52px; }
+
+.delivery-photos { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 13px 0; }
+.delivery-photos > div { position: relative; }
+.delivery-photos .mock-photo { width: 100%; height: 94px; border-radius: 11px; }
+.delivery-photos small { position: absolute; left: 8px; bottom: 8px; padding: 4px 7px; border-radius: 999px; color: #fff; background: rgba(8,12,17,.78); font-size: 10px; font-weight: 800; }
+.payment-card { margin-bottom: 13px; padding: 14px; border: 1px solid #384550; border-radius: 13px; background: linear-gradient(145deg, #19232c, #11181f); }
+.payment-total, .payment-balance { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.payment-total span { color: #98a4ad; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.payment-total strong { font-size: 20px; }
+.payment-progress { height: 6px; margin: 12px 0 10px; border-radius: 99px; background: #29343e; overflow: hidden; }
+.payment-progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--primary), var(--success)); transition: width .25s; }
+.payment-balance span { color: #8996a0; font-size: 11px; }
+.payment-balance b { margin-left: 4px; color: #e3e8eb; }
+.payment-form { margin-bottom: 15px; padding: 13px; border: 1px solid #303d47; border-radius: 13px; background: #11181f; }
+.delivery-label { display: block; margin-bottom: 9px; color: #9ba6af; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.payment-methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.payment-methods button { min-height: 44px; border: 1px solid #35424d; border-radius: 9px; color: #9aa6af; background: #161f27; font-size: 11px; font-weight: 700; cursor: pointer; }
+.payment-methods button.selected { border-color: var(--primary); color: #ff9b6d; background: rgba(255,121,57,.1); }
+.payment-amount { display: grid; grid-template-columns: 1fr 150px; align-items: center; gap: 10px; margin-top: 12px; color: #9ba6af; font-size: 11px; font-weight: 700; }
+.payment-amount > span:last-child { display: flex; align-items: center; height: 44px; border: 1px solid #3c4954; border-radius: 9px; background: #0c1218; overflow: hidden; }
+.payment-amount input { width: 100%; min-width: 0; padding: 0 10px; border: 0; outline: 0; color: #fff; background: transparent; text-align: right; font-size: 14px; font-weight: 800; }
+.payment-amount em { padding-right: 10px; color: #8996a0; font-style: normal; }
+.payment-history { margin: 4px 0 16px; }
+.payment-history > div { min-height: 56px; display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 9px; padding: 8px 0; border-bottom: 1px solid #29343e; }
+.payment-history i { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; color: #07150f; background: var(--success); font-size: 12px; font-style: normal; font-weight: 900; }
+.payment-history span strong, .payment-history span small { display: block; }
+.payment-history span strong { font-size: 12px; }
+.payment-history span small { margin-top: 3px; color: #83909a; font-size: 10px; }
+.payment-history > div > b { font-size: 12px; }
+.close-order-button { margin-top: 5px; }
+.delivery-blocker { margin: 8px 0 0; color: #929ea8; text-align: center; font-size: 10px; }
+.closed-screen { padding-top: 38px; text-align: center; }
+.closed-screen h2 { margin: 14px 0 5px; font-size: 23px; }
+.closed-screen > p { margin: 0 0 20px; color: #8b98a2; }
+.closed-receipt { overflow: hidden; border: 1px solid #33404b; border-radius: 13px; text-align: left; }
+.closed-receipt div { min-height: 62px; display: flex; align-items: center; justify-content: space-between; padding: 0 13px; border-bottom: 1px solid #29343e; background: #121920; }
+.closed-receipt div:last-child { border-bottom: 0; }
+.closed-receipt span { color: #8d99a3; font-size: 11px; text-transform: uppercase; }
+.closed-receipt strong { font-size: 13px; }
+.handover-proof { margin-top: 13px; padding: 12px; border: 1px solid rgba(54,201,150,.22); border-radius: 11px; color: #8fd6bd; background: rgba(54,201,150,.06); text-align: left; font-size: 11px; line-height: 1.5; }
 
 .bottom-nav { position: fixed; z-index: 30; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%, var(--app-width)); min-height: 76px; padding: 7px 22px max(8px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, 1fr); background: rgba(13,19,25,.94); border-top: 1px solid #27313b; backdrop-filter: blur(18px); }
 .bottom-nav button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #6e7b87; background: transparent; border: 0; font-size: 9px; font-weight: 700; }

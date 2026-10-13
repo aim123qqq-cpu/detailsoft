@@ -132,7 +132,7 @@ export type WorkOrder = {
   bookingId: string | null;
   customerId: string;
   vehicleId: string;
-  status: 'INTAKE' | 'ESTIMATE_DRAFT' | 'APPROVED' | 'IN_PROGRESS' | 'QC' | 'READY';
+  status: 'INTAKE' | 'ESTIMATE_DRAFT' | 'APPROVED' | 'IN_PROGRESS' | 'QC' | 'READY' | 'CLOSED';
   currentEstimateVersionId: string | null;
   intake: null | {
     conditionSummary: string;
@@ -174,5 +174,22 @@ export type WorkOrder = {
     createdAt: string;
     checks: Array<{ code: string; label: string; passed: boolean }>;
   }>;
+  payments: Array<{
+    id: string;
+    amountMinor: number;
+    method: 'cash' | 'card' | 'transfer';
+    responsible: string;
+    createdAt: string;
+  }>;
+  paymentSummary: {
+    totalAmountMinor: number;
+    paidAmountMinor: number;
+    dueAmountMinor: number;
+  };
+  handover: null | {
+    responsible: string;
+    note: string;
+    handedOverAt: string;
+  };
   auditTrail: Array<{ eventType: string; occurredAt: string; metadata: Record<string, unknown> }>;
 };

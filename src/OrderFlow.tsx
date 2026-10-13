@@ -73,6 +73,12 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
     { code: 'interior', label: 'Салон и стёкла чистые', passed: true },
     { code: 'handover', label: 'Комплектность и фото проверены', passed: true }
   ]);
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'transfer'>('card');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentResponsible, setPaymentResponsible] = useState('Анна, администратор');
+  const [paymentRequestKey, setPaymentRequestKey] = useState(() => crypto.randomUUID());
+  const [handoverNote, setHandoverNote] = useState('Клиент осмотрел автомобиль и принял результат работ');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -92,12 +98,13 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
     if (!order) return;
     if (order.status === 'IN_PROGRESS') onPhaseChange('Работы мастера');
     else if (order.status === 'QC') onPhaseChange('Контроль качества');
-    else if (order.status === 'READY') onPhaseChange('Готов к выдаче');
+    else if (order.status === 'CLOSED') onPhaseChange('Заказ закрыт');
+    else if (order.status === 'READY') onPhaseChange(deliveryOpen ? 'Выдача автомобиля' : 'Готов к выдаче');
     else if (order.status === 'APPROVED') onPhaseChange('Назначение мастера');
     else if (stage === 'estimate') onPhaseChange('Смета заказа');
     else if (stage === 'approval') onPhaseChange('Согласование сметы');
     else onPhaseChange('Приёмка автомобиля');
-  }, [onPhaseChange, order, stage]);
+  }, [deliveryOpen, onPhaseChange, order, stage]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'auto' });
@@ -191,10 +198,74 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
   const submitQc = (decision: 'PASSED' | 'REWORK') => order && runOrderAction(() => api.submitQualityControl(order.id, {
     decision, responsible: qcResponsible, note: qcNote, checks: qcChecks
   }));
+  const openDelivery = () => {
+    if (!order) return;
+    setPaymentAmount(String(order.paymentSummary.dueAmountMinor / 100));
+    setDeliveryOpen(true);
+  };
+  const recordPayment = async () => {
+    if (!order) return;
+    const amountMinor = Math.round(Number(paymentAmount.replace(',', '.')) * 100);
+    if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) return setError('Укажите корректную сумму платежа');
+    setLoading(true); setError('');
+    try {
+      const updated = await api.recordPayment(order.id, {
+        amountMinor, method: paymentMethod, responsible: paymentResponsible
+      }, paymentRequestKey);
+      setOrder(updated);
+      setPaymentAmount(String(updated.paymentSummary.dueAmountMinor / 100));
+      setPaymentRequestKey(crypto.randomUUID());
+    } catch (requestError) { setError((requestError as Error).message); }
+    finally { setLoading(false); }
+  };
+  const closeOrder = () => order && runOrderAction(() => api.closeOrder(order.id, {
+    responsible: paymentResponsible, note: handoverNote
+  }));
 
   if (loading && !order) return <section className="screen order-loading"><span className="spinner"/> Создаём заказ из записи</section>;
   if (!order) return <section className="screen"><div className="inline-error">{error || 'Не удалось создать заказ'}</div></section>;
   const currentEstimate = order.estimateVersions.find((item) => item.id === order.currentEstimateVersionId);
+
+  if (order.status === 'CLOSED') return (
+    <section className="screen closed-screen" data-testid="order-closed">
+      <span className="ready-orbit"><i>✓</i></span>
+      <span className="confirmation-kicker">Оплата получена · автомобиль выдан</span>
+      <h2>Заказ закрыт</h2>
+      <p>{vehicle.make} {vehicle.model} · {vehicle.plate}</p>
+      <div className="closed-receipt">
+        <div><span>Оплачено</span><strong>{money(order.paymentSummary.paidAmountMinor)}</strong></div>
+        <div><span>Платежей</span><strong>{order.payments.length}</strong></div>
+        <div><span>Выдал</span><strong>{order.handover?.responsible}</strong></div>
+      </div>
+      <div className="handover-proof">✓ {order.handover?.note}</div>
+      <div className="audit-note">Заказ и выдача зафиксированы в журнале · {order.auditTrail.length} событий</div>
+    </section>
+  );
+
+  if (order.status === 'READY' && deliveryOpen) return (
+    <section className="screen delivery-screen" data-testid="order-delivery">
+      <div className="production-top"><span>Выдача автомобиля</span><b>READY</b></div>
+      <div className="order-hero"><small>{customer.name}</small><strong>{vehicle.make} {vehicle.model}</strong><span>{vehicle.plate} · {vehicle.color}</span></div>
+      <div className="delivery-photos"><div><span className="mock-photo two"/><small>Фото до</small></div><div><span className="mock-photo three"/><small>Фото после</small></div></div>
+      <div className="payment-card">
+        <div className="payment-total"><span>Итого по смете</span><strong>{money(order.paymentSummary.totalAmountMinor)}</strong></div>
+        <div className="payment-progress"><span style={{ width: `${order.paymentSummary.totalAmountMinor ? Math.min(100, order.paymentSummary.paidAmountMinor / order.paymentSummary.totalAmountMinor * 100) : 100}%` }}/></div>
+        <div className="payment-balance"><span>Оплачено <b>{money(order.paymentSummary.paidAmountMinor)}</b></span><span data-testid="payment-due">К оплате <b>{money(order.paymentSummary.dueAmountMinor)}</b></span></div>
+      </div>
+      {order.paymentSummary.dueAmountMinor > 0 && <div className="payment-form">
+        <span className="delivery-label">Способ оплаты</span>
+        <div className="payment-methods">{([['card', 'Карта'], ['cash', 'Наличные'], ['transfer', 'Перевод']] as const).map(([value, label]) => <button key={value} className={paymentMethod === value ? 'selected' : ''} onClick={() => setPaymentMethod(value)}>{label}</button>)}</div>
+        <label className="payment-amount"><span>Сумма платежа</span><span><input data-testid="payment-amount" inputMode="decimal" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)}/><em>₽</em></span></label>
+        <button className="primary-button" data-testid="record-payment" disabled={loading || !paymentResponsible.trim()} onClick={recordPayment}>Принять оплату</button>
+      </div>}
+      {!!order.payments.length && <div className="payment-history"><span className="delivery-label">Платежи</span>{order.payments.map((payment) => <div key={payment.id}><i>✓</i><span><strong>{payment.method === 'card' ? 'Карта' : payment.method === 'cash' ? 'Наличные' : 'Перевод'}</strong><small>{payment.responsible}</small></span><b>{money(payment.amountMinor)}</b></div>)}</div>}
+      <label className="order-field">Ответственный<input value={paymentResponsible} onChange={(event) => setPaymentResponsible(event.target.value)}/></label>
+      <label className="order-field">Комментарий к выдаче<textarea value={handoverNote} onChange={(event) => setHandoverNote(event.target.value)}/></label>
+      {error && <div className="inline-error">{error}</div>}
+      <button className="primary-button close-order-button" data-testid="close-order" disabled={loading || order.paymentSummary.dueAmountMinor > 0 || handoverNote.trim().length < 2} onClick={closeOrder}>Выдать автомобиль и закрыть заказ →</button>
+      {order.paymentSummary.dueAmountMinor > 0 && <p className="delivery-blocker">Закрытие станет доступно после полной оплаты</p>}
+    </section>
+  );
 
   if (order.status === 'READY') return (
     <section className="screen ready-screen" data-testid="order-ready">
@@ -209,7 +280,7 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
         <div><span>Статус</span><strong>Готов к выдаче</strong></div>
       </div>
       <div className="ready-timeline"><span className="done">Приёмка</span><span className="done">Смета</span><span className="done">Работы</span><span className="active">Выдача</span></div>
-      <button className="primary-button">Перейти к выдаче →</button>
+      <button className="primary-button" data-testid="open-delivery" onClick={openDelivery}>Перейти к выдаче →</button>
     </section>
   );
 

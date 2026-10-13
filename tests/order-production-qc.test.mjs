@@ -12,7 +12,8 @@ before(async () => {
     seed: true,
     authTokens: new Map([
       ['demo-session-token', { tenantId: 'tenant_demo', roles: ['admin', 'intake', 'master', 'qc'] }],
-      ['intake-only-token', { tenantId: 'tenant_demo', roles: ['intake'] }]
+      ['intake-only-token', { tenantId: 'tenant_demo', roles: ['intake'] }],
+      ['other-session-token', { tenantId: 'tenant_other', roles: ['admin'] }]
     ])
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -153,4 +154,73 @@ test('QC can return work for rework and later release it for delivery', async ()
   assert.equal(ready.qualityControl.at(-1).decision, 'PASSED');
   assert.ok(ready.auditTrail.some((event) => event.eventType === 'QC_REWORK'));
   assert.ok(ready.auditTrail.some((event) => event.eventType === 'QC_PASSED'));
+});
+
+test('delivery records idempotent partial payments and closes only after full payment', async () => {
+  const forbidden = await api(`/api/orders/${orderId}/payments`, {
+    token: 'intake-only-token', method: 'POST', headers: { 'idempotency-key': 'payment-partial' },
+    body: { amountMinor: 100000, method: 'card', responsible: 'Анна' }
+  });
+  assert.equal(forbidden.status, 403);
+
+  const foreign = await api(`/api/orders/${orderId}/payments`, {
+    token: 'other-session-token', method: 'POST', headers: { 'idempotency-key': 'payment-foreign' },
+    body: { amountMinor: 100000, method: 'card', responsible: 'Анна' }
+  });
+  assert.equal(foreign.status, 404);
+
+  const partial = await api(`/api/orders/${orderId}/payments`, {
+    method: 'POST', headers: { 'idempotency-key': 'payment-partial' },
+    body: { amountMinor: 100000, method: 'card', responsible: 'Анна' }
+  });
+  assert.equal(partial.status, 201);
+  const partialOrder = await partial.json();
+  assert.equal(partialOrder.paymentSummary.totalAmountMinor, 230000);
+  assert.equal(partialOrder.paymentSummary.paidAmountMinor, 100000);
+  assert.equal(partialOrder.paymentSummary.dueAmountMinor, 130000);
+  assert.equal(partialOrder.payments.length, 1);
+
+  const replay = await api(`/api/orders/${orderId}/payments`, {
+    method: 'POST', headers: { 'idempotency-key': 'payment-partial' },
+    body: { amountMinor: 100000, method: 'card', responsible: 'Анна' }
+  });
+  assert.equal(replay.status, 200);
+  assert.equal((await replay.json()).payments.length, 1);
+
+  const changedReplay = await api(`/api/orders/${orderId}/payments`, {
+    method: 'POST', headers: { 'idempotency-key': 'payment-partial' },
+    body: { amountMinor: 90000, method: 'card', responsible: 'Анна' }
+  });
+  assert.equal(changedReplay.status, 409);
+  assert.equal((await changedReplay.json()).error.code, 'idempotency_conflict');
+
+  const unpaidHandover = await api(`/api/orders/${orderId}/handover`, {
+    method: 'POST', body: { responsible: 'Анна', note: 'Клиент проверил автомобиль' }
+  });
+  assert.equal(unpaidHandover.status, 409);
+  assert.equal((await unpaidHandover.json()).error.code, 'payment_outstanding');
+
+  const overpayment = await api(`/api/orders/${orderId}/payments`, {
+    method: 'POST', headers: { 'idempotency-key': 'payment-too-large' },
+    body: { amountMinor: 140000, method: 'cash', responsible: 'Анна' }
+  });
+  assert.equal(overpayment.status, 409);
+  assert.equal((await overpayment.json()).error.code, 'payment_exceeds_balance');
+
+  const finalPayment = await api(`/api/orders/${orderId}/payments`, {
+    method: 'POST', headers: { 'idempotency-key': 'payment-final' },
+    body: { amountMinor: 130000, method: 'cash', responsible: 'Анна' }
+  });
+  assert.equal(finalPayment.status, 201);
+  assert.equal((await finalPayment.json()).paymentSummary.dueAmountMinor, 0);
+
+  const handover = await api(`/api/orders/${orderId}/handover`, {
+    method: 'POST', body: { responsible: 'Анна', note: 'Клиент проверил автомобиль' }
+  });
+  assert.equal(handover.status, 200);
+  const closed = await handover.json();
+  assert.equal(closed.status, 'CLOSED');
+  assert.equal(closed.handover.responsible, 'Анна');
+  assert.ok(closed.auditTrail.some((event) => event.eventType === 'PAYMENT_RECORDED'));
+  assert.ok(closed.auditTrail.some((event) => event.eventType === 'ORDER_CLOSED'));
 });

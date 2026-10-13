@@ -126,6 +126,21 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.getByTestId('order-ready').waitFor();
     assert.match(await page.getByTestId('order-ready').innerText(), /готов к выдаче/i);
     await page.screenshot({ path: resolve(artifacts, '13-ready-for-delivery.png'), fullPage: true });
+
+    await page.getByTestId('open-delivery').click();
+    await page.getByTestId('order-delivery').waitFor();
+    assert.match(await page.getByTestId('order-delivery').innerText(), /к оплате/i);
+    assert.equal(await page.getByTestId('close-order').isDisabled(), true);
+    await page.screenshot({ path: resolve(artifacts, '14-order-delivery.png'), fullPage: true });
+
+    await page.getByTestId('record-payment').click();
+    await page.waitForFunction(() => !(document.querySelector('[data-testid="close-order"]'))?.disabled);
+    assert.match(await page.getByTestId('payment-due').innerText(), /0\s?₽/);
+    assert.equal(await page.getByTestId('close-order').isDisabled(), false);
+    await page.getByTestId('close-order').click();
+    await page.getByTestId('order-closed').waitFor();
+    assert.match(await page.getByTestId('order-closed').innerText(), /заказ закрыт/i);
+    await page.screenshot({ path: resolve(artifacts, '15-order-closed.png'), fullPage: true });
   } finally {
     await browser.close();
     await new Promise((done) => server.close(done));

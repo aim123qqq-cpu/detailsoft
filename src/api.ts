@@ -125,5 +125,19 @@ export const api = {
     return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/qc`, {
       method: 'POST', body: JSON.stringify(input)
     });
+  },
+  recordPayment(orderId: string, input: {
+    amountMinor: number;
+    method: 'cash' | 'card' | 'transfer';
+    responsible: string;
+  }, idempotencyKey: string) {
+    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/payments`, {
+      method: 'POST', headers: { 'idempotency-key': idempotencyKey }, body: JSON.stringify(input)
+    });
+  },
+  closeOrder(orderId: string, input: { responsible: string; note: string }) {
+    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/handover`, {
+      method: 'POST', body: JSON.stringify(input)
+    });
   }
 };

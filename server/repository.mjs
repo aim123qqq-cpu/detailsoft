@@ -844,6 +844,85 @@ export class DetailFlowRepository {
     return { kind: 'updated', order: this.getOrder(tenantId, orderId) };
   }
 
+  recordOrderPayment(tenantId, orderId, input, idempotencyKey) {
+    const amountMinor = Number(input?.amountMinor);
+    const method = String(input?.method ?? '').trim();
+    const responsible = String(input?.responsible ?? '').trim();
+    if (!idempotencyKey || !Number.isSafeInteger(amountMinor) || amountMinor <= 0 ||
+      !['cash', 'card', 'transfer'].includes(method) || responsible.length < 2) return { kind: 'invalid' };
+
+    const order = this.db.prepare(`SELECT o.status, w.current_estimate_version_id, e.total_amount_minor
+      FROM orders o
+      LEFT JOIN order_workflows w ON w.order_id = o.id AND w.tenant_id = o.tenant_id
+      LEFT JOIN estimate_versions e ON e.id = w.current_estimate_version_id AND e.tenant_id = o.tenant_id
+      WHERE o.id = ? AND o.tenant_id = ?`).get(orderId, tenantId);
+    if (!order) return { kind: 'not_found' };
+    if (order.status !== 'READY') return { kind: 'conflict', code: 'invalid_order_state', message: 'Оплату можно принять только для заказа, готового к выдаче' };
+
+    const replay = this.db.prepare(`SELECT order_id, amount_minor, method, responsible
+      FROM order_payments WHERE tenant_id = ? AND idempotency_key = ?`).get(tenantId, idempotencyKey);
+    if (replay) {
+      if (replay.order_id === orderId && replay.amount_minor === amountMinor && replay.method === method && replay.responsible === responsible) {
+        return { kind: 'replayed', order: this.getOrder(tenantId, orderId) };
+      }
+      return { kind: 'conflict', code: 'idempotency_conflict', message: 'Ключ идемпотентности уже использован для другого платежа' };
+    }
+
+    const paidAmountMinor = this.db.prepare(`SELECT COALESCE(SUM(amount_minor), 0) paid
+      FROM order_payments WHERE order_id = ? AND tenant_id = ?`).get(orderId, tenantId).paid;
+    const dueAmountMinor = Number(order.total_amount_minor ?? 0) - paidAmountMinor;
+    if (amountMinor > dueAmountMinor) {
+      return { kind: 'conflict', code: 'payment_exceeds_balance', message: 'Сумма платежа превышает остаток по заказу' };
+    }
+
+    const paymentId = `payment_${randomUUID()}`;
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`INSERT INTO order_payments
+        (id, tenant_id, order_id, amount_minor, method, responsible, idempotency_key)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+        paymentId, tenantId, orderId, amountMinor, method, responsible, idempotencyKey
+      );
+      this.insertOrderAudit(tenantId, orderId, 'PAYMENT_RECORDED', { paymentId, amountMinor, method, responsible });
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'created', order: this.getOrder(tenantId, orderId) };
+  }
+
+  closeOrderHandover(tenantId, orderId, input) {
+    const responsible = String(input?.responsible ?? '').trim();
+    const note = String(input?.note ?? '').trim();
+    if (responsible.length < 2 || note.length < 2) return { kind: 'invalid' };
+    const order = this.db.prepare(`SELECT o.status, e.total_amount_minor
+      FROM orders o
+      LEFT JOIN order_workflows w ON w.order_id = o.id AND w.tenant_id = o.tenant_id
+      LEFT JOIN estimate_versions e ON e.id = w.current_estimate_version_id AND e.tenant_id = o.tenant_id
+      WHERE o.id = ? AND o.tenant_id = ?`).get(orderId, tenantId);
+    if (!order) return { kind: 'not_found' };
+    if (order.status !== 'READY') return { kind: 'conflict', code: 'invalid_order_state', message: 'Заказ не готов к выдаче' };
+    const paidAmountMinor = this.db.prepare(`SELECT COALESCE(SUM(amount_minor), 0) paid
+      FROM order_payments WHERE order_id = ? AND tenant_id = ?`).get(orderId, tenantId).paid;
+    if (paidAmountMinor < Number(order.total_amount_minor ?? 0)) {
+      return { kind: 'conflict', code: 'payment_outstanding', message: 'Перед выдачей необходимо закрыть остаток оплаты' };
+    }
+
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`INSERT INTO order_handovers (order_id, tenant_id, responsible, note)
+        VALUES (?, ?, ?, ?)`).run(orderId, tenantId, responsible, note);
+      this.db.prepare(`UPDATE orders SET status = 'CLOSED' WHERE id = ? AND tenant_id = ?`).run(orderId, tenantId);
+      this.insertOrderAudit(tenantId, orderId, 'ORDER_CLOSED', { responsible, note });
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'updated', order: this.getOrder(tenantId, orderId) };
+  }
+
   getOrder(tenantId, orderId) {
     const row = this.db.prepare(`SELECT o.id, o.customer_id, o.vehicle_id, o.status, o.created_at,
         w.booking_id, w.current_estimate_version_id
@@ -858,6 +937,15 @@ export class DetailFlowRepository {
       WHERE order_id = ? AND tenant_id = ?`).get(orderId, tenantId);
     const workRun = this.db.prepare(`SELECT status, pause_note, started_at, updated_at, completed_at
       FROM order_work_runs WHERE order_id = ? AND tenant_id = ?`).get(orderId, tenantId);
+    const payments = this.db.prepare(`SELECT id, amount_minor, method, responsible, created_at
+      FROM order_payments WHERE order_id = ? AND tenant_id = ? ORDER BY created_at, rowid`).all(orderId, tenantId);
+    const totalAmountMinor = row.current_estimate_version_id
+      ? Number(this.db.prepare(`SELECT total_amount_minor FROM estimate_versions WHERE id = ? AND tenant_id = ?`)
+        .get(row.current_estimate_version_id, tenantId)?.total_amount_minor ?? 0)
+      : 0;
+    const paidAmountMinor = payments.reduce((sum, payment) => sum + payment.amount_minor, 0);
+    const handover = this.db.prepare(`SELECT responsible, note, handed_over_at FROM order_handovers
+      WHERE order_id = ? AND tenant_id = ?`).get(orderId, tenantId);
     return {
       id: row.id,
       customerId: row.customer_id,
@@ -918,6 +1006,23 @@ export class DetailFlowRepository {
               code: check.code, label: check.label, passed: Boolean(check.passed)
             }))
         })),
+      payments: payments.map((payment) => ({
+        id: payment.id,
+        amountMinor: payment.amount_minor,
+        method: payment.method,
+        responsible: payment.responsible,
+        createdAt: apiTimestamp(payment.created_at)
+      })),
+      paymentSummary: {
+        totalAmountMinor,
+        paidAmountMinor,
+        dueAmountMinor: Math.max(0, totalAmountMinor - paidAmountMinor)
+      },
+      handover: handover ? {
+        responsible: handover.responsible,
+        note: handover.note,
+        handedOverAt: apiTimestamp(handover.handed_over_at)
+      } : null,
       auditTrail: this.db.prepare(`SELECT event_type, metadata_json, occurred_at FROM order_audit_events
         WHERE order_id = ? AND tenant_id = ? ORDER BY occurred_at, rowid`).all(orderId, tenantId).map((event) => ({
           eventType: event.event_type,
