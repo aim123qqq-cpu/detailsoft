@@ -646,10 +646,10 @@ button.workspace-card:hover, button.workspace-card:focus-visible { border-color:
 
 @media (min-width: 768px) {
   .app-shell { margin-top: 24px; margin-bottom: 24px; min-height: calc(100dvh - 48px); border-radius: 26px; border: 1px solid #303a44; }
-  .bottom-nav { bottom: 24px; border-radius: 0 0 26px 26px; }
-  .reschedule-submit { bottom: 108px; }
-  .quote-dock { bottom: 102px; }
-  .intake-actions { bottom: 100px; }
+  .bottom-nav { bottom: 0; }
+  .reschedule-submit { bottom: calc(84px + env(safe-area-inset-bottom)); }
+  .quote-dock { bottom: 78px; }
+  .intake-actions { bottom: 76px; }
 }
 
 @media (max-width: 350px) {
