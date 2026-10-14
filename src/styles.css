@@ -329,7 +329,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .inspection-photo-row { display: grid; grid-template-columns: 112px 1fr; align-items: center; gap: 10px; margin: 12px 0; }
 .inspection-photo-row > span { color: #98a4ad; font-size: 10px; font-weight: 700; text-transform: uppercase; }
 .inspection-photo-row > div { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
-.inspection-photo-row button, .mock-photo { height: 48px; display: grid; place-items: center; border: 1px solid #34414b; border-radius: 7px; background: #121a21; color: #aeb8c0; font-size: 12px; font-style: normal; }
+.inspection-photo-row button, .inspection-photo-row .photo-add-button, .mock-photo { height: 48px; display: grid; place-items: center; border: 1px solid #34414b; border-radius: 7px; background: #121a21; color: #aeb8c0; font-size: 12px; font-style: normal; }
+.inspection-photo-row img { width: 100%; height: 48px; border-radius: 7px; object-fit: cover; }
+.photo-add-button, .photo-add-text { position: relative; cursor: pointer; overflow: hidden; }
+.photo-add-button input, .photo-add-text input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.photo-empty-inline { grid-column: span 3; align-self: center; color: #65727c; font-size: 10px; }
 .mock-photo { background-color: #20292f; background-size: cover; }
 .mock-photo.one { background-image: radial-gradient(circle at 30% 45%, #ff8a54 0 4%, transparent 5%), linear-gradient(135deg, #687078, #12171b 62%); }
 .mock-photo.two { background-image: linear-gradient(30deg, transparent 42%, rgba(255,255,255,.25) 43% 47%, transparent 48%), linear-gradient(135deg, #20282f, #7d858a); }
@@ -347,9 +351,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .intake-actions button:last-child { border-color: var(--primary); color: #17100c; background: var(--primary); }
 .photo-tab-panel { min-height: 330px; padding: 16px 0; }
 .photo-tab-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 10px; font-weight: 800; }
-.photo-tab-head button { padding: 7px 9px; border: 1px solid rgba(255,121,57,.35); border-radius: 8px; color: #ff9969; background: rgba(255,121,57,.08); font-size: 8px; }
+.photo-tab-head button, .photo-add-text { padding: 8px 10px; border: 1px solid rgba(255,121,57,.35); border-radius: 8px; color: #ff9969; background: rgba(255,121,57,.08); font-size: 10px; }
 .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
 .photo-grid .mock-photo { height: 112px; }
+.photo-grid figure { min-width: 0; margin: 0; position: relative; }
+.photo-grid img { width: 100%; height: 112px; display: block; border: 1px solid #34414b; border-radius: 9px; object-fit: cover; }
+.photo-grid figcaption { position: absolute; right: 5px; bottom: 5px; left: 5px; padding: 4px 6px; overflow: hidden; border-radius: 6px; color: #f3f5f6; background: rgba(7,11,14,.78); font-size: 9px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.photo-empty { min-height: 220px; display: grid; place-content: center; justify-items: center; gap: 7px; padding: 24px; border: 1px dashed #34414b; border-radius: 12px; color: #75828c; text-align: center; }
+.photo-empty span { font-size: 30px; }
+.photo-empty strong { color: #d8dde1; font-size: 13px; }
+.photo-empty small { max-width: 220px; font-size: 10px; line-height: 1.45; }
 .photo-tab-panel p { color: #79858f; font-size: 9px; }
 
 .assignment-panel { margin-top: 14px; padding: 14px; border: 1px solid #33404b; border-radius: 13px; background: #121920; text-align: left; }

@@ -17,12 +17,12 @@ function sendJson(response, status, payload) {
   response.end(JSON.stringify(payload));
 }
 
-async function readJson(request) {
+async function readJson(request, maxBytes = 64 * 1024) {
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > 64 * 1024) throw new Error('request_body_too_large');
+    if (size > maxBytes) throw new Error('request_body_too_large');
     chunks.push(chunk);
   }
   if (!chunks.length) return {};
@@ -252,6 +252,23 @@ export function createDetailFlowServer({
             error: { code: result.code, message: result.message }
           });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте данные приёмки' } });
+        }
+        const orderPhotos = url.pathname.match(/^\/api\/orders\/([^/]+)\/photos$/);
+        if (request.method === 'POST' && orderPhotos) {
+          if (!capabilities.manageIntake) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Фото приёмки доступны только администратору или приёмщику' }
+          });
+          const result = repository.addOrderPhoto(tenantId, orderPhotos[1], await readJson(request, 1024 * 1024));
+          if (result.kind === 'created') return sendJson(response, 201, result.photo);
+          if (result.kind === 'not_found') return sendJson(response, 404, {
+            error: { code: 'order_not_found', message: 'Заказ не найден' }
+          });
+          if (result.kind === 'conflict') return sendJson(response, 409, {
+            error: { code: result.code, message: result.message }
+          });
+          return sendJson(response, 422, {
+            error: { code: 'validation_error', message: 'Выберите JPG, PNG или WebP до 700 КБ' }
+          });
         }
         const orderEstimates = url.pathname.match(/^\/api\/orders\/([^/]+)\/estimates$/);
         if (request.method === 'POST' && orderEstimates) {

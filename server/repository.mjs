@@ -627,6 +627,47 @@ export class DetailFlowRepository {
     return { kind: 'updated', order: this.getOrder(tenantId, orderId) };
   }
 
+  addOrderPhoto(tenantId, orderId, input) {
+    const order = this.db.prepare(`SELECT id, status FROM orders WHERE id = ? AND tenant_id = ?`)
+      .get(orderId, tenantId);
+    if (!order) return { kind: 'not_found' };
+    if (!['INTAKE', 'ESTIMATE_DRAFT'].includes(order.status)) {
+      return { kind: 'conflict', code: 'invalid_order_state', message: 'В закрытую приёмку нельзя добавлять фото' };
+    }
+    const kind = String(input.kind ?? 'intake');
+    const zone = String(input.zone ?? '').trim();
+    const dataUrl = String(input.dataUrl ?? '');
+    const match = dataUrl.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/);
+    const bytes = match ? Buffer.from(match[2], 'base64') : null;
+    const currentCount = this.db.prepare(`SELECT COUNT(*) AS count FROM order_photos
+      WHERE tenant_id = ? AND order_id = ?`).get(tenantId, orderId).count;
+    if (!['intake', 'defect'].includes(kind) || !zone || zone.length > 80 || !bytes ||
+      bytes.length < 1 || bytes.length > 700 * 1024 || currentCount >= 20) return { kind: 'invalid' };
+
+    const id = `photo_${randomUUID()}`;
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`INSERT INTO order_photos
+        (id, tenant_id, order_id, kind, zone, mime_type, data_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, tenantId, orderId, kind, zone, match[1], dataUrl);
+      this.insertOrderAudit(tenantId, orderId, 'INTAKE_PHOTO_ADDED', { photoId: id, kind, zone });
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    const photo = this.db.prepare(`SELECT id, kind, zone, mime_type, data_url, created_at
+      FROM order_photos WHERE id = ? AND tenant_id = ?`).get(id, tenantId);
+    return { kind: 'created', photo: {
+      id: photo.id,
+      kind: photo.kind,
+      zone: photo.zone,
+      mimeType: photo.mime_type,
+      dataUrl: photo.data_url,
+      createdAt: apiTimestamp(photo.created_at)
+    } };
+  }
+
   createEstimateVersion(tenantId, orderId, input) {
     const order = this.db.prepare(`SELECT o.id, o.status FROM orders o
       JOIN order_workflows w ON w.order_id = o.id AND w.tenant_id = o.tenant_id
@@ -1107,6 +1148,16 @@ export class DetailFlowRepository {
       createdAt: apiTimestamp(row.created_at),
       bookingId: row.booking_id ?? null,
       currentEstimateVersionId: row.current_estimate_version_id ?? null,
+      photos: this.db.prepare(`SELECT id, kind, zone, mime_type, data_url, created_at
+        FROM order_photos WHERE order_id = ? AND tenant_id = ? ORDER BY created_at, rowid`).all(orderId, tenantId)
+        .map((photo) => ({
+          id: photo.id,
+          kind: photo.kind,
+          zone: photo.zone,
+          mimeType: photo.mime_type,
+          dataUrl: photo.data_url,
+          createdAt: apiTimestamp(photo.created_at)
+        })),
       intake: intake ? {
         conditionSummary: intake.condition_summary,
         completedAt: apiTimestamp(intake.completed_at),

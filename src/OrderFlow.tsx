@@ -29,6 +29,38 @@ const quickFindings = [
   { zone: 'Стёкла', severity: 'LOW' as const, note: 'Шерсть в салоне' }
 ];
 
+const supportedPhotoTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+function readFileDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Не удалось прочитать фотографию'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function preparePhoto(file: File) {
+  if (!supportedPhotoTypes.has(file.type)) throw new Error('Выберите фотографию JPG, PNG или WebP');
+  const original = await readFileDataUrl(file);
+  if (file.size <= 600 * 1024) return original;
+
+  const image = new Image();
+  image.src = original;
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error('Не удалось обработать фотографию'));
+  });
+  const scale = Math.min(1, 1280 / Math.max(image.naturalWidth, image.naturalHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const optimized = canvas.toDataURL('image/jpeg', 0.76);
+  if (optimized.length > 950_000) throw new Error('Фото слишком большое — выберите снимок меньшего размера');
+  return optimized;
+}
+
 function InspectionCar({ activeZone }: { activeZone: string }) {
   return (
     <svg className="inspection-car" viewBox="0 0 150 260" role="img" aria-label={`Схема автомобиля, зона ${activeZone}`}>
@@ -78,6 +110,7 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
   const [handoverResponsible, setHandoverResponsible] = useState('Анна, администратор');
   const [handoverNote, setHandoverNote] = useState('Клиент осмотрел автомобиль и принял результат работ');
   const [loading, setLoading] = useState(true);
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -150,6 +183,20 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
       setOrder(updated); setStage('estimate');
     } catch (requestError) { setError((requestError as Error).message); }
     finally { setLoading(false); }
+  };
+
+  const uploadPhoto = async (file: File | undefined, kind: 'intake' | 'defect') => {
+    if (!order || !file) return;
+    setPhotoUploading(true); setError('');
+    try {
+      const photo = await api.uploadOrderPhoto(order.id, {
+        kind,
+        zone: kind === 'defect' ? selectedArea : zone,
+        dataUrl: await preparePhoto(file)
+      });
+      setOrder((current) => current ? { ...current, photos: [...current.photos, photo] } : current);
+    } catch (requestError) { setError((requestError as Error).message); }
+    finally { setPhotoUploading(false); }
   };
 
   const createEstimate = async () => {
@@ -323,7 +370,7 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
       {stage === 'intake' && <>
         <div className="inspection-tabs" role="group" aria-label="Раздел приёмки">
           <button aria-pressed={inspectionTab === 'inspection'} className={inspectionTab === 'inspection' ? 'active' : ''} onClick={() => setInspectionTab('inspection')}>Осмотр</button>
-          <button aria-pressed={inspectionTab === 'photo'} className={inspectionTab === 'photo' ? 'active' : ''} onClick={() => setInspectionTab('photo')}>Фото <span>3</span></button>
+          <button aria-pressed={inspectionTab === 'photo'} className={inspectionTab === 'photo' ? 'active' : ''} onClick={() => setInspectionTab('photo')}>Фото <span>{order.photos.length}</span></button>
           <button aria-pressed={inspectionTab === 'recommendations'} className={inspectionTab === 'recommendations' ? 'active' : ''} onClick={() => setInspectionTab('recommendations')}>Рекомендации <span>1</span></button>
         </div>
 
@@ -342,7 +389,11 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
           <div className="severity-line"><span>Статус повреждения</span><div className="severity-chips">{(['LOW', 'MEDIUM', 'HIGH'] as const).map((value) => <button key={value} className={severity === value ? 'selected' : ''} onClick={() => setSeverity(value)}>{value === 'LOW' ? 'Лёгкое' : value === 'MEDIUM' ? 'Среднее' : 'Сильное'}</button>)}</div></div>
           <label className="compact-note">Комментарий к дефекту<input data-testid="finding-note" value={note} onChange={(event) => setNote(event.target.value)}/></label>
 
-          <div className="inspection-photo-row"><span>Фото дефекта</span><div><button aria-label="Добавить фотографию">＋</button><i className="mock-photo one"/><i className="mock-photo two"/><i className="mock-photo three"/></div></div>
+          <div className="inspection-photo-row"><span>Фото дефекта</span><div>
+            <label className="photo-add-button" aria-label="Добавить фотографию дефекта">{photoUploading ? '…' : '＋'}<input data-testid="defect-photo-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={photoUploading} onChange={(event) => { void uploadPhoto(event.target.files?.[0], 'defect'); event.target.value = ''; }}/></label>
+            {order.photos.filter((photo) => photo.kind === 'defect').slice(-3).map((photo) => <img key={photo.id} src={photo.dataUrl} alt={`Дефект: ${photo.zone}`}/>)}
+            {!order.photos.some((photo) => photo.kind === 'defect') && <small className="photo-empty-inline">Нет снимков</small>}
+          </div></div>
 
           <div className="detected-card">
             <div className="detected-title"><span>Обнаружено при осмотре</span><b>{checkedFindings.size + 1}</b></div>
@@ -352,7 +403,9 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
           <label className="intake-summary-line">Комментарий к приёмке<textarea data-testid="intake-summary" value={summary} onChange={(event) => setSummary(event.target.value)}/></label>
         </>}
 
-        {inspectionTab === 'photo' && <div className="photo-tab-panel"><div className="photo-tab-head"><span>Фото приёмки</span><button>＋ Добавить</button></div><div className="photo-grid"><i className="mock-photo one"/><i className="mock-photo two"/><i className="mock-photo three"/></div><p>Фото привязываются к выбранной зоне осмотра.</p></div>}
+        {inspectionTab === 'photo' && <div className="photo-tab-panel"><div className="photo-tab-head"><span>Фото приёмки · {order.photos.length}</span><label className="photo-add-text">{photoUploading ? 'Загрузка…' : '＋ Добавить'}<input data-testid="intake-photo-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={photoUploading} onChange={(event) => { void uploadPhoto(event.target.files?.[0], 'intake'); event.target.value = ''; }}/></label></div>
+          {order.photos.length ? <div className="photo-grid">{order.photos.map((photo) => <figure key={photo.id}><img src={photo.dataUrl} alt={`Фото зоны ${photo.zone}`}/><figcaption>{photo.zone}</figcaption></figure>)}</div> : <div className="photo-empty"><span>▧</span><strong>Снимков пока нет</strong><small>Добавьте общий вид автомобиля или фото выбранной зоны</small></div>}
+          <p>Фото сохраняются в заказе и привязываются к текущей зоне «{zone}».</p></div>}
 
         {inspectionTab === 'recommendations' && <div className="recommendation-card"><span>Рекомендация клиенту</span><input data-testid="recommendation-title" value={recommendationTitle} onChange={(event) => setRecommendationTitle(event.target.value)}/><textarea value={recommendationReason} onChange={(event) => setRecommendationReason(event.target.value)}/></div>}
         {error && <div className="inline-error">{error}</div>}

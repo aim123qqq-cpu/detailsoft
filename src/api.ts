@@ -1,4 +1,4 @@
-import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, OrderListItem, OrderRecommendation, QuoteSelection, ServiceCatalog, SessionContext, Vehicle, WorkOrder } from './types';
+import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, Vehicle, WorkOrder } from './types';
 
 const sessionHeaders = { authorization: 'Bearer demo-session-token' };
 
@@ -97,6 +97,11 @@ export const api = {
   }) {
     return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/intake`, {
       method: 'PUT', body: JSON.stringify(input)
+    });
+  },
+  uploadOrderPhoto(orderId: string, input: { kind: 'intake' | 'defect'; zone: string; dataUrl: string }) {
+    return request<PhotoAsset>(`/api/orders/${encodeURIComponent(orderId)}/photos`, {
+      method: 'POST', body: JSON.stringify(input)
     });
   },
   createEstimate(orderId: string, lines: EstimateLineInput[]) {

@@ -159,6 +159,15 @@ export type EstimateVersion = {
   lines: Array<EstimateLineInput & { id: string }>;
 };
 
+export type PhotoAsset = {
+  id: string;
+  kind: 'intake' | 'defect';
+  zone: string;
+  mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+  dataUrl: string;
+  createdAt: string;
+};
+
 export type WorkOrder = {
   id: string;
   createdAt: string;
@@ -167,6 +176,7 @@ export type WorkOrder = {
   vehicleId: string;
   status: 'INTAKE' | 'ESTIMATE_DRAFT' | 'APPROVED' | 'IN_PROGRESS' | 'QC' | 'READY' | 'CLOSED';
   currentEstimateVersionId: string | null;
+  photos: PhotoAsset[];
   intake: null | {
     conditionSummary: string;
     completedAt: string;

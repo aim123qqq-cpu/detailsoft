@@ -103,6 +103,16 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.locator('.zone-rail').getByRole('button', { name: /Кузов/ }).click();
     await page.screenshot({ path: resolve(artifacts, '07-order-intake.png'), fullPage: true });
 
+    await page.getByTestId('defect-photo-input').setInputFiles(resolve(artifacts, '07-order-intake.png'));
+    await page.locator('.inspection-photo-row img').waitFor();
+    await page.getByRole('button', { name: /^Фото/ }).click();
+    await page.getByTestId('intake-photo-input').setInputFiles(resolve(artifacts, '06-booking-confirmed.png'));
+    await page.locator('.photo-grid img').nth(1).waitFor();
+    assert.equal(await page.locator('.photo-grid img').count(), 2);
+    assert.match(await page.locator('.photo-tab-panel').innerText(), /Переднее крыло/);
+    await page.screenshot({ path: resolve(artifacts, '30-intake-photos.png'), fullPage: true });
+    await page.getByRole('button', { name: 'Осмотр' }).click();
+
     await page.setViewportSize({ width: 820, height: 1024 });
     const tabletShell = await page.locator('.app-shell').boundingBox();
     assert.ok(tabletShell && tabletShell.width >= 760 && tabletShell.width <= 800, 'tablet uses the available width with safe outer gutters');
