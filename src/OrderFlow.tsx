@@ -321,10 +321,10 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
       <div className="order-hero"><small>{customer.name}</small><strong>{vehicle.make} {vehicle.model} {vehicle.generation}</strong><span>{vehicle.plate} · {vehicle.color}</span></div>
 
       {stage === 'intake' && <>
-        <div className="inspection-tabs" role="tablist">
-          <button className={inspectionTab === 'inspection' ? 'active' : ''} onClick={() => setInspectionTab('inspection')}>Осмотр</button>
-          <button className={inspectionTab === 'photo' ? 'active' : ''} onClick={() => setInspectionTab('photo')}>Фото <span>3</span></button>
-          <button className={inspectionTab === 'recommendations' ? 'active' : ''} onClick={() => setInspectionTab('recommendations')}>Рекомендации <span>1</span></button>
+        <div className="inspection-tabs" role="group" aria-label="Раздел приёмки">
+          <button aria-pressed={inspectionTab === 'inspection'} className={inspectionTab === 'inspection' ? 'active' : ''} onClick={() => setInspectionTab('inspection')}>Осмотр</button>
+          <button aria-pressed={inspectionTab === 'photo'} className={inspectionTab === 'photo' ? 'active' : ''} onClick={() => setInspectionTab('photo')}>Фото <span>3</span></button>
+          <button aria-pressed={inspectionTab === 'recommendations'} className={inspectionTab === 'recommendations' ? 'active' : ''} onClick={() => setInspectionTab('recommendations')}>Рекомендации <span>1</span></button>
         </div>
 
         {inspectionTab === 'inspection' && <>

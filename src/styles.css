@@ -18,7 +18,12 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; font-size: 14px; background: radial-gradient(circle at 50% -10%, #263440 0, #0b1016 36%, #080c11 100%); }
 button, input { font: inherit; }
-button { color: inherit; }
+button { min-height: 44px; color: inherit; touch-action: manipulation; }
+input, textarea, select { min-height: 44px; }
+
+.skip-link { position: fixed; z-index: 100; top: 8px; left: 50%; padding: 11px 16px; border-radius: 10px; color: #17100c; background: var(--primary); font-size: 13px; font-weight: 800; transform: translate(-50%, -150%); transition: transform .15s ease; }
+.skip-link:focus { transform: translate(-50%, 0); }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 3px solid #ffb18b !important; outline-offset: 3px; }
 
 .app-shell { width: min(100%, var(--app-width)); min-height: 100dvh; margin: 0 auto; background: linear-gradient(180deg, rgba(20,28,36,.98), var(--bg) 28%); box-shadow: 0 0 80px #000; position: relative; padding-bottom: 96px; overflow: hidden; }
 .app-header { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 10px; padding: max(16px, env(safe-area-inset-top)) 18px 14px; background: rgba(11,16,22,.88); backdrop-filter: blur(18px); border-bottom: 1px solid rgba(255,255,255,.06); }
@@ -661,8 +666,26 @@ button.workspace-card:hover, button.workspace-card:focus-visible { border-color:
 .nav-action { width: 42px; height: 42px; display: grid; place-items: center; margin-top: -12px; background: var(--primary); color: #1b110d; border-radius: 14px; box-shadow: 0 7px 22px rgba(255,121,57,.35); border: 4px solid var(--bg); }
 
 @media (min-width: 768px) {
-  .app-shell { margin-top: 24px; margin-bottom: 24px; min-height: calc(100dvh - 48px); border-radius: 26px; border: 1px solid #303a44; }
-  .bottom-nav { bottom: 0; }
+  :root { --app-width: 820px; }
+  .app-shell { width: min(calc(100% - 32px), var(--app-width)); margin-top: 24px; margin-bottom: 24px; min-height: calc(100dvh - 48px); border-radius: 26px; border: 1px solid #303a44; }
+  .app-header { padding-right: 28px; padding-left: 28px; }
+  .screen { padding: 25px 28px 42px; }
+  .bottom-nav { bottom: 0; width: min(calc(100% - 32px), var(--app-width)); }
+  .intake-actions { width: min(calc(100% - 32px), var(--app-width)); padding-right: 28px; padding-left: 28px; }
+  .inspection-board { grid-template-columns: 112px minmax(280px, .95fr) minmax(250px, 1fr); grid-template-rows: 330px; gap: 14px; }
+  .zone-rail button { grid-template-columns: 30px 1fr; gap: 8px; padding: 0 9px; font-size: 11px; }
+  .zone-rail button i { width: 28px; height: 28px; font-size: 11px; }
+  .inspection-car { width: 150px; height: 286px; }
+  .defect-preview { grid-column: 3; grid-row: 1; grid-template-columns: 1fr; grid-template-rows: 174px auto auto auto; align-content: start; gap: 8px; padding: 12px; }
+  .preview-photo { grid-row: 1; width: 100%; height: 174px; }
+  .detected-card label { min-height: 42px; font-size: 12px; }
+  .workspace-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .analytics-kpis { grid-template-columns: repeat(3, 1fr); }
+  .analytics-kpi.wide { grid-column: 1 / -1; }
+  .profile-screen { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); align-items: start; gap: 14px; }
+  .profile-hero, .profile-center-card, .profile-access, .profile-settings { margin-top: 0; }
+  .profile-access { grid-column: 2; grid-row: 1 / span 2; }
+  .profile-settings, .profile-version { grid-column: 1 / -1; }
   .reschedule-submit { bottom: calc(84px + env(safe-area-inset-bottom)); }
   .quote-dock { bottom: 78px; }
   .intake-actions { bottom: 76px; }
@@ -673,4 +696,8 @@ button.workspace-card:hover, button.workspace-card:focus-visible { border-color:
   .app-header { padding-left: 12px; padding-right: 12px; }
   .plate { display: none; }
   .vehicle-card { grid-template-columns: 40px minmax(0,1fr) 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

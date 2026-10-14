@@ -19,6 +19,21 @@ test('mobile customer → vehicle → services → booking flow works end to end
 
   try {
     await page.goto(`http://127.0.0.1:${port}`, { waitUntil: 'domcontentloaded' });
+    const firstFocusableClass = await page.locator('a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])').first().getAttribute('class');
+    assert.match(firstFocusableClass ?? '', /skip-link/, 'skip link is first in the keyboard focus order');
+    await page.locator('.skip-link').focus();
+    assert.equal(await page.evaluate(() => document.activeElement?.classList.contains('skip-link')), true, 'skip link accepts keyboard focus');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'main-content');
+
+    const searchTargets = await page.locator('.search-tabs button').evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height));
+    assert.ok(searchTargets.every((height) => height >= 44), 'search tabs meet the 44px touch target');
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const reducedAnimation = Number.parseFloat(await page.locator('.screen').evaluate((element) => getComputedStyle(element).animationDuration));
+    assert.ok(reducedAnimation <= 0.01, 'screen animation respects reduced motion');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+
     await page.getByTestId('main-search').fill('+7 913 123-45-67');
     await page.getByTestId('customer-result').waitFor();
     assert.equal(await page.locator('[data-testid^="vehicle-"]').count(), 2);
@@ -74,16 +89,18 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.locator('.zone-rail').getByRole('button', { name: /Кузов/ }).click();
     await page.screenshot({ path: resolve(artifacts, '07-order-intake.png'), fullPage: true });
 
-    await page.setViewportSize({ width: 1280, height: 900 });
-    const desktopShell = await page.locator('.app-shell').boundingBox();
-    assert.ok(desktopShell && desktopShell.width >= 420 && desktopShell.width <= 440, 'desktop intake keeps realistic phone proportions');
+    await page.setViewportSize({ width: 820, height: 1024 });
+    const tabletShell = await page.locator('.app-shell').boundingBox();
+    assert.ok(tabletShell && tabletShell.width >= 760 && tabletShell.width <= 800, 'tablet uses the available width with safe outer gutters');
+    const intakeColumns = await page.locator('.inspection-board').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length);
+    assert.equal(intakeColumns, 3, 'tablet intake separates zones, vehicle and defect details');
     const zoneFontSize = Number.parseFloat(await page.locator('.zone-rail button').first().evaluate((element) => getComputedStyle(element).fontSize));
     const findingFontSize = Number.parseFloat(await page.locator('.detected-card label').first().evaluate((element) => getComputedStyle(element).fontSize));
-    const desktopNav = await page.locator('.bottom-nav').boundingBox();
-    assert.ok(zoneFontSize >= 10, 'zone labels remain readable without widening the phone');
-    assert.ok(findingFontSize >= 11, 'inspection findings remain readable without widening the phone');
-    assert.ok(desktopNav && Math.abs(desktopNav.y + desktopNav.height - 900) < 1, 'bottom navigation is pinned to the viewport edge');
-    await page.screenshot({ path: resolve(artifacts, '07b-order-intake-desktop.png') });
+    const tabletNav = await page.locator('.bottom-nav').boundingBox();
+    assert.ok(zoneFontSize >= 11, 'zone labels remain readable on tablet');
+    assert.ok(findingFontSize >= 12, 'inspection findings remain readable on tablet');
+    assert.ok(tabletNav && Math.abs(tabletNav.y + tabletNav.height - 1024) < 1, 'bottom navigation remains pinned on tablet');
+    await page.screenshot({ path: resolve(artifacts, '26-order-intake-tablet.png') });
     await page.setViewportSize({ width: 390, height: 844 });
 
     await page.getByTestId('save-intake').click();
@@ -224,6 +241,13 @@ test('mobile customer → vehicle → services → booking flow works end to end
     assert.match(await page.getByTestId('profile-screen').innerText(), /Права вычисляются сервером/);
     await page.waitForTimeout(250);
     await page.screenshot({ path: resolve(artifacts, '25-profile.png') });
+
+    await page.setViewportSize({ width: 820, height: 1024 });
+    const profileColumns = await page.getByTestId('profile-screen').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length);
+    assert.equal(profileColumns, 2, 'tablet profile uses two readable content columns');
+    const tabletProfileNav = await page.locator('.bottom-nav').boundingBox();
+    assert.ok(tabletProfileNav && Math.abs(tabletProfileNav.y + tabletProfileNav.height - 1024) < 1, 'profile navigation remains pinned on tablet');
+    await page.screenshot({ path: resolve(artifacts, '27-profile-tablet.png') });
 
     await page.setViewportSize({ width: 320, height: 700 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);

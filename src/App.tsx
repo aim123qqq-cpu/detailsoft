@@ -189,8 +189,9 @@ export function App() {
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">Перейти к содержимому</a>
       <Header step={step} workspace={workspace} orderTitle={orderHeader} onBack={() => workspace !== 'new' ? startNewBooking() : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
-      <main>
+      <main id="main-content" tabIndex={-1}>
         {workspace === 'bookings' && <BookingsWorkspace onNew={startNewBooking}/>}
         {workspace === 'orders' && <OrdersWorkspace/>}
         {workspace === 'analytics' && <AnalyticsScreen/>}
@@ -200,14 +201,14 @@ export function App() {
             <div className="context-line"><span className="live-dot"/> DetailFlow Studio <span>·</span> Сегодня, 14:30</div>
             <div className="section-block compact">
               <label className="section-label">Канал обращения</label>
-              <div className="chips" role="list">
-                {channels.map((item) => <button key={item} className={channel === item ? 'selected' : ''} onClick={() => setChannel(item)}>{channel === item && <Icon name="check" size={14}/>} {item}</button>)}
+              <div className="chips" role="group" aria-label="Канал обращения">
+                {channels.map((item) => <button key={item} aria-pressed={channel === item} className={channel === item ? 'selected' : ''} onClick={() => setChannel(item)}>{channel === item && <Icon name="check" size={14}/>} {item}</button>)}
               </div>
             </div>
             <div className="search-panel">
               <div className="search-tabs">
-                <button className={mode === 'phone' ? 'active' : ''} onClick={() => { setMode('phone'); setQuery(''); }}><Icon name="phone" size={17}/> По телефону</button>
-                <button className={mode === 'plate' ? 'active' : ''} onClick={() => { setMode('plate'); setQuery(''); }}><Icon name="car" size={18}/> По госномеру</button>
+                <button aria-pressed={mode === 'phone'} className={mode === 'phone' ? 'active' : ''} onClick={() => { setMode('phone'); setQuery(''); }}><Icon name="phone" size={17}/> По телефону</button>
+                <button aria-pressed={mode === 'plate'} className={mode === 'plate' ? 'active' : ''} onClick={() => { setMode('plate'); setQuery(''); }}><Icon name="car" size={18}/> По госномеру</button>
               </div>
               <label htmlFor="search-input">{mode === 'phone' ? 'Телефон клиента' : 'Госномер автомобиля'}</label>
               <div className={`search-input ${error ? 'invalid' : ''}`}>
@@ -223,7 +224,7 @@ export function App() {
                 />
                 {loading && <span className="spinner" aria-label="Поиск"/>}
               </div>
-              <p className={error ? 'field-hint error' : 'field-hint'}>{error || (mode === 'phone' ? 'Начните вводить номер — найдём клиента и его автомобили' : 'Поиск работает только внутри текущего центра')}</p>
+              <p aria-live="polite" className={error ? 'field-hint error' : 'field-hint'}>{error || (mode === 'phone' ? 'Начните вводить номер — найдём клиента и его автомобили' : 'Поиск работает только внутри текущего центра')}</p>
             </div>
 
             {mode === 'phone' && customers.map((customer) => (
@@ -341,7 +342,7 @@ function AddVehicle({ customer, onCancel, onCreated }: { customer: Customer; onC
         <div className="search-input filled"><Icon name="search"/><input id="model-search" value={modelQuery} onChange={(event) => { setModelQuery(event.target.value); setVariant(null); }}/></div>
         {variants.length > 1 && <p className="choice-note"><Icon name="spark" size={16}/> Найдено несколько кузовов — выберите подходящий</p>}
         <div className="variant-grid">
-          {variants.map((item) => <button key={item.id} className={variant?.id === item.id ? 'selected' : ''} onClick={() => setVariant(item)}>
+          {variants.map((item) => <button key={item.id} aria-pressed={variant?.id === item.id} className={variant?.id === item.id ? 'selected' : ''} onClick={() => setVariant(item)}>
             <span className="variant-icon"><Icon name="car" size={26}/></span>
             <strong>{bodyLabels[item.bodyType] ?? item.bodyType}</strong>
             <small>{item.yearFrom}–{item.yearTo}</small>
