@@ -5,6 +5,7 @@ import { createDetailFlowServer } from '../server/app.mjs';
 let server;
 let baseUrl;
 let orderId;
+const photoDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 
 before(async () => {
   server = createDetailFlowServer({
@@ -29,6 +30,9 @@ before(async () => {
   const booking = await bookingResponse.json();
   const createdOrder = await api('/api/orders', { method: 'POST', body: { bookingId: booking.id } });
   orderId = (await createdOrder.json()).id;
+  await api(`/api/orders/${orderId}/photos`, {
+    method: 'POST', body: { phase: 'intake', kind: 'intake', zone: 'Кузов', dataUrl: photoDataUrl }
+  });
   await api(`/api/orders/${orderId}/intake`, { method: 'PUT', body: {
     conditionSummary: 'Автомобиль принят',
     findings: [{ zone: 'Кузов', severity: 'LOW', note: 'Лёгкие загрязнения' }],
@@ -173,13 +177,41 @@ test('delivery closes a ready order without a payment workflow', async () => {
   });
   assert.equal(removedPaymentsRoute.status, 404);
 
-  const handover = await api(`/api/orders/${orderId}/handover`, {
+  const missingResultPhoto = await api(`/api/orders/${orderId}/handover`, {
     method: 'POST', body: { responsible: 'Анна', note: 'Клиент проверил автомобиль' }
+  });
+  assert.equal(missingResultPhoto.status, 409);
+  assert.equal((await missingResultPhoto.json()).error.code, 'handover_photos_required');
+
+  const forbiddenResultPhoto = await api(`/api/orders/${orderId}/photos`, {
+    token: 'intake-only-token', method: 'POST',
+    body: { phase: 'result', kind: 'intake', zone: 'Результат работ', dataUrl: photoDataUrl }
+  });
+  assert.equal(forbiddenResultPhoto.status, 403);
+
+  const resultPhoto = await api(`/api/orders/${orderId}/photos`, {
+    method: 'POST', body: { phase: 'result', kind: 'intake', zone: 'Результат работ', dataUrl: photoDataUrl }
+  });
+  assert.equal(resultPhoto.status, 201);
+  assert.equal((await resultPhoto.json()).phase, 'result');
+
+  const unconfirmedHandover = await api(`/api/orders/${orderId}/handover`, {
+    method: 'POST', body: { responsible: 'Анна', note: 'Клиент проверил автомобиль' }
+  });
+  assert.equal(unconfirmedHandover.status, 422);
+
+  const handover = await api(`/api/orders/${orderId}/handover`, {
+    method: 'POST', body: {
+      responsible: 'Анна', note: 'Клиент проверил автомобиль',
+      customerAccepted: true, completenessChecked: true
+    }
   });
   assert.equal(handover.status, 200);
   const closed = await handover.json();
   assert.equal(closed.status, 'CLOSED');
   assert.equal(closed.handover.responsible, 'Анна');
+  assert.equal(closed.photos.filter((photo) => photo.phase === 'intake').length, 1);
+  assert.equal(closed.photos.filter((photo) => photo.phase === 'result').length, 1);
   assert.ok(closed.auditTrail.some((event) => event.eventType === 'ORDER_CLOSED'));
 });
 

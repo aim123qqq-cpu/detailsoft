@@ -109,6 +109,8 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [handoverResponsible, setHandoverResponsible] = useState('Анна, администратор');
   const [handoverNote, setHandoverNote] = useState('Клиент осмотрел автомобиль и принял результат работ');
+  const [customerAccepted, setCustomerAccepted] = useState(false);
+  const [completenessChecked, setCompletenessChecked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [error, setError] = useState('');
@@ -185,13 +187,14 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
     finally { setLoading(false); }
   };
 
-  const uploadPhoto = async (file: File | undefined, kind: 'intake' | 'defect') => {
+  const uploadPhoto = async (file: File | undefined, kind: 'intake' | 'defect', phase: 'intake' | 'result' = 'intake') => {
     if (!order || !file) return;
     setPhotoUploading(true); setError('');
     try {
       const photo = await api.uploadOrderPhoto(order.id, {
+        phase,
         kind,
-        zone: kind === 'defect' ? selectedArea : zone,
+        zone: phase === 'result' ? 'Результат работ' : kind === 'defect' ? selectedArea : zone,
         dataUrl: await preparePhoto(file)
       });
       setOrder((current) => current ? { ...current, photos: [...current.photos, photo] } : current);
@@ -245,12 +248,14 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
   }));
   const openDelivery = () => setDeliveryOpen(true);
   const closeOrder = () => order && runOrderAction(() => api.closeOrder(order.id, {
-    responsible: handoverResponsible, note: handoverNote
+    responsible: handoverResponsible, note: handoverNote, customerAccepted, completenessChecked
   }));
 
   if (loading && !order) return <section className="screen order-loading"><span className="spinner"/> Создаём заказ из записи</section>;
   if (!order) return <section className="screen"><div className="inline-error">{error || 'Не удалось создать заказ'}</div></section>;
   const currentEstimate = order.estimateVersions.find((item) => item.id === order.currentEstimateVersionId);
+  const intakePhoto = order.photos.find((photo) => photo.phase === 'intake');
+  const resultPhoto = order.photos.find((photo) => photo.phase === 'result');
 
   if (order.status === 'CLOSED') return (
     <section className="screen closed-screen" data-testid="order-closed">
@@ -272,17 +277,20 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
     <section className="screen delivery-screen" data-testid="order-delivery">
       <div className="production-top"><span>Выдача автомобиля</span><b>READY</b></div>
       <div className="order-hero"><small>{customer.name}</small><strong>{vehicle.make} {vehicle.model}</strong><span>{vehicle.plate} · {vehicle.color}</span></div>
-      <div className="delivery-photos"><div><span className="mock-photo two"/><small>Фото до</small></div><div><span className="mock-photo three"/><small>Фото после</small></div></div>
+      <div className="delivery-photos">
+        <div className={!intakePhoto ? 'missing' : ''}>{intakePhoto ? <img src={intakePhoto.dataUrl} alt={`Автомобиль до работ, ${intakePhoto.zone}`}/> : <span className="delivery-photo-empty">Нет фото приёмки</span>}<small>До работ</small></div>
+        <label className={!resultPhoto ? 'missing' : ''}>{resultPhoto ? <img src={resultPhoto.dataUrl} alt="Автомобиль после работ"/> : <span className="delivery-photo-empty">{photoUploading ? 'Загрузка…' : '＋ Добавить фото'}</span>}<small>После работ</small><input data-testid="result-photo-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={photoUploading || Boolean(resultPhoto)} onChange={(event) => { void uploadPhoto(event.target.files?.[0], 'intake', 'result'); event.target.value = ''; }}/></label>
+      </div>
       <div className="handover-checklist">
         <span className="delivery-label">Перед выдачей</span>
-        <div><i>✓</i><span>Клиент осмотрел результат работ</span></div>
-        <div><i>✓</i><span>Фото до и после прикреплены</span></div>
-        <div><i>✓</i><span>Комплектность автомобиля проверена</span></div>
+        <button type="button" aria-pressed={customerAccepted} className={customerAccepted ? 'checked' : 'pending'} onClick={() => setCustomerAccepted((value) => !value)}><i>{customerAccepted ? '✓' : '!'}</i><span>Клиент осмотрел результат работ</span></button>
+        <div className={intakePhoto && resultPhoto ? '' : 'pending'}><i>{intakePhoto && resultPhoto ? '✓' : '!'}</i><span>{intakePhoto && resultPhoto ? 'Фото до и после прикреплены' : 'Добавьте фото до и после работ'}</span></div>
+        <button type="button" aria-pressed={completenessChecked} className={completenessChecked ? 'checked' : 'pending'} onClick={() => setCompletenessChecked((value) => !value)}><i>{completenessChecked ? '✓' : '!'}</i><span>Комплектность автомобиля проверена</span></button>
       </div>
       <label className="order-field">Ответственный<input value={handoverResponsible} onChange={(event) => setHandoverResponsible(event.target.value)}/></label>
       <label className="order-field">Комментарий к выдаче<textarea value={handoverNote} onChange={(event) => setHandoverNote(event.target.value)}/></label>
       {error && <div className="inline-error">{error}</div>}
-      <button className="primary-button close-order-button" data-testid="close-order" disabled={loading || handoverResponsible.trim().length < 2 || handoverNote.trim().length < 2} onClick={closeOrder}>Выдать автомобиль и закрыть заказ →</button>
+      <button className="primary-button close-order-button" data-testid="close-order" disabled={loading || !intakePhoto || !resultPhoto || !customerAccepted || !completenessChecked || handoverResponsible.trim().length < 2 || handoverNote.trim().length < 2} onClick={closeOrder}>Выдать автомобиль и закрыть заказ →</button>
     </section>
   );
 
@@ -391,8 +399,8 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
 
           <div className="inspection-photo-row"><span>Фото дефекта</span><div>
             <label className="photo-add-button" aria-label="Добавить фотографию дефекта">{photoUploading ? '…' : '＋'}<input data-testid="defect-photo-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={photoUploading} onChange={(event) => { void uploadPhoto(event.target.files?.[0], 'defect'); event.target.value = ''; }}/></label>
-            {order.photos.filter((photo) => photo.kind === 'defect').slice(-3).map((photo) => <img key={photo.id} src={photo.dataUrl} alt={`Дефект: ${photo.zone}`}/>)}
-            {!order.photos.some((photo) => photo.kind === 'defect') && <small className="photo-empty-inline">Нет снимков</small>}
+            {order.photos.filter((photo) => photo.phase === 'intake' && photo.kind === 'defect').slice(-3).map((photo) => <img key={photo.id} src={photo.dataUrl} alt={`Дефект: ${photo.zone}`}/>)}
+            {!order.photos.some((photo) => photo.phase === 'intake' && photo.kind === 'defect') && <small className="photo-empty-inline">Нет снимков</small>}
           </div></div>
 
           <div className="detected-card">
@@ -404,7 +412,7 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
         </>}
 
         {inspectionTab === 'photo' && <div className="photo-tab-panel"><div className="photo-tab-head"><span>Фото приёмки · {order.photos.length}</span><label className="photo-add-text">{photoUploading ? 'Загрузка…' : '＋ Добавить'}<input data-testid="intake-photo-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={photoUploading} onChange={(event) => { void uploadPhoto(event.target.files?.[0], 'intake'); event.target.value = ''; }}/></label></div>
-          {order.photos.length ? <div className="photo-grid">{order.photos.map((photo) => <figure key={photo.id}><img src={photo.dataUrl} alt={`Фото зоны ${photo.zone}`}/><figcaption>{photo.zone}</figcaption></figure>)}</div> : <div className="photo-empty"><span>▧</span><strong>Снимков пока нет</strong><small>Добавьте общий вид автомобиля или фото выбранной зоны</small></div>}
+          {order.photos.some((photo) => photo.phase === 'intake') ? <div className="photo-grid">{order.photos.filter((photo) => photo.phase === 'intake').map((photo) => <figure key={photo.id}><img src={photo.dataUrl} alt={`Фото зоны ${photo.zone}`}/><figcaption>{photo.zone}</figcaption></figure>)}</div> : <div className="photo-empty"><span>▧</span><strong>Снимков пока нет</strong><small>Добавьте общий вид автомобиля или фото выбранной зоны</small></div>}
           <p>Фото сохраняются в заказе и привязываются к текущей зоне «{zone}».</p></div>}
 
         {inspectionTab === 'recommendations' && <div className="recommendation-card"><span>Рекомендация клиенту</span><input data-testid="recommendation-title" value={recommendationTitle} onChange={(event) => setRecommendationTitle(event.target.value)}/><textarea value={recommendationReason} onChange={(event) => setRecommendationReason(event.target.value)}/></div>}

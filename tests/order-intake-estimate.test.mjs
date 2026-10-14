@@ -71,6 +71,7 @@ test('intake photos are validated, tenant scoped and persisted with their inspec
   });
   assert.equal(uploaded.status, 201);
   const photo = await uploaded.json();
+  assert.equal(photo.phase, 'intake');
   assert.equal(photo.kind, 'defect');
   assert.equal(photo.zone, 'Переднее крыло');
   assert.equal(photo.mimeType, 'image/png');

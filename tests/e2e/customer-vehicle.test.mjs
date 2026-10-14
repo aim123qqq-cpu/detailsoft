@@ -27,7 +27,7 @@ test('mobile customer → vehicle → services → booking flow works end to end
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'main-content');
 
     const searchTargets = await page.locator('.search-tabs button').evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height));
-    assert.ok(searchTargets.every((height) => height >= 44), `search tabs meet the 44px touch target: ${searchTargets.join(', ')}`);
+    assert.ok(searchTargets.every((height) => height >= 43.99), `search tabs meet the 44px touch target within browser subpixel precision: ${searchTargets.join(', ')}`);
 
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const reducedAnimation = Number.parseFloat(await page.locator('.screen').evaluate((element) => getComputedStyle(element).animationDuration));
@@ -170,8 +170,15 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.getByTestId('order-delivery').waitFor();
     assert.match(await page.getByTestId('order-delivery').innerText(), /перед выдачей/i);
     assert.doesNotMatch(await page.getByTestId('order-delivery').innerText(), /оплат/i);
+    assert.equal(await page.getByTestId('close-order').isDisabled(), true);
+    assert.match(await page.getByTestId('order-delivery').innerText(), /добавьте фото до и после/i);
+    await page.getByTestId('result-photo-input').setInputFiles(resolve(artifacts, '11-master-work.png'));
+    await page.locator('.delivery-photos img').nth(1).waitFor();
+    assert.equal(await page.getByTestId('close-order').isDisabled(), true);
+    await page.getByRole('button', { name: 'Клиент осмотрел результат работ' }).click();
+    await page.getByRole('button', { name: 'Комплектность автомобиля проверена' }).click();
     assert.equal(await page.getByTestId('close-order').isDisabled(), false);
-    await page.screenshot({ path: resolve(artifacts, '14-order-delivery.png'), fullPage: true });
+    await page.screenshot({ path: resolve(artifacts, '31-order-delivery-photos.png'), fullPage: true });
 
     await page.getByTestId('close-order').click();
     await page.getByTestId('order-closed').waitFor();

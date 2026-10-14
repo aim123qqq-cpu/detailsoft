@@ -631,9 +631,11 @@ export class DetailFlowRepository {
     const order = this.db.prepare(`SELECT id, status FROM orders WHERE id = ? AND tenant_id = ?`)
       .get(orderId, tenantId);
     if (!order) return { kind: 'not_found' };
-    if (!['INTAKE', 'ESTIMATE_DRAFT'].includes(order.status)) {
-      return { kind: 'conflict', code: 'invalid_order_state', message: 'В закрытую приёмку нельзя добавлять фото' };
-    }
+    const phase = input.phase === 'result' ? 'result' : 'intake';
+    const allowedStatus = phase === 'result' ? order.status === 'READY' : ['INTAKE', 'ESTIMATE_DRAFT'].includes(order.status);
+    if (!allowedStatus) return { kind: 'conflict', code: 'invalid_order_state', message: phase === 'result'
+      ? 'Фото результата можно добавить только перед выдачей'
+      : 'В закрытую приёмку нельзя добавлять фото' };
     const kind = String(input.kind ?? 'intake');
     const zone = String(input.zone ?? '').trim();
     const dataUrl = String(input.dataUrl ?? '');
@@ -641,8 +643,8 @@ export class DetailFlowRepository {
     const bytes = match ? Buffer.from(match[2], 'base64') : null;
     const currentCount = this.db.prepare(`SELECT COUNT(*) AS count FROM order_photos
       WHERE tenant_id = ? AND order_id = ?`).get(tenantId, orderId).count;
-    if (!['intake', 'defect'].includes(kind) || !zone || zone.length > 80 || !bytes ||
-      bytes.length < 1 || bytes.length > 700 * 1024 || currentCount >= 20) return { kind: 'invalid' };
+    if (!['intake', 'defect'].includes(kind) || (phase === 'result' && kind !== 'intake') || !zone || zone.length > 80 || !bytes ||
+      bytes.length < 1 || bytes.length > 700 * 1024 || currentCount >= 20 || (phase === 'intake' && currentCount >= 19)) return { kind: 'invalid' };
 
     const id = `photo_${randomUUID()}`;
     this.db.exec('BEGIN');
@@ -650,7 +652,11 @@ export class DetailFlowRepository {
       this.db.prepare(`INSERT INTO order_photos
         (id, tenant_id, order_id, kind, zone, mime_type, data_url)
         VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, tenantId, orderId, kind, zone, match[1], dataUrl);
-      this.insertOrderAudit(tenantId, orderId, 'INTAKE_PHOTO_ADDED', { photoId: id, kind, zone });
+      if (phase === 'result') this.db.prepare(`INSERT INTO order_result_photos
+        (photo_id, tenant_id, order_id) VALUES (?, ?, ?)`).run(id, tenantId, orderId);
+      this.insertOrderAudit(tenantId, orderId, phase === 'result' ? 'RESULT_PHOTO_ADDED' : 'INTAKE_PHOTO_ADDED', {
+        photoId: id, kind, zone
+      });
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
@@ -660,6 +666,7 @@ export class DetailFlowRepository {
       FROM order_photos WHERE id = ? AND tenant_id = ?`).get(id, tenantId);
     return { kind: 'created', photo: {
       id: photo.id,
+      phase,
       kind: photo.kind,
       zone: photo.zone,
       mimeType: photo.mime_type,
@@ -985,13 +992,27 @@ export class DetailFlowRepository {
     const order = this.db.prepare(`SELECT status FROM orders WHERE id = ? AND tenant_id = ?`).get(orderId, tenantId);
     if (!order) return { kind: 'not_found' };
     if (order.status !== 'READY') return { kind: 'conflict', code: 'invalid_order_state', message: 'Заказ не готов к выдаче' };
+    const photos = this.db.prepare(`SELECT
+        SUM(CASE WHEN result.photo_id IS NULL THEN 1 ELSE 0 END) AS intake_count,
+        SUM(CASE WHEN result.photo_id IS NOT NULL THEN 1 ELSE 0 END) AS result_count
+      FROM order_photos photo
+      LEFT JOIN order_result_photos result ON result.photo_id = photo.id AND result.tenant_id = photo.tenant_id
+      WHERE photo.order_id = ? AND photo.tenant_id = ?`).get(orderId, tenantId);
+    if (!photos.intake_count || !photos.result_count) return {
+      kind: 'conflict', code: 'handover_photos_required', message: 'Добавьте фото автомобиля до и после работ'
+    };
+    const customerAccepted = input?.customerAccepted === true;
+    const completenessChecked = input?.completenessChecked === true;
+    if (!customerAccepted || !completenessChecked) return { kind: 'invalid' };
 
     this.db.exec('BEGIN');
     try {
       this.db.prepare(`INSERT INTO order_handovers (order_id, tenant_id, responsible, note)
         VALUES (?, ?, ?, ?)`).run(orderId, tenantId, responsible, note);
       this.db.prepare(`UPDATE orders SET status = 'CLOSED' WHERE id = ? AND tenant_id = ?`).run(orderId, tenantId);
-      this.insertOrderAudit(tenantId, orderId, 'ORDER_CLOSED', { responsible, note });
+      this.insertOrderAudit(tenantId, orderId, 'ORDER_CLOSED', {
+        responsible, note, customerAccepted, completenessChecked
+      });
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
@@ -1148,10 +1169,14 @@ export class DetailFlowRepository {
       createdAt: apiTimestamp(row.created_at),
       bookingId: row.booking_id ?? null,
       currentEstimateVersionId: row.current_estimate_version_id ?? null,
-      photos: this.db.prepare(`SELECT id, kind, zone, mime_type, data_url, created_at
-        FROM order_photos WHERE order_id = ? AND tenant_id = ? ORDER BY created_at, rowid`).all(orderId, tenantId)
+      photos: this.db.prepare(`SELECT photo.id, photo.kind, photo.zone, photo.mime_type, photo.data_url, photo.created_at,
+          CASE WHEN result.photo_id IS NULL THEN 'intake' ELSE 'result' END AS phase
+        FROM order_photos photo
+        LEFT JOIN order_result_photos result ON result.photo_id = photo.id AND result.tenant_id = photo.tenant_id
+        WHERE photo.order_id = ? AND photo.tenant_id = ? ORDER BY photo.created_at, photo.rowid`).all(orderId, tenantId)
         .map((photo) => ({
           id: photo.id,
+          phase: photo.phase,
           kind: photo.kind,
           zone: photo.zone,
           mimeType: photo.mime_type,

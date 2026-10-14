@@ -453,13 +453,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .ready-screen .primary-button { width: 100%; min-height: 52px; }
 
 .delivery-photos { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin: 13px 0; }
-.delivery-photos > div { position: relative; }
+.delivery-photos > div, .delivery-photos > label { min-width: 0; position: relative; cursor: pointer; }
+.delivery-photos input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.delivery-photos img { width: 100%; height: 118px; display: block; border: 1px solid #33414c; border-radius: 11px; object-fit: cover; }
+.delivery-photos .missing { min-height: 118px; border: 1px dashed #45535e; border-radius: 11px; background: #11181e; }
+.delivery-photo-empty { min-height: 116px; display: grid; place-items: center; padding: 20px; color: #97a3ac; font-size: 11px; font-weight: 800; text-align: center; }
 .delivery-photos .mock-photo { width: 100%; height: 94px; border-radius: 11px; }
 .delivery-photos small { position: absolute; left: 8px; bottom: 8px; padding: 4px 7px; border-radius: 999px; color: #fff; background: rgba(8,12,17,.78); font-size: 10px; font-weight: 800; }
 .delivery-label { display: block; margin-bottom: 9px; color: #9ba6af; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
 .handover-checklist { margin-bottom: 15px; padding: 13px; border: 1px solid #303d47; border-radius: 13px; background: #11181f; }
-.handover-checklist > div { min-height: 43px; display: grid; grid-template-columns: 27px 1fr; align-items: center; gap: 9px; border-top: 1px solid #29343e; color: #c6ced4; font-size: 11px; }
+.handover-checklist > div, .handover-checklist > button { width: 100%; min-height: 43px; display: grid; grid-template-columns: 27px 1fr; align-items: center; gap: 9px; padding: 0; border: 0; border-top: 1px solid #29343e; color: #c6ced4; background: transparent; font: inherit; font-size: 11px; text-align: left; }
+.handover-checklist > button { cursor: pointer; }
 .handover-checklist i { width: 23px; height: 23px; display: grid; place-items: center; border-radius: 50%; color: #07150f; background: var(--success); font-size: 11px; font-style: normal; font-weight: 900; }
+.handover-checklist .pending { color: #ffb08b; }
+.handover-checklist .pending i { color: #2a1309; background: var(--primary); }
 .close-order-button { margin-top: 5px; }
 .closed-screen { padding-top: 38px; text-align: center; }
 .closed-screen h2 { margin: 14px 0 5px; font-size: 23px; }

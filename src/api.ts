@@ -99,7 +99,7 @@ export const api = {
       method: 'PUT', body: JSON.stringify(input)
     });
   },
-  uploadOrderPhoto(orderId: string, input: { kind: 'intake' | 'defect'; zone: string; dataUrl: string }) {
+  uploadOrderPhoto(orderId: string, input: { phase?: 'intake' | 'result'; kind: 'intake' | 'defect'; zone: string; dataUrl: string }) {
     return request<PhotoAsset>(`/api/orders/${encodeURIComponent(orderId)}/photos`, {
       method: 'POST', body: JSON.stringify(input)
     });
@@ -160,7 +160,7 @@ export const api = {
       method: 'POST', body: JSON.stringify(input)
     });
   },
-  closeOrder(orderId: string, input: { responsible: string; note: string }) {
+  closeOrder(orderId: string, input: { responsible: string; note: string; customerAccepted: boolean; completenessChecked: boolean }) {
     return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/handover`, {
       method: 'POST', body: JSON.stringify(input)
     });

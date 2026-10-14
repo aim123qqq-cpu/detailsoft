@@ -255,10 +255,14 @@ export function createDetailFlowServer({
         }
         const orderPhotos = url.pathname.match(/^\/api\/orders\/([^/]+)\/photos$/);
         if (request.method === 'POST' && orderPhotos) {
-          if (!capabilities.manageIntake) return sendJson(response, 403, {
-            error: { code: 'forbidden', message: 'Фото приёмки доступны только администратору или приёмщику' }
+          const photoInput = await readJson(request, 1024 * 1024);
+          const canUpload = photoInput.phase === 'result' ? capabilities.closeOrders : capabilities.manageIntake;
+          if (!canUpload) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: photoInput.phase === 'result'
+              ? 'Фото результата доступно только администратору'
+              : 'Фото приёмки доступны только администратору или приёмщику' }
           });
-          const result = repository.addOrderPhoto(tenantId, orderPhotos[1], await readJson(request, 1024 * 1024));
+          const result = repository.addOrderPhoto(tenantId, orderPhotos[1], photoInput);
           if (result.kind === 'created') return sendJson(response, 201, result.photo);
           if (result.kind === 'not_found') return sendJson(response, 404, {
             error: { code: 'order_not_found', message: 'Заказ не найден' }
@@ -362,7 +366,7 @@ export function createDetailFlowServer({
           if (result.kind === 'updated') return sendJson(response, 200, result.order);
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'order_not_found', message: 'Заказ не найден' } });
           if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
-          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите ответственного и комментарий к выдаче' } });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Подтвердите осмотр, комплектность и данные выдачи' } });
         }
         const orderGet = url.pathname.match(/^\/api\/orders\/([^/]+)$/);
         if (request.method === 'GET' && orderGet) {

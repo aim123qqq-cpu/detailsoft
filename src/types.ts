@@ -161,6 +161,7 @@ export type EstimateVersion = {
 
 export type PhotoAsset = {
   id: string;
+  phase: 'intake' | 'result';
   kind: 'intake' | 'defect';
   zone: string;
   mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
