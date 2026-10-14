@@ -189,10 +189,17 @@ type OrderFilter = 'all' | 'active' | 'ready' | 'closed';
 export function OrdersWorkspace() {
   const { items, loading, error, retry } = useWorkspaceItems(api.listOrders);
   const [filter, setFilter] = useState<OrderFilter>('all');
+  const [selected, setSelected] = useState<OrderListItem | null>(null);
   const filtered = filter === 'all' ? items : items.filter((item) => orderStatuses[item.status].group === filter);
   const filters: Array<{ id: OrderFilter; label: string }> = [
     { id: 'all', label: 'Все' }, { id: 'active', label: 'В работе' }, { id: 'ready', label: 'К выдаче' }, { id: 'closed', label: 'Закрытые' }
   ];
+
+  useEffect(() => {
+    if (selected) window.scrollTo({ top: 0, behavior: 'auto' });
+  }, [selected?.id]);
+
+  if (selected) return <OrderDetails item={selected} onBack={() => { setSelected(null); retry(); }}/>;
 
   return (
     <section className="screen workspace-screen" data-testid="orders-workspace">
@@ -201,15 +208,15 @@ export function OrdersWorkspace() {
       <div className="workspace-filters" aria-label="Фильтр заказов">{filters.map((item) => <button key={item.id} className={filter === item.id ? 'selected' : ''} onClick={() => setFilter(item.id)}>{item.label}</button>)}</div>
       {loading ? <LoadingState/> : error ? <ErrorState message={error} onRetry={retry}/> : filtered.length === 0 ? (
         <div className="workspace-state"><strong>В этой группе пусто</strong><span>Заказы появятся после начала приёмки</span></div>
-      ) : <div className="workspace-list orders-list">{filtered.map((item) => <OrderCard key={item.id} item={item}/>)}</div>}
+      ) : <div className="workspace-list orders-list">{filtered.map((item) => <OrderCard key={item.id} item={item} onOpen={() => setSelected(item)}/>)}</div>}
     </section>
   );
 }
 
-function OrderCard({ item }: { item: OrderListItem }) {
+function OrderCard({ item, onOpen }: { item: OrderListItem; onOpen: () => void }) {
   const status = orderStatuses[item.status];
   return (
-    <article className="workspace-card order-card">
+    <button className="workspace-card order-card" data-testid={`order-card-${item.id}`} onClick={onOpen}>
       <div className="workspace-card-body">
         <div className="workspace-card-top"><span className={`status-pill ${status.group}`}>{status.label}</span><span>#{item.id.replace('order_', '').slice(0, 6)}</span></div>
         <h3>{item.customer.name}</h3>
@@ -217,6 +224,84 @@ function OrderCard({ item }: { item: OrderListItem }) {
         <div className="workspace-card-meta"><span className="plate">{item.vehicle.plate}</span><span>{item.masterName ?? 'Мастер не назначен'}</span></div>
         <div className="order-summary"><span>Смета</span><strong>{item.totalAmountMinor === null ? 'Не составлена' : money.format(item.totalAmountMinor / 100)}</strong></div>
       </div>
-    </article>
+    </button>
+  );
+}
+
+const orderStageIndex: Record<WorkOrder['status'], number> = {
+  INTAKE: 0,
+  ESTIMATE_DRAFT: 1,
+  APPROVED: 1,
+  IN_PROGRESS: 2,
+  QC: 3,
+  READY: 4,
+  CLOSED: 5
+};
+
+const orderStages = ['Приёмка', 'Смета', 'Работы', 'QC', 'Выдача'];
+
+function OrderDetails({ item, onBack }: { item: OrderListItem; onBack: () => void }) {
+  const [order, setOrder] = useState<WorkOrder | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError('');
+    api.getOrder(item.id, controller.signal)
+      .then(setOrder)
+      .catch((requestError: Error) => { if (requestError.name !== 'AbortError') setError(requestError.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [item.id, revision]);
+
+  const status = orderStatuses[order?.status ?? item.status];
+  const currentEstimate = order?.estimateVersions.find((estimate) => estimate.id === order.currentEstimateVersionId) ?? null;
+  const doneOperations = order?.work?.operations.filter((operation) => operation.status === 'DONE').length ?? 0;
+  const totalOperations = order?.work?.operations.length ?? 0;
+  const lastQc = order?.qualityControl.at(-1) ?? null;
+
+  return (
+    <section className="screen order-details-screen" data-testid="order-details">
+      <button className="details-back" onClick={onBack}>← Все заказы</button>
+      {loading && !order ? <LoadingState/> : error && !order ? <ErrorState message={error} onRetry={() => setRevision((value) => value + 1)}/> : order && <>
+        <div className="order-details-hero">
+          <div><span className={`status-pill ${status.group}`}>{status.label}</span><small>#{item.id.replace('order_', '').slice(0, 8)}</small></div>
+          <h2>{order.status === 'CLOSED' ? 'Заказ закрыт' : status.label}</h2>
+          <p>{item.customer.name} · {item.customer.phoneDisplay}</p>
+          <div className="details-vehicle"><span className="plate">{item.vehicle.plate}</span><strong>{item.vehicle.make} {item.vehicle.model} {item.vehicle.generation}</strong><small>{item.vehicle.color}</small></div>
+        </div>
+
+        <div className="order-timeline" aria-label="Этапы заказа">
+          {orderStages.map((stage, index) => <div key={stage} className={index < orderStageIndex[order.status] ? 'done' : index === orderStageIndex[order.status] ? 'current' : ''}><i>{index < orderStageIndex[order.status] || order.status === 'CLOSED' ? '✓' : index + 1}</i><span>{stage}</span></div>)}
+        </div>
+
+        <div className="details-grid order-details-grid">
+          <div><span>Смета</span><strong>{currentEstimate ? money.format(currentEstimate.totalAmountMinor / 100) : 'Не составлена'}</strong></div>
+          <div><span>Мастер</span><strong>{order.assignment?.masterName ?? 'Не назначен'}</strong></div>
+          <div><span>Операции</span><strong>{totalOperations ? `${doneOperations} из ${totalOperations}` : 'Нет операций'}</strong></div>
+          <div><span>События</span><strong>{order.auditTrail.length} в журнале</strong></div>
+        </div>
+
+        {currentEstimate && <section className="order-detail-section">
+          <div className="detail-section-heading"><span>Смета v{currentEstimate.version}</span><strong>{currentEstimate.lines.length} позиции</strong></div>
+          <div className="detail-rows">{currentEstimate.lines.map((line) => <div key={line.id}><span>{line.name}</span><strong>{money.format(line.amountMinor / 100)}</strong></div>)}</div>
+        </section>}
+
+        {order.work && <section className="order-detail-section">
+          <div className="detail-section-heading"><span>Работы</span><strong>{doneOperations}/{totalOperations}</strong></div>
+          <div className="detail-rows operation-history">{order.work.operations.map((operation) => <div key={operation.id}><i className={operation.status.toLowerCase()}>{operation.status === 'DONE' ? '✓' : '·'}</i><span>{operation.name}</span><strong>{operation.status === 'DONE' ? 'Готово' : operation.status === 'BLOCKED' ? 'Проблема' : 'Ожидает'}</strong></div>)}</div>
+        </section>}
+
+        {lastQc && <section className="order-detail-section qc-history">
+          <div className="detail-section-heading"><span>Контроль качества</span><strong>{lastQc.decision === 'PASSED' ? 'Пройден' : 'Доработка'}</strong></div>
+          <p>{lastQc.responsible} · {lastQc.note}</p>
+        </section>}
+
+        {order.handover && <div className="handover-proof"><strong>Автомобиль выдан</strong><br/>✓ {order.handover.responsible} · {order.handover.note}</div>}
+      </>}
+    </section>
   );
 }

@@ -535,6 +535,37 @@ button.workspace-card:hover, button.workspace-card:focus-visible { border-color:
 .cancel-panel > p { margin: 7px 0 15px; color: #98a4ae; font-size: 12px; line-height: 1.5; }
 .cancel-panel > div { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 
+.order-details-screen { padding-bottom: 120px; }
+.order-details-hero { padding: 18px; border: 1px solid #35424d; border-radius: 18px; background: radial-gradient(circle at 100% 0, rgba(54,201,150,.18), transparent 43%), linear-gradient(145deg, #222d36, #121920); }
+.order-details-hero > div:first-child { display: flex; align-items: center; justify-content: space-between; }
+.order-details-hero > div:first-child small { color: #74818c; font-size: 10px; }
+.order-details-hero h2 { margin: 20px 0 4px; font-size: 23px; letter-spacing: -.04em; }
+.order-details-hero > p { margin: 0; color: #9eabb5; font-size: 12px; }
+.order-timeline { display: grid; grid-template-columns: repeat(5, 1fr); margin: 16px 0; padding: 14px 7px; border: 1px solid #303c47; border-radius: 14px; background: #121920; }
+.order-timeline div { position: relative; display: flex; flex-direction: column; align-items: center; gap: 7px; color: #687580; font-size: 9px; text-align: center; }
+.order-timeline div::after { content: ''; position: absolute; top: 11px; left: calc(50% + 13px); width: calc(100% - 26px); height: 1px; background: #37434e; }
+.order-timeline div:last-child::after { display: none; }
+.order-timeline i { z-index: 1; width: 23px; height: 23px; display: grid; place-items: center; border: 1px solid #3a4752; border-radius: 50%; background: #121920; font-size: 9px; font-style: normal; }
+.order-timeline .done, .order-timeline .current { color: #d5dde3; }
+.order-timeline .done i { border-color: rgba(54,201,150,.5); color: #58d6a8; background: rgba(54,201,150,.08); }
+.order-timeline .done::after { background: rgba(54,201,150,.45); }
+.order-timeline .current i { border-color: var(--primary); color: #ffae88; background: rgba(255,121,57,.1); }
+.order-details-grid { margin-bottom: 14px; }
+.order-detail-section { overflow: hidden; margin-top: 11px; border: 1px solid #303c47; border-radius: 14px; background: #121920; }
+.detail-section-heading { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 13px; border-bottom: 1px solid #2a3540; }
+.detail-section-heading span { color: #a5b0b9; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.detail-section-heading strong { color: #eef2f5; font-size: 11px; }
+.detail-rows > div { min-height: 48px; display: flex; align-items: center; gap: 9px; padding: 9px 13px; border-bottom: 1px solid #27323d; }
+.detail-rows > div:last-child { border-bottom: 0; }
+.detail-rows span { min-width: 0; flex: 1; color: #cbd3da; font-size: 12px; line-height: 1.4; }
+.detail-rows strong { flex: 0 0 auto; font-size: 11px; }
+.operation-history i { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; color: #7f8b95; background: #202a33; font-style: normal; }
+.operation-history i.done { color: #64d9ae; background: rgba(54,201,150,.1); }
+.operation-history i.blocked { color: #ff9b9b; background: rgba(233,93,93,.1); }
+.operation-history strong { color: #8f9ca6; }
+.qc-history p { margin: 0; padding: 13px; color: #aab5be; font-size: 11px; line-height: 1.5; }
+.order-details-screen .handover-proof strong { color: #d9f2e8; font-size: 12px; }
+
 .bottom-nav { position: fixed; z-index: 30; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%, var(--app-width)); min-height: 76px; padding: 7px 22px max(8px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, 1fr); background: rgba(13,19,25,.94); border-top: 1px solid #27313b; backdrop-filter: blur(18px); }
 .bottom-nav button { min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #7f8b96; background: transparent; border: 0; font-size: 11px; font-weight: 700; cursor: pointer; }
 .bottom-nav button.active { color: var(--primary); }

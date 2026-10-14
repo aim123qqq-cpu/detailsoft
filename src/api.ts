@@ -23,6 +23,9 @@ export const api = {
   listOrders(signal?: AbortSignal) {
     return request<{ items: OrderListItem[] }>('/api/orders?limit=20', { signal });
   },
+  getOrder(orderId: string, signal?: AbortSignal) {
+    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}`, { signal });
+  },
   searchCustomers(phone: string, signal?: AbortSignal) {
     return request<{ items: Customer[] }>(`/api/customers?phone=${encodeURIComponent(phone)}`, { signal });
   },

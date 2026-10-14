@@ -143,6 +143,7 @@ export type EstimateVersion = {
 
 export type WorkOrder = {
   id: string;
+  createdAt: string;
   bookingId: string | null;
   customerId: string;
   vehicleId: string;

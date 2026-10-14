@@ -188,6 +188,18 @@ test('mobile customer → vehicle → services → booking flow works end to end
     assert.match(await page.getByTestId('orders-workspace').innerText(), /К777КК 55/);
     await page.waitForTimeout(400);
     await page.screenshot({ path: resolve(artifacts, '17-orders-workspace.png'), fullPage: true });
+
+    await page.locator('[data-testid^="order-card-"]', { hasText: 'К777КК 55' }).click();
+    await page.getByTestId('order-details').waitFor();
+    await page.waitForFunction(() => document.querySelector('[data-testid="order-details"]')?.textContent?.includes('Заказ закрыт'));
+    assert.match(await page.getByTestId('order-details').innerText(), /Заказ закрыт/);
+    assert.match(await page.getByTestId('order-details').innerText(), /Дмитрий Соколов/);
+    assert.match(await page.getByTestId('order-details').innerText(), /5\s100\s₽/);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: resolve(artifacts, '21-order-details.png') });
+    await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }));
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: resolve(artifacts, '22-order-history.png') });
   } finally {
     await browser.close();
     await new Promise((done) => server.close(done));
