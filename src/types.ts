@@ -206,3 +206,19 @@ export type OrderListItem = {
   customer: Pick<Customer, 'id' | 'name' | 'phoneDisplay'>;
   vehicle: Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color'>;
 };
+
+export type AnalyticsOverview = {
+  period: { from: string; to: string };
+  bookings: { total: number; confirmed: number; cancelled: number };
+  orders: {
+    total: number;
+    active: number;
+    ready: number;
+    closed: number;
+    approvedEstimateAmountMinor: number;
+    averageApprovedEstimateAmountMinor: number;
+  };
+  operations: { total: number; done: number; blocked: number; completionPercent: number };
+  orderStatuses: Array<{ status: WorkOrder['status']; count: number }>;
+  daily: Array<{ date: string; bookings: number; orders: number; closed: number }>;
+};

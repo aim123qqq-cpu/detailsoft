@@ -1,4 +1,4 @@
-import type { Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, OrderListItem, OrderRecommendation, QuoteSelection, ServiceCatalog, Vehicle, WorkOrder } from './types';
+import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, OrderListItem, OrderRecommendation, QuoteSelection, ServiceCatalog, Vehicle, WorkOrder } from './types';
 
 const sessionHeaders = { authorization: 'Bearer demo-session-token' };
 
@@ -22,6 +22,9 @@ export const api = {
   },
   listOrders(signal?: AbortSignal) {
     return request<{ items: OrderListItem[] }>('/api/orders?limit=20', { signal });
+  },
+  getAnalyticsOverview(from: string, to: string, signal?: AbortSignal) {
+    return request<AnalyticsOverview>(`/api/analytics/overview?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, { signal });
   },
   getOrder(orderId: string, signal?: AbortSignal) {
     return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}`, { signal });

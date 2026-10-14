@@ -200,6 +200,19 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }));
     await page.waitForTimeout(250);
     await page.screenshot({ path: resolve(artifacts, '22-order-history.png') });
+
+    await page.getByRole('button', { name: 'Аналитика' }).click();
+    await page.getByTestId('analytics-screen').waitFor();
+    await page.waitForFunction(() => document.querySelector('[data-testid="analytics-screen"]')?.textContent?.includes('Согласовано по сметам'));
+    const analyticsText = await page.getByTestId('analytics-screen').innerText();
+    assert.match(analyticsText, /Пульс центра/);
+    assert.match(analyticsText, /согласовано по сметам/i);
+    assert.doesNotMatch(analyticsText, /оплат|выруч/i);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: resolve(artifacts, '23-analytics.png') });
+    await page.getByText('Статусы заказов').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: resolve(artifacts, '24-analytics-details.png') });
   } finally {
     await browser.close();
     await new Promise((done) => server.close(done));

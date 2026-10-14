@@ -566,6 +566,54 @@ button.workspace-card:hover, button.workspace-card:focus-visible { border-color:
 .qc-history p { margin: 0; padding: 13px; color: #aab5be; font-size: 11px; line-height: 1.5; }
 .order-details-screen .handover-proof strong { color: #d9f2e8; font-size: 12px; }
 
+.icon-button.active { border-color: rgba(255,121,57,.45); color: #ff9a6a; background: rgba(255,121,57,.1); }
+.analytics-screen { padding-bottom: 122px; }
+.analytics-intro { position: relative; overflow: hidden; padding: 20px; border: 1px solid #35424e; border-radius: 18px; background: radial-gradient(circle at 100% 0, rgba(255,121,57,.23), transparent 46%), linear-gradient(145deg, #222d37, #121920); }
+.analytics-intro::after { content: ''; position: absolute; right: -44px; top: -55px; width: 145px; height: 145px; border: 1px solid rgba(255,255,255,.06); border-radius: 50%; }
+.analytics-intro > span { color: #ff9b6c; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
+.analytics-intro h2 { margin: 9px 0 5px; font-size: 28px; line-height: 1.05; letter-spacing: -.04em; }
+.analytics-intro p { max-width: 260px; margin: 0; color: #a0abb4; font-size: 12px; line-height: 1.5; }
+.analytics-period { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 17px; padding: 4px; border-radius: 11px; background: rgba(6,10,14,.55); }
+.analytics-period button { min-height: 38px; border: 0; border-radius: 8px; color: #8995a0; background: transparent; font-size: 11px; font-weight: 800; cursor: pointer; }
+.analytics-period button.selected { color: #1c110c; background: var(--primary); box-shadow: 0 5px 15px rgba(255,121,57,.25); }
+.analytics-range { margin: 16px 2px 9px; color: #7f8c97; font-size: 11px; font-weight: 700; text-transform: capitalize; }
+.analytics-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.analytics-kpi { min-height: 116px; display: flex; flex-direction: column; justify-content: space-between; padding: 15px; border: 1px solid #303d48; border-radius: 15px; background: linear-gradient(145deg, #18212a, #11181f); }
+.analytics-kpi.accent { border-color: rgba(255,121,57,.35); background: radial-gradient(circle at 100% 0, rgba(255,121,57,.17), transparent 55%), #171f27; }
+.analytics-kpi.wide { grid-column: 1 / -1; min-height: 108px; }
+.analytics-kpi small { color: #929faa; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; }
+.analytics-kpi strong { margin-top: 7px; font-size: 29px; line-height: 1; letter-spacing: -.05em; }
+.analytics-kpi.wide strong { color: #ffae88; font-size: 25px; }
+.analytics-kpi span { margin-top: 8px; color: #72808c; font-size: 10px; line-height: 1.4; }
+.analytics-card { margin-top: 11px; padding: 15px; border: 1px solid #303d48; border-radius: 15px; background: #121920; }
+.analytics-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.analytics-card-head small { color: var(--primary); font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .09em; }
+.analytics-card-head h3 { margin: 4px 0 0; font-size: 14px; }
+.analytics-card-head > span { display: flex; align-items: center; gap: 4px; color: #7f8c97; font-size: 8px; }
+.analytics-card-head > span i { width: 7px; height: 7px; border-radius: 2px; background: var(--primary); }
+.analytics-card-head > span i:last-of-type { margin-left: 5px; background: var(--success); }
+.analytics-card-head > b { font-size: 18px; }
+.activity-chart { height: 137px; display: grid; grid-template-columns: repeat(14, 1fr); align-items: end; gap: 3px; margin-top: 16px; padding-top: 8px; border-bottom: 1px solid #34414c; background: repeating-linear-gradient(to bottom, transparent 0, transparent 32px, rgba(255,255,255,.035) 33px); }
+.activity-day { height: 120px; display: grid; grid-template-rows: 1fr 18px; align-items: end; gap: 4px; }
+.activity-day > div { height: 96px; display: flex; align-items: end; justify-content: center; gap: 2px; }
+.activity-day i, .activity-day b { width: 5px; min-height: 2px; border-radius: 3px 3px 1px 1px; background: linear-gradient(180deg, #ff9b6b, #d9571c); }
+.activity-day b { background: linear-gradient(180deg, #5cdeb0, #23916a); }
+.activity-day span { color: #66737e; font-size: 7px; text-align: center; }
+.status-bars { display: grid; gap: 12px; margin-top: 17px; }
+.status-bars > div { display: grid; grid-template-columns: 82px 1fr 20px; align-items: center; gap: 9px; }
+.status-bars span { color: #aeb8c1; font-size: 10px; }
+.status-bars > div > i { height: 7px; overflow: hidden; border-radius: 999px; background: #26313b; }
+.status-bars > div > i b { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #ff7131, #ffad80); }
+.status-bars strong { font-size: 11px; text-align: right; }
+.status-bars p { margin: 4px 0; color: #76838e; font-size: 11px; }
+.operations-summary { margin-top: 11px; padding: 15px; border: 1px solid rgba(54,201,150,.22); border-radius: 15px; background: rgba(54,201,150,.045); }
+.operations-summary > div { display: flex; align-items: center; justify-content: space-between; }
+.operations-summary small { color: #9ca9b2; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.operations-summary strong { color: #60dbae; font-size: 22px; }
+.operations-summary > i { display: block; height: 6px; margin-top: 11px; overflow: hidden; border-radius: 999px; background: #26343a; }
+.operations-summary > i b { display: block; height: 100%; border-radius: inherit; background: var(--success); }
+.operations-summary p { margin: 9px 0 0; color: #73828a; font-size: 10px; }
+
 .bottom-nav { position: fixed; z-index: 30; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%, var(--app-width)); min-height: 76px; padding: 7px 22px max(8px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, 1fr); background: rgba(13,19,25,.94); border-top: 1px solid #27313b; backdrop-filter: blur(18px); }
 .bottom-nav button { min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #7f8b96; background: transparent; border: 0; font-size: 11px; font-weight: 700; cursor: pointer; }
 .bottom-nav button.active { color: var(--primary); }

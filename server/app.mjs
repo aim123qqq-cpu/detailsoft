@@ -164,6 +164,25 @@ export function createDetailFlowServer({
         if (request.method === 'GET' && url.pathname === '/api/orders') {
           return sendJson(response, 200, { items: repository.listOrders(tenantId, url.searchParams.get('limit') ?? 20) });
         }
+        if (request.method === 'GET' && url.pathname === '/api/analytics/overview') {
+          if (!hasRole('admin', 'owner')) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Аналитика доступна только руководителю' }
+          });
+          const from = url.searchParams.get('from') ?? '';
+          const to = url.searchParams.get('to') ?? '';
+          const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+          const fromTime = Date.parse(`${from}T00:00:00Z`);
+          const toTime = Date.parse(`${to}T00:00:00Z`);
+          const validDates = datePattern.test(from) && datePattern.test(to)
+            && Number.isFinite(fromTime) && Number.isFinite(toTime)
+            && new Date(fromTime).toISOString().slice(0, 10) === from
+            && new Date(toTime).toISOString().slice(0, 10) === to;
+          const periodDays = validDates ? Math.floor((toTime - fromTime) / 86_400_000) + 1 : 0;
+          if (!validDates || periodDays < 1 || periodDays > 90) return sendJson(response, 422, {
+            error: { code: 'validation_error', message: 'Выберите период от 1 до 90 дней' }
+          });
+          return sendJson(response, 200, repository.getAnalyticsOverview(tenantId, from, to));
+        }
         if (request.method === 'POST' && url.pathname === '/api/orders') {
           const result = repository.createOrderFromBooking(tenantId, await readJson(request));
           if (result.kind === 'created') return sendJson(response, 201, result.order);

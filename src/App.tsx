@@ -3,9 +3,10 @@ import { api } from './api';
 import { ScheduleStep, ServicesStep } from './BookingFlow';
 import { OrderFlow } from './OrderFlow';
 import { BookingsWorkspace, OrdersWorkspace } from './WorkspaceScreens';
+import { AnalyticsScreen } from './AnalyticsScreen';
 import type { Booking, BookingQuote, CatalogVariant, Customer, QuoteSelection, Vehicle } from './types';
 
-type Workspace = 'bookings' | 'new' | 'orders';
+type Workspace = 'bookings' | 'new' | 'orders' | 'analytics';
 
 type IconName = 'arrow' | 'search' | 'phone' | 'car' | 'user' | 'calendar' | 'clipboard' | 'more' | 'plus' | 'check' | 'spark';
 
@@ -56,16 +57,16 @@ function VehicleCard({ vehicle, onSelect }: { vehicle: Vehicle; onSelect: () => 
   );
 }
 
-function Header({ step, workspace, onBack, orderTitle }: { step: number; workspace: Workspace; onBack: () => void; orderTitle?: string }) {
-  const workspaceTitle = workspace === 'bookings' ? 'Записи' : 'Заказы';
+function Header({ step, workspace, onBack, onMore, orderTitle }: { step: number; workspace: Workspace; onBack: () => void; onMore: () => void; orderTitle?: string }) {
+  const workspaceTitle = workspace === 'bookings' ? 'Записи' : workspace === 'analytics' ? 'Аналитика' : 'Заказы';
   return (
     <header className="app-header">
       <button className="icon-button" onClick={onBack} aria-label="Назад"><Icon name="arrow"/></button>
       <div>
-        <span className="eyebrow">{workspace === 'bookings' ? 'Расписание' : workspace === 'orders' ? 'Производство' : step === 5 ? 'Рабочий заказ' : 'Новая запись'}</span>
+        <span className="eyebrow">{workspace === 'bookings' ? 'Расписание' : workspace === 'orders' ? 'Производство' : workspace === 'analytics' ? 'Управление' : step === 5 ? 'Рабочий заказ' : 'Новая запись'}</span>
         <h1>{workspace !== 'new' ? workspaceTitle : step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : step === 3 ? 'Услуги' : step === 4 ? 'Дата и время' : orderTitle ?? 'Рабочий заказ'}</h1>
       </div>
-      <button className="icon-button" aria-label="Ещё"><Icon name="more"/></button>
+      <button className={`icon-button ${workspace === 'analytics' ? 'active' : ''}`} aria-label="Аналитика" onClick={onMore}><Icon name="more"/></button>
       {workspace === 'new' && <div className="progress" aria-label={step === 5 ? 'Рабочий заказ' : `Шаг ${step} из 4`}>
         {[1, 2, 3, 4].map((item) => <span key={item} className={item <= step ? 'active' : ''}/>) }
       </div>}
@@ -185,10 +186,11 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <Header step={step} workspace={workspace} orderTitle={orderHeader} onBack={() => workspace !== 'new' ? startNewBooking() : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
+      <Header step={step} workspace={workspace} orderTitle={orderHeader} onMore={() => setWorkspace(workspace === 'analytics' ? 'orders' : 'analytics')} onBack={() => workspace === 'analytics' ? setWorkspace('orders') : workspace !== 'new' ? startNewBooking() : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
       <main>
         {workspace === 'bookings' && <BookingsWorkspace onNew={startNewBooking}/>}
         {workspace === 'orders' && <OrdersWorkspace/>}
+        {workspace === 'analytics' && <AnalyticsScreen/>}
         {workspace === 'new' && step === 1 && (
           <section className="screen" aria-label="Поиск клиента и автомобиля">
             <div className="context-line"><span className="live-dot"/> DetailFlow Studio <span>·</span> Сегодня, 14:30</div>
