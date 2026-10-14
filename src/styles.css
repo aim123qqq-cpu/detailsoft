@@ -24,6 +24,9 @@ input, textarea, select { min-height: 44px; }
 .skip-link { position: fixed; z-index: 100; top: 8px; left: 50%; padding: 11px 16px; border-radius: 10px; color: #17100c; background: var(--primary); font-size: 13px; font-weight: 800; transform: translate(-50%, -150%); transition: transform .15s ease; }
 .skip-link:focus { transform: translate(-50%, 0); }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 3px solid #ffb18b !important; outline-offset: 3px; }
+.connectivity-banner { position: fixed; z-index: 90; top: max(10px, env(safe-area-inset-top)); left: 50%; width: min(calc(100% - 24px), calc(var(--app-width) - 24px)); display: flex; align-items: center; gap: 9px; padding: 11px 13px; border: 1px solid rgba(242,189,102,.45); border-radius: 12px; color: #d7c49e; background: rgba(39,31,20,.97); box-shadow: 0 12px 30px rgba(0,0,0,.38); transform: translateX(-50%); }
+.connectivity-banner strong { flex: 0 0 auto; color: #ffd58a; font-size: 12px; }
+.connectivity-banner span { min-width: 0; font-size: 10px; line-height: 1.35; }
 
 .app-shell { width: min(100%, var(--app-width)); min-height: 100dvh; margin: 0 auto; background: linear-gradient(180deg, rgba(20,28,36,.98), var(--bg) 28%); box-shadow: 0 0 80px #000; position: relative; padding-bottom: 96px; overflow: hidden; }
 .app-header { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 10px; padding: max(16px, env(safe-area-inset-top)) 18px 14px; background: rgba(11,16,22,.88); backdrop-filter: blur(18px); border-bottom: 1px solid rgba(255,255,255,.06); }
@@ -54,6 +57,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .search-input input::placeholder { color: #56616d; font-weight: 500; }
 .field-hint { color: #697683; font-size: 10px; line-height: 1.5; margin: 8px 2px 0; }
 .field-hint.error, .form-error { color: #ff8585; }
+.field-feedback { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.field-feedback p { flex: 1; }
+.field-feedback button { flex: 0 0 auto; margin-top: 5px; padding: 0 10px; border: 1px solid rgba(255,121,57,.4); border-radius: 9px; color: #ffad86; background: rgba(255,121,57,.08); font-size: 10px; font-weight: 800; cursor: pointer; }
+.field-feedback button:disabled { opacity: .45; cursor: not-allowed; }
 .spinner { width: 17px; height: 17px; border: 2px solid #53606c; border-top-color: var(--primary); border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

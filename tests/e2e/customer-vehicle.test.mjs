@@ -27,14 +27,28 @@ test('mobile customer → vehicle → services → booking flow works end to end
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'main-content');
 
     const searchTargets = await page.locator('.search-tabs button').evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height));
-    assert.ok(searchTargets.every((height) => height >= 44), 'search tabs meet the 44px touch target');
+    assert.ok(searchTargets.every((height) => height >= 44), `search tabs meet the 44px touch target: ${searchTargets.join(', ')}`);
 
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const reducedAnimation = Number.parseFloat(await page.locator('.screen').evaluate((element) => getComputedStyle(element).animationDuration));
     assert.ok(reducedAnimation <= 0.01, 'screen animation respects reduced motion');
     await page.emulateMedia({ reducedMotion: 'no-preference' });
 
+    await context.setOffline(true);
+    await page.getByTestId('offline-banner').waitFor();
+    assert.match(await page.getByTestId('offline-banner').innerText(), /нет подключения/i);
+    await page.screenshot({ path: resolve(artifacts, '28-offline-banner.png') });
+    await context.setOffline(false);
+    await page.getByTestId('offline-banner').waitFor({ state: 'hidden' });
+
+    await page.route('**/api/customers?*', (route) => route.abort('connectionfailed'));
     await page.getByTestId('main-search').fill('+7 913 123-45-67');
+    await page.getByTestId('search-retry').waitFor();
+    assert.match(await page.getByTestId('search-feedback').innerText(), /не удалось связаться с сервером/i);
+    assert.equal(await page.getByTestId('main-search').inputValue(), '+7 913 123-45-67');
+    await page.screenshot({ path: resolve(artifacts, '29-search-network-error.png') });
+    await page.unroute('**/api/customers?*');
+    await page.getByTestId('search-retry').click();
     await page.getByTestId('customer-result').waitFor();
     assert.equal(await page.locator('[data-testid^="vehicle-"]').count(), 2);
     await page.waitForTimeout(400);

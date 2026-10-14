@@ -103,12 +103,25 @@ export function App() {
   const [orderHeader, setOrderHeader] = useState('Приёмка автомобиля');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [online, setOnline] = useState(() => navigator.onLine);
+  const [searchRetryKey, setSearchRetryKey] = useState(0);
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'auto' });
   }, [step, workspace]);
+
+  useEffect(() => {
+    const handleOnline = () => setOnline(true);
+    const handleOffline = () => setOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     if (workspace !== 'new') return;
@@ -138,7 +151,7 @@ export function App() {
       }
     }, 320);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [query, mode, workspace]);
+  }, [query, mode, workspace, searchRetryKey]);
 
   const startNewBooking = () => {
     setWorkspace('new');
@@ -154,6 +167,7 @@ export function App() {
     setActiveBooking(null);
     setOrderHeader('Приёмка автомобиля');
     setError('');
+    setSearchRetryKey(0);
     setShowCreateCustomer(false);
     setNewCustomerName('');
   };
@@ -190,6 +204,7 @@ export function App() {
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Перейти к содержимому</a>
+      {!online && <div className="connectivity-banner" data-testid="offline-banner" role="status" aria-live="polite"><strong>Нет подключения</strong><span>Можно продолжить ввод — данные формы не пропадут</span></div>}
       <Header step={step} workspace={workspace} orderTitle={orderHeader} onBack={() => workspace !== 'new' ? startNewBooking() : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
       <main id="main-content" tabIndex={-1}>
         {workspace === 'bookings' && <BookingsWorkspace onNew={startNewBooking}/>}
@@ -224,7 +239,10 @@ export function App() {
                 />
                 {loading && <span className="spinner" aria-label="Поиск"/>}
               </div>
-              <p aria-live="polite" className={error ? 'field-hint error' : 'field-hint'}>{error || (mode === 'phone' ? 'Начните вводить номер — найдём клиента и его автомобили' : 'Поиск работает только внутри текущего центра')}</p>
+              <div className="field-feedback" data-testid="search-feedback">
+                <p aria-live="polite" className={error ? 'field-hint error' : 'field-hint'}>{error || (mode === 'phone' ? 'Начните вводить номер — найдём клиента и его автомобили' : 'Поиск работает только внутри текущего центра')}</p>
+                {error && <button data-testid="search-retry" disabled={loading || !online} onClick={() => setSearchRetryKey((key) => key + 1)}>Повторить</button>}
+              </div>
             </div>
 
             {mode === 'phone' && customers.map((customer) => (

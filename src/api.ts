@@ -3,14 +3,23 @@ import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, 
 const sessionHeaders = { authorization: 'Bearer demo-session-token' };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      ...sessionHeaders,
-      ...(init?.body ? { 'content-type': 'application/json' } : {}),
-      ...init?.headers
-    }
-  });
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...init,
+      headers: {
+        ...sessionHeaders,
+        ...(init?.body ? { 'content-type': 'application/json' } : {}),
+        ...init?.headers
+      }
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+    throw new Error(offline
+      ? 'Нет подключения к интернету. Данные формы сохранены.'
+      : 'Не удалось связаться с сервером. Данные формы сохранены — повторите запрос.');
+  }
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error?.message ?? 'Не удалось выполнить запрос');
   return payload;
