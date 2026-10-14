@@ -201,7 +201,10 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.waitForTimeout(250);
     await page.screenshot({ path: resolve(artifacts, '22-order-history.png') });
 
-    await page.getByRole('button', { name: 'Аналитика' }).click();
+    assert.equal(await page.locator('.bottom-nav button').count(), 5);
+    assert.deepEqual(await page.locator('.bottom-nav button').allTextContents(), ['Статистика', 'Записи', '', 'Заказы', 'Профиль']);
+    assert.equal(await page.getByTestId('new-booking-nav').getAttribute('aria-label'), 'Новая запись');
+    await page.getByTestId('analytics-nav').click();
     await page.getByTestId('analytics-screen').waitFor();
     await page.waitForFunction(() => document.querySelector('[data-testid="analytics-screen"]')?.textContent?.includes('Согласовано по сметам'));
     const analyticsText = await page.getByTestId('analytics-screen').innerText();
@@ -213,6 +216,18 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.getByText('Статусы заказов').scrollIntoViewIfNeeded();
     await page.waitForTimeout(250);
     await page.screenshot({ path: resolve(artifacts, '24-analytics-details.png') });
+
+    await page.getByTestId('profile-nav').click();
+    await page.getByTestId('profile-screen').waitFor();
+    assert.match(await page.getByTestId('profile-screen').innerText(), /DetailFlow Studio/);
+    assert.match(await page.getByTestId('profile-screen').innerText(), /Администратор/);
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: resolve(artifacts, '25-profile.png') });
+
+    await page.setViewportSize({ width: 320, height: 700 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+    const navTargets = await page.locator('.bottom-nav button').evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height));
+    assert.ok(navTargets.every((height) => height >= 44), 'all five navigation targets remain touch-friendly at 320px');
   } finally {
     await browser.close();
     await new Promise((done) => server.close(done));

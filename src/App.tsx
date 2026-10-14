@@ -4,11 +4,12 @@ import { ScheduleStep, ServicesStep } from './BookingFlow';
 import { OrderFlow } from './OrderFlow';
 import { BookingsWorkspace, OrdersWorkspace } from './WorkspaceScreens';
 import { AnalyticsScreen } from './AnalyticsScreen';
+import { ProfileScreen } from './ProfileScreen';
 import type { Booking, BookingQuote, CatalogVariant, Customer, QuoteSelection, Vehicle } from './types';
 
-type Workspace = 'bookings' | 'new' | 'orders' | 'analytics';
+type Workspace = 'bookings' | 'new' | 'orders' | 'analytics' | 'profile';
 
-type IconName = 'arrow' | 'search' | 'phone' | 'car' | 'user' | 'calendar' | 'clipboard' | 'more' | 'plus' | 'check' | 'spark';
+type IconName = 'arrow' | 'search' | 'phone' | 'car' | 'user' | 'calendar' | 'clipboard' | 'plus' | 'check' | 'spark' | 'chart';
 
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, React.ReactNode> = {
@@ -19,10 +20,10 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
     user: <><circle cx="12" cy="8" r="3"/><path d="M5.5 20c.7-4 3-6 6.5-6s5.8 2 6.5 6"/></>,
     calendar: <><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M8 3v4m8-4v4M4 10h16"/></>,
     clipboard: <><path d="M9 5h6l1 2h3v14H5V7h3l1-2Z"/><path d="M9 12h6m-6 4h4"/></>,
-    more: <><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="19" cy="12" r="1" fill="currentColor"/></>,
     plus: <path d="M12 5v14M5 12h14"/>,
     check: <path d="m5 12 4 4L19 6"/>,
-    spark: <><path d="m12 3 1.2 4.3L17 9l-3.8 1.7L12 15l-1.2-4.3L7 9l3.8-1.7L12 3Z"/><path d="m18 15 .7 2.3L21 18l-2.3.7L18 21l-.7-2.3L15 18l2.3-.7L18 15Z"/></>
+    spark: <><path d="m12 3 1.2 4.3L17 9l-3.8 1.7L12 15l-1.2-4.3L7 9l3.8-1.7L12 3Z"/><path d="m18 15 .7 2.3L21 18l-2.3.7L18 21l-.7-2.3L15 18l2.3-.7L18 15Z"/></>,
+    chart: <><path d="M5 19V9m7 10V5m7 14v-7"/><path d="M3 19h18"/></>
   };
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }
@@ -57,16 +58,16 @@ function VehicleCard({ vehicle, onSelect }: { vehicle: Vehicle; onSelect: () => 
   );
 }
 
-function Header({ step, workspace, onBack, onMore, orderTitle }: { step: number; workspace: Workspace; onBack: () => void; onMore: () => void; orderTitle?: string }) {
-  const workspaceTitle = workspace === 'bookings' ? 'Записи' : workspace === 'analytics' ? 'Аналитика' : 'Заказы';
+function Header({ step, workspace, onBack, orderTitle }: { step: number; workspace: Workspace; onBack: () => void; orderTitle?: string }) {
+  const workspaceTitle = workspace === 'bookings' ? 'Записи' : workspace === 'analytics' ? 'Статистика' : workspace === 'profile' ? 'Профиль' : 'Заказы';
   return (
     <header className="app-header">
       <button className="icon-button" onClick={onBack} aria-label="Назад"><Icon name="arrow"/></button>
       <div>
-        <span className="eyebrow">{workspace === 'bookings' ? 'Расписание' : workspace === 'orders' ? 'Производство' : workspace === 'analytics' ? 'Управление' : step === 5 ? 'Рабочий заказ' : 'Новая запись'}</span>
+        <span className="eyebrow">{workspace === 'bookings' ? 'Расписание' : workspace === 'orders' ? 'Производство' : workspace === 'analytics' ? 'Управление' : workspace === 'profile' ? 'Аккаунт' : step === 5 ? 'Рабочий заказ' : 'Новая запись'}</span>
         <h1>{workspace !== 'new' ? workspaceTitle : step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : step === 3 ? 'Услуги' : step === 4 ? 'Дата и время' : orderTitle ?? 'Рабочий заказ'}</h1>
       </div>
-      <button className={`icon-button ${workspace === 'analytics' ? 'active' : ''}`} aria-label="Аналитика" onClick={onMore}><Icon name="more"/></button>
+      <span aria-hidden="true"/>
       {workspace === 'new' && <div className="progress" aria-label={step === 5 ? 'Рабочий заказ' : `Шаг ${step} из 4`}>
         {[1, 2, 3, 4].map((item) => <span key={item} className={item <= step ? 'active' : ''}/>) }
       </div>}
@@ -77,9 +78,11 @@ function Header({ step, workspace, onBack, onMore, orderTitle }: { step: number;
 function BottomNav({ active, onSelect }: { active: Workspace; onSelect: (workspace: Workspace) => void }) {
   return (
     <nav className="bottom-nav" aria-label="Основная навигация">
+      <button data-testid="analytics-nav" className={active === 'analytics' ? 'active' : ''} aria-current={active === 'analytics' ? 'page' : undefined} onClick={() => onSelect('analytics')}><Icon name="chart"/><span>Статистика</span></button>
       <button data-testid="bookings-nav" className={active === 'bookings' ? 'active' : ''} aria-current={active === 'bookings' ? 'page' : undefined} onClick={() => onSelect('bookings')}><Icon name="calendar"/><span>Записи</span></button>
-      <button data-testid="new-booking-nav" className={active === 'new' ? 'active' : ''} aria-current={active === 'new' ? 'page' : undefined} onClick={() => onSelect('new')}><span className="nav-action"><Icon name="plus" size={24}/></span><span>Новая</span></button>
+      <button data-testid="new-booking-nav" className={`new-nav ${active === 'new' ? 'active' : ''}`} aria-label="Новая запись" aria-current={active === 'new' ? 'page' : undefined} onClick={() => onSelect('new')}><span className="nav-action"><Icon name="plus" size={24}/></span></button>
       <button data-testid="orders-nav" className={active === 'orders' ? 'active' : ''} aria-current={active === 'orders' ? 'page' : undefined} onClick={() => onSelect('orders')}><Icon name="clipboard"/><span>Заказы</span></button>
+      <button data-testid="profile-nav" className={active === 'profile' ? 'active' : ''} aria-current={active === 'profile' ? 'page' : undefined} onClick={() => onSelect('profile')}><Icon name="user"/><span>Профиль</span></button>
     </nav>
   );
 }
@@ -186,11 +189,12 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <Header step={step} workspace={workspace} orderTitle={orderHeader} onMore={() => setWorkspace(workspace === 'analytics' ? 'orders' : 'analytics')} onBack={() => workspace === 'analytics' ? setWorkspace('orders') : workspace !== 'new' ? startNewBooking() : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
+      <Header step={step} workspace={workspace} orderTitle={orderHeader} onBack={() => workspace !== 'new' ? startNewBooking() : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
       <main>
         {workspace === 'bookings' && <BookingsWorkspace onNew={startNewBooking}/>}
         {workspace === 'orders' && <OrdersWorkspace/>}
         {workspace === 'analytics' && <AnalyticsScreen/>}
+        {workspace === 'profile' && <ProfileScreen/>}
         {workspace === 'new' && step === 1 && (
           <section className="screen" aria-label="Поиск клиента и автомобиля">
             <div className="context-line"><span className="live-dot"/> DetailFlow Studio <span>·</span> Сегодня, 14:30</div>
