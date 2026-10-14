@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from './api';
+import { productFeatures } from './features';
 import type { Booking, Customer, EstimateLineInput, IntakeFinding, OrderRecommendation, Vehicle, WorkOrder } from './types';
 
 function money(amountMinor: number) {
@@ -94,7 +95,7 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
   useEffect(() => {
     if (!order) return;
     if (order.status === 'IN_PROGRESS') onPhaseChange('Работы мастера');
-    else if (order.status === 'QC') onPhaseChange('Контроль качества');
+    else if (order.status === 'QC') onPhaseChange('Контроль качества (архив)');
     else if (order.status === 'CLOSED') onPhaseChange('Заказ закрыт');
     else if (order.status === 'READY') onPhaseChange(deliveryOpen ? 'Выдача автомобиля' : 'Готов к выдаче');
     else if (order.status === 'APPROVED') onPhaseChange('Назначение мастера');
@@ -212,7 +213,7 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
       <p>{vehicle.make} {vehicle.model} · {vehicle.plate}</p>
       <div className="closed-receipt">
         <div><span>Статус</span><strong>Выдан</strong></div>
-        <div><span>Контроль качества</span><strong>Пройден</strong></div>
+        <div><span>{order.qualityControl.length ? 'Контроль качества' : 'Работы'}</span><strong>{order.qualityControl.length ? 'Пройден' : 'Выполнены'}</strong></div>
         <div><span>Выдал</span><strong>{order.handover?.responsible}</strong></div>
       </div>
       <div className="handover-proof">✓ {order.handover?.note}</div>
@@ -241,13 +242,13 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
   if (order.status === 'READY') return (
     <section className="screen ready-screen" data-testid="order-ready">
       <span className="ready-orbit"><i>✓</i></span>
-      <span className="confirmation-kicker">Контроль качества пройден</span>
+      <span className="confirmation-kicker">{order.qualityControl.length ? 'Контроль качества пройден' : 'Все работы выполнены'}</span>
       <h2>Автомобиль готов к выдаче</h2>
       <p>{vehicle.make} {vehicle.model} · {vehicle.plate}</p>
       <div className="ready-summary">
         <div><span>Мастер</span><strong>{order.assignment?.masterName}</strong></div>
         <div><span>Операции</span><strong>{order.work?.operations.length} выполнено</strong></div>
-        <div><span>QC</span><strong>{order.qualityControl.at(-1)?.responsible}</strong></div>
+        <div><span>{order.qualityControl.length ? 'QC' : 'Статус работ'}</span><strong>{order.qualityControl.at(-1)?.responsible ?? 'Завершены'}</strong></div>
         <div><span>Статус</span><strong>Готов к выдаче</strong></div>
       </div>
       <div className="ready-timeline"><span className="done">Приёмка</span><span className="done">Смета</span><span className="done">Работы</span><span className="active">Выдача</span></div>
@@ -255,7 +256,7 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
     </section>
   );
 
-  if (order.status === 'QC') return (
+  if (productFeatures.qualityControl && order.status === 'QC') return (
     <section className="screen qc-screen" data-testid="order-qc">
       <div className="production-top"><span>Контроль качества</span><b>QC</b></div>
       <div className="order-hero"><small>{order.assignment?.masterName} завершил работы</small><strong>{vehicle.make} {vehicle.model}</strong><span>{vehicle.plate} · {order.work?.operations.length} операций</span></div>
@@ -281,7 +282,7 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
         <div className="work-operations">{order.work.operations.map((operation, index) => <button key={operation.id} data-testid={`work-operation-${index}`} className={`${operation.status === 'DONE' ? 'done' : ''} ${operation.source === 'qc_rework' ? 'rework' : ''}`} disabled={loading || order.work?.status === 'PAUSED'} onClick={() => toggleOperation(operation.id, operation.status === 'DONE')}><i>{operation.status === 'DONE' ? '✓' : index + 1}</i><span><strong>{operation.name}</strong><small>{operation.source === 'qc_rework' ? 'Возврат с контроля качества' : money(operation.amountMinor)}</small></span><em>{operation.status === 'DONE' ? 'Готово' : 'Выполнить'}</em></button>)}</div>
         {order.work.status === 'ACTIVE' && <label className="pause-note">Причина паузы<input value={pauseNote} onChange={(event) => setPauseNote(event.target.value)}/></label>}
         {error && <div className="inline-error">{error}</div>}
-        <div className="work-actions"><button data-testid="toggle-work-pause" disabled={loading} onClick={togglePause}>{order.work.status === 'PAUSED' ? '▶ Продолжить' : 'Ⅱ Пауза'}</button><button data-testid="complete-work" disabled={loading || completedCount !== order.work.operations.length || order.work.status === 'PAUSED'} onClick={completeWork}>Передать в QC →</button></div>
+        <div className="work-actions"><button data-testid="toggle-work-pause" disabled={loading} onClick={togglePause}>{order.work.status === 'PAUSED' ? '▶ Продолжить' : 'Ⅱ Пауза'}</button><button data-testid="complete-work" disabled={loading || completedCount !== order.work.operations.length || order.work.status === 'PAUSED'} onClick={completeWork}>{productFeatures.qualityControl ? 'Передать в QC →' : 'Завершить работы →'}</button></div>
       </section>
     );
   }

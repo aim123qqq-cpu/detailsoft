@@ -10,6 +10,7 @@ before(async () => {
   server = createDetailFlowServer({
     databasePath: ':memory:',
     seed: true,
+    features: { qualityControl: true },
     authTokens: new Map([
       ['demo-session-token', { tenantId: 'tenant_demo', roles: ['admin', 'intake', 'master', 'qc'] }],
       ['intake-only-token', { tenantId: 'tenant_demo', roles: ['intake'] }],

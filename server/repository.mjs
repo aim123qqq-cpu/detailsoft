@@ -832,7 +832,7 @@ export class DetailFlowRepository {
     return { kind: 'updated', order: this.getOrder(tenantId, orderId) };
   }
 
-  completeOrderWork(tenantId, orderId) {
+  completeOrderWork(tenantId, orderId, { qualityControlEnabled = false } = {}) {
     const order = this.db.prepare(`SELECT o.status, r.status work_status FROM orders o
       JOIN order_work_runs r ON r.order_id = o.id AND r.tenant_id = o.tenant_id
       WHERE o.id = ? AND o.tenant_id = ?`).get(orderId, tenantId);
@@ -847,14 +847,32 @@ export class DetailFlowRepository {
     try {
       this.db.prepare(`UPDATE order_work_runs SET status = 'COMPLETED', completed_at = CURRENT_TIMESTAMP,
         updated_at = CURRENT_TIMESTAMP WHERE order_id = ? AND tenant_id = ?`).run(orderId, tenantId);
-      this.db.prepare(`UPDATE orders SET status = 'QC' WHERE id = ? AND tenant_id = ?`).run(orderId, tenantId);
-      this.insertOrderAudit(tenantId, orderId, 'WORK_COMPLETED', {});
+      const nextStatus = qualityControlEnabled ? 'QC' : 'READY';
+      this.db.prepare(`UPDATE orders SET status = ? WHERE id = ? AND tenant_id = ?`).run(nextStatus, orderId, tenantId);
+      this.insertOrderAudit(tenantId, orderId, 'WORK_COMPLETED', { nextStatus });
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
     }
     return { kind: 'updated', order: this.getOrder(tenantId, orderId) };
+  }
+
+  releaseDeprecatedQualityControlOrders() {
+    const orders = this.db.prepare(`SELECT id, tenant_id FROM orders WHERE status = 'QC'`).all();
+    if (!orders.length) return 0;
+    this.db.exec('BEGIN');
+    try {
+      for (const order of orders) {
+        this.db.prepare(`UPDATE orders SET status = 'READY' WHERE id = ? AND tenant_id = ?`).run(order.id, order.tenant_id);
+        this.insertOrderAudit(order.tenant_id, order.id, 'QC_DEPRECATED_BYPASS', { nextStatus: 'READY' });
+      }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return orders.length;
   }
 
   submitQualityControl(tenantId, orderId, input) {

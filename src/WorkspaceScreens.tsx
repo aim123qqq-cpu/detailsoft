@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from './api';
+import { productFeatures } from './features';
 import type { BookingAvailability, BookingListItem, BookingStatus, OrderListItem, WorkOrder } from './types';
 
 const money = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
@@ -228,17 +229,18 @@ function OrderCard({ item, onOpen }: { item: OrderListItem; onOpen: () => void }
   );
 }
 
-const orderStageIndex: Record<WorkOrder['status'], number> = {
-  INTAKE: 0,
-  ESTIMATE_DRAFT: 1,
-  APPROVED: 1,
-  IN_PROGRESS: 2,
-  QC: 3,
-  READY: 4,
-  CLOSED: 5
-};
+const orderStages = productFeatures.qualityControl
+  ? ['Приёмка', 'Смета', 'Работы', 'QC', 'Выдача']
+  : ['Приёмка', 'Смета', 'Работы', 'Выдача'];
 
-const orderStages = ['Приёмка', 'Смета', 'Работы', 'QC', 'Выдача'];
+function orderStageIndex(status: WorkOrder['status']) {
+  if (status === 'INTAKE') return 0;
+  if (status === 'ESTIMATE_DRAFT' || status === 'APPROVED') return 1;
+  if (status === 'IN_PROGRESS') return 2;
+  if (status === 'QC') return productFeatures.qualityControl ? 3 : 2;
+  if (status === 'READY') return productFeatures.qualityControl ? 4 : 3;
+  return orderStages.length;
+}
 
 function OrderDetails({ item, onBack }: { item: OrderListItem; onBack: () => void }) {
   const [order, setOrder] = useState<WorkOrder | null>(null);
@@ -274,8 +276,8 @@ function OrderDetails({ item, onBack }: { item: OrderListItem; onBack: () => voi
           <div className="details-vehicle"><span className="plate">{item.vehicle.plate}</span><strong>{item.vehicle.make} {item.vehicle.model} {item.vehicle.generation}</strong><small>{item.vehicle.color}</small></div>
         </div>
 
-        <div className="order-timeline" aria-label="Этапы заказа">
-          {orderStages.map((stage, index) => <div key={stage} className={index < orderStageIndex[order.status] ? 'done' : index === orderStageIndex[order.status] ? 'current' : ''}><i>{index < orderStageIndex[order.status] || order.status === 'CLOSED' ? '✓' : index + 1}</i><span>{stage}</span></div>)}
+        <div className="order-timeline" aria-label="Этапы заказа" style={{ gridTemplateColumns: `repeat(${orderStages.length}, 1fr)` }}>
+          {orderStages.map((stage, index) => <div key={stage} className={index < orderStageIndex(order.status) ? 'done' : index === orderStageIndex(order.status) ? 'current' : ''}><i>{index < orderStageIndex(order.status) || order.status === 'CLOSED' ? '✓' : index + 1}</i><span>{stage}</span></div>)}
         </div>
 
         <div className="details-grid order-details-grid">

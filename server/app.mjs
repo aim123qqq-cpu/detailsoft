@@ -33,6 +33,7 @@ export function createDetailFlowServer({
   databasePath = './data/detailflow.db',
   seed = true,
   staticDir = null,
+  features = { qualityControl: false },
   authTokens = new Map([
     ['demo-session-token', { tenantId: 'tenant_demo', roles: ['admin', 'intake', 'master', 'qc'] }],
     ['other-session-token', { tenantId: 'tenant_other', roles: ['admin', 'intake', 'master', 'qc'] }]
@@ -40,6 +41,8 @@ export function createDetailFlowServer({
 } = {}) {
   const db = openDatabase(databasePath, { seed });
   const repository = new DetailFlowRepository(db);
+  const qualityControlEnabled = features?.qualityControl === true;
+  if (!qualityControlEnabled) repository.releaseDeprecatedQualityControlOrders();
 
   const server = createServer(async (request, response) => {
     try {
@@ -266,13 +269,16 @@ export function createDetailFlowServer({
         const workComplete = url.pathname.match(/^\/api\/orders\/([^/]+)\/work\/complete$/);
         if (request.method === 'POST' && workComplete) {
           if (!hasRole('master', 'admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только мастеру' } });
-          const result = repository.completeOrderWork(tenantId, workComplete[1]);
+          const result = repository.completeOrderWork(tenantId, workComplete[1], { qualityControlEnabled });
           if (result.kind === 'updated') return sendJson(response, 200, result.order);
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'order_not_found', message: 'Заказ не найден' } });
           return sendJson(response, 409, { error: { code: result.code, message: result.message } });
         }
         const orderQc = url.pathname.match(/^\/api\/orders\/([^/]+)\/qc$/);
         if (request.method === 'POST' && orderQc) {
+          if (!qualityControlEnabled) return sendJson(response, 410, {
+            error: { code: 'feature_deprecated', message: 'Этап контроля качества временно отключён' }
+          });
           if (!hasRole('qc', 'admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только контролю качества' } });
           const result = repository.submitQualityControl(tenantId, orderQc[1], await readJson(request));
           if (result.kind === 'updated') return sendJson(response, 200, result.order);

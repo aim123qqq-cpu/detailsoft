@@ -120,13 +120,9 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.screenshot({ path: resolve(artifacts, '11-master-work.png'), fullPage: true });
 
     await page.getByTestId('complete-work').click();
-    await page.getByTestId('order-qc').waitFor();
-    assert.match(await page.getByTestId('order-qc').innerText(), /финальная проверка/i);
-    await page.screenshot({ path: resolve(artifacts, '12-quality-control.png'), fullPage: true });
-
-    await page.getByTestId('qc-pass').click();
     await page.getByTestId('order-ready').waitFor();
     assert.match(await page.getByTestId('order-ready').innerText(), /готов к выдаче/i);
+    assert.equal(await page.getByTestId('order-qc').count(), 0);
     await page.screenshot({ path: resolve(artifacts, '13-ready-for-delivery.png'), fullPage: true });
 
     await page.getByTestId('open-delivery').click();

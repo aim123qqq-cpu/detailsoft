@@ -7,7 +7,8 @@ const port = Number(process.env.PORT ?? 4173);
 const server = createDetailFlowServer({
   databasePath: process.env.DATABASE_PATH ?? resolve('data/detailflow.db'),
   seed: process.env.SEED_DEMO !== 'false',
-  staticDir: resolve('dist')
+  staticDir: resolve('dist'),
+  features: { qualityControl: process.env.ENABLE_QC === 'true' }
 });
 
 server.listen(port, '127.0.0.1', () => {
