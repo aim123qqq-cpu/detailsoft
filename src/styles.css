@@ -628,6 +628,22 @@ button.workspace-card:hover, button.workspace-card:focus-visible { border-color:
 .profile-center-card > div { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; padding-top: 13px; border-top: 1px solid #2a3540; color: #84919c; font-size: 10px; }
 .profile-center-card strong { display: flex; align-items: center; gap: 6px; color: #67dbb1; }
 .profile-center-card strong i { width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
+.profile-access { margin-top: 12px; padding: 16px; border: 1px solid #303d48; border-radius: 16px; background: #121920; }
+.profile-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.profile-section-heading > span { color: #8d9aa4; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.profile-section-heading > strong { color: #ff9d70; font-size: 11px; }
+.profile-role-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.profile-role-list span { padding: 7px 9px; border: 1px solid rgba(255,121,57,.24); border-radius: 9px; color: #ffc0a1; background: rgba(255,121,57,.08); font-size: 11px; font-weight: 800; }
+.profile-capability-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+.profile-capability-list > div { min-height: 42px; display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 10px; background: #182129; color: #c4ced5; font-size: 11px; line-height: 1.25; }
+.profile-capability-list i { width: 20px; height: 20px; flex: 0 0 20px; display: grid; place-items: center; border-radius: 7px; color: #72deb7; background: rgba(54,201,150,.1); font-size: 11px; font-style: normal; font-weight: 900; }
+.profile-capability-list > div.muted { grid-column: 1 / -1; color: #7f8b95; background: #10171d; }
+.profile-capability-list > div.muted i { color: #77838d; background: #202a32; }
+.profile-access > p { margin: 13px 0 0; color: #687681; font-size: 10px; line-height: 1.45; }
+.profile-state { min-height: 330px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #a7b1b9; text-align: center; }
+.profile-state .spinner { position: static; width: 24px; height: 24px; }
+.profile-state p { max-width: 260px; margin: -4px 0 4px; color: #7f8b95; font-size: 11px; }
+.profile-state .secondary-button { min-height: 44px; padding: 0 18px; }
 .profile-settings { overflow: hidden; margin-top: 12px; border: 1px solid #303d48; border-radius: 16px; background: #121920; }
 .profile-settings h3 { margin: 0; padding: 15px 16px 11px; color: #8d9aa4; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
 .profile-settings > div { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 15px; border-top: 1px solid #28343e; }

@@ -32,6 +32,24 @@ export type CatalogVariant = {
 
 export type ApiError = { error: { code: string; message: string } };
 
+export type SessionContext = {
+  actor: { displayName: string; roles: string[] };
+  tenant: { id: string; name: string; timezone: string };
+  preferences: { locale: string; currency: string };
+  features: { qualityControl: boolean };
+  capabilities: {
+    manageCustomers: boolean;
+    manageBookings: boolean;
+    manageIntake: boolean;
+    approveEstimates: boolean;
+    assignMasters: boolean;
+    performWork: boolean;
+    performQualityControl: boolean;
+    closeOrders: boolean;
+    viewAnalytics: boolean;
+  };
+};
+
 export type ServiceOperation = { id: string; name: string };
 
 export type ServiceOffering = {

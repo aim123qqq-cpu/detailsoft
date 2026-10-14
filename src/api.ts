@@ -1,4 +1,4 @@
-import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, OrderListItem, OrderRecommendation, QuoteSelection, ServiceCatalog, Vehicle, WorkOrder } from './types';
+import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, OrderListItem, OrderRecommendation, QuoteSelection, ServiceCatalog, SessionContext, Vehicle, WorkOrder } from './types';
 
 const sessionHeaders = { authorization: 'Bearer demo-session-token' };
 
@@ -17,6 +17,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  getSession(signal?: AbortSignal) {
+    return request<SessionContext>('/api/session', { signal });
+  },
   listBookings(signal?: AbortSignal) {
     return request<{ items: BookingListItem[] }>('/api/bookings?limit=20', { signal });
   },

@@ -35,8 +35,8 @@ export function createDetailFlowServer({
   staticDir = null,
   features = { qualityControl: false },
   authTokens = new Map([
-    ['demo-session-token', { tenantId: 'tenant_demo', roles: ['admin', 'intake', 'master', 'qc'] }],
-    ['other-session-token', { tenantId: 'tenant_other', roles: ['admin', 'intake', 'master', 'qc'] }]
+    ['demo-session-token', { tenantId: 'tenant_demo', displayName: 'Анна', roles: ['admin', 'intake', 'master', 'qc'] }],
+    ['other-session-token', { tenantId: 'tenant_other', displayName: 'Администратор', roles: ['admin', 'intake', 'master', 'qc'] }]
   ])
 } = {}) {
   const db = openDatabase(databasePath, { seed });
@@ -58,14 +58,45 @@ export function createDetailFlowServer({
         const tenantId = typeof session === 'string' ? session : session?.tenantId;
         const roles = typeof session === 'string' ? ['admin', 'intake', 'master', 'qc'] : session?.roles ?? [];
         const hasRole = (...allowed) => allowed.some((role) => roles.includes(role));
+        const capabilities = {
+          manageCustomers: hasRole('admin'),
+          manageBookings: hasRole('admin'),
+          manageIntake: hasRole('admin', 'intake'),
+          approveEstimates: hasRole('admin'),
+          assignMasters: hasRole('admin'),
+          performWork: hasRole('admin', 'master'),
+          performQualityControl: qualityControlEnabled && hasRole('admin', 'qc'),
+          closeOrders: hasRole('admin'),
+          viewAnalytics: hasRole('admin', 'owner')
+        };
         if (!tenantId) {
           return sendJson(response, 401, { error: { code: 'unauthorized', message: 'Требуется авторизация' } });
+        }
+
+        if (request.method === 'GET' && url.pathname === '/api/session') {
+          const tenant = repository.getTenant(tenantId);
+          if (!tenant) return sendJson(response, 404, {
+            error: { code: 'tenant_not_found', message: 'Центр не найден' }
+          });
+          return sendJson(response, 200, {
+            actor: {
+              displayName: typeof session === 'string' ? 'Сотрудник' : session.displayName ?? 'Сотрудник',
+              roles
+            },
+            tenant,
+            preferences: { locale: 'ru-RU', currency: 'RUB' },
+            features: { qualityControl: qualityControlEnabled },
+            capabilities
+          });
         }
 
         if (request.method === 'GET' && url.pathname === '/api/customers') {
           return sendJson(response, 200, { items: repository.searchCustomers(tenantId, url.searchParams.get('phone') ?? '') });
         }
         if (request.method === 'POST' && url.pathname === '/api/customers') {
+          if (!capabilities.manageCustomers) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для создания клиента' }
+          });
           const result = repository.createCustomer(tenantId, await readJson(request));
           if (result.kind === 'created') return sendJson(response, 201, result.customer);
           if (result.kind === 'tenant_not_found') return sendJson(response, 404, { error: { code: 'tenant_not_found', message: 'Центр не найден' } });
@@ -83,6 +114,9 @@ export function createDetailFlowServer({
           return sendJson(response, 200, { items: repository.searchCatalog(url.searchParams.get('q') ?? '') });
         }
         if (request.method === 'POST' && url.pathname === '/api/vehicles') {
+          if (!capabilities.manageCustomers) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для добавления автомобиля' }
+          });
           const result = repository.createVehicle(tenantId, await readJson(request));
           if (result.kind === 'created') return sendJson(response, 201, result);
           if (result.kind === 'duplicate') return sendJson(response, 409, {
@@ -93,6 +127,9 @@ export function createDetailFlowServer({
         }
         const vehiclePatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)$/);
         if (request.method === 'PATCH' && vehiclePatch) {
+          if (!capabilities.manageCustomers) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для изменения автомобиля' }
+          });
           const result = repository.updateVehicleStatus(tenantId, vehiclePatch[1], (await readJson(request)).status);
           if (result.kind === 'updated') return sendJson(response, 200, result.vehicle);
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'vehicle_not_found', message: 'Автомобиль не найден' } });
@@ -127,6 +164,9 @@ export function createDetailFlowServer({
           return sendJson(response, 200, { items: repository.listBookings(tenantId, url.searchParams.get('limit') ?? 20) });
         }
         if (request.method === 'POST' && url.pathname === '/api/bookings') {
+          if (!capabilities.manageBookings) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для создания записи' }
+          });
           const idempotencyHeader = request.headers['idempotency-key'];
           const idempotencyKey = typeof idempotencyHeader === 'string' ? idempotencyHeader : '';
           const result = repository.createBooking(tenantId, await readJson(request), idempotencyKey);
@@ -145,7 +185,7 @@ export function createDetailFlowServer({
         }
         const bookingGet = url.pathname.match(/^\/api\/bookings\/([^/]+)$/);
         if (request.method === 'PATCH' && bookingGet) {
-          if (!hasRole('admin')) return sendJson(response, 403, {
+          if (!capabilities.manageBookings) return sendJson(response, 403, {
             error: { code: 'forbidden', message: 'Недостаточно прав для изменения записи' }
           });
           const result = repository.updateBooking(tenantId, bookingGet[1], await readJson(request));
@@ -168,7 +208,7 @@ export function createDetailFlowServer({
           return sendJson(response, 200, { items: repository.listOrders(tenantId, url.searchParams.get('limit') ?? 20) });
         }
         if (request.method === 'GET' && url.pathname === '/api/analytics/overview') {
-          if (!hasRole('admin', 'owner')) return sendJson(response, 403, {
+          if (!capabilities.viewAnalytics) return sendJson(response, 403, {
             error: { code: 'forbidden', message: 'Аналитика доступна только руководителю' }
           });
           const from = url.searchParams.get('from') ?? '';
@@ -187,6 +227,9 @@ export function createDetailFlowServer({
           return sendJson(response, 200, repository.getAnalyticsOverview(tenantId, from, to));
         }
         if (request.method === 'POST' && url.pathname === '/api/orders') {
+          if (!capabilities.manageIntake) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для начала приёмки' }
+          });
           const result = repository.createOrderFromBooking(tenantId, await readJson(request));
           if (result.kind === 'created') return sendJson(response, 201, result.order);
           if (result.kind === 'replayed') return sendJson(response, 200, result.order);
@@ -197,6 +240,9 @@ export function createDetailFlowServer({
         }
         const orderIntake = url.pathname.match(/^\/api\/orders\/([^/]+)\/intake$/);
         if (request.method === 'PUT' && orderIntake) {
+          if (!capabilities.manageIntake) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Приёмка доступна только администратору или приёмщику' }
+          });
           const result = repository.saveOrderIntake(tenantId, orderIntake[1], await readJson(request));
           if (result.kind === 'updated') return sendJson(response, 200, result.order);
           if (result.kind === 'not_found') return sendJson(response, 404, {
@@ -209,6 +255,9 @@ export function createDetailFlowServer({
         }
         const orderEstimates = url.pathname.match(/^\/api\/orders\/([^/]+)\/estimates$/);
         if (request.method === 'POST' && orderEstimates) {
+          if (!capabilities.manageIntake) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Черновик сметы доступен только администратору или приёмщику' }
+          });
           const result = repository.createEstimateVersion(tenantId, orderEstimates[1], await readJson(request));
           if (result.kind === 'created') return sendJson(response, 201, result.estimate);
           if (result.kind === 'not_found') return sendJson(response, 404, {
@@ -221,6 +270,9 @@ export function createDetailFlowServer({
         }
         const estimateApprovals = url.pathname.match(/^\/api\/orders\/([^/]+)\/estimate-approvals$/);
         if (request.method === 'POST' && estimateApprovals) {
+          if (!capabilities.approveEstimates) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для согласования сметы' }
+          });
           const result = repository.decideEstimate(tenantId, estimateApprovals[1], await readJson(request));
           if (result.kind === 'updated') return sendJson(response, 200, result.order);
           if (result.kind === 'not_found') return sendJson(response, 404, {
@@ -233,7 +285,7 @@ export function createDetailFlowServer({
         }
         const orderAssignment = url.pathname.match(/^\/api\/orders\/([^/]+)\/assignment$/);
         if (request.method === 'PUT' && orderAssignment) {
-          if (!hasRole('admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Недостаточно прав для назначения мастера' } });
+          if (!capabilities.assignMasters) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Недостаточно прав для назначения мастера' } });
           const result = repository.assignOrderMaster(tenantId, orderAssignment[1], await readJson(request));
           if (result.kind === 'updated') return sendJson(response, 200, result.order);
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'order_not_found', message: 'Заказ не найден' } });
@@ -242,7 +294,7 @@ export function createDetailFlowServer({
         }
         const workStart = url.pathname.match(/^\/api\/orders\/([^/]+)\/work\/start$/);
         if (request.method === 'POST' && workStart) {
-          if (!hasRole('master', 'admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только мастеру' } });
+          if (!capabilities.performWork) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только мастеру' } });
           const result = repository.startOrderWork(tenantId, workStart[1]);
           if (result.kind === 'updated') return sendJson(response, 200, result.order);
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'order_not_found', message: 'Заказ не найден' } });
@@ -250,7 +302,7 @@ export function createDetailFlowServer({
         }
         const workOperation = url.pathname.match(/^\/api\/orders\/([^/]+)\/work\/operations\/([^/]+)$/);
         if (request.method === 'PATCH' && workOperation) {
-          if (!hasRole('master', 'admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только мастеру' } });
+          if (!capabilities.performWork) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только мастеру' } });
           const result = repository.updateWorkOperation(tenantId, workOperation[1], workOperation[2], await readJson(request));
           if (result.kind === 'updated') return sendJson(response, 200, result.order);
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'operation_not_found', message: 'Операция не найдена' } });
@@ -259,7 +311,7 @@ export function createDetailFlowServer({
         }
         const workPause = url.pathname.match(/^\/api\/orders\/([^/]+)\/work\/(pause|resume)$/);
         if (request.method === 'POST' && workPause) {
-          if (!hasRole('master', 'admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только мастеру' } });
+          if (!capabilities.performWork) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только мастеру' } });
           const result = repository.setWorkPause(tenantId, workPause[1], workPause[2] === 'pause', await readJson(request));
           if (result.kind === 'updated') return sendJson(response, 200, result.order);
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'order_not_found', message: 'Заказ не найден' } });
@@ -268,7 +320,7 @@ export function createDetailFlowServer({
         }
         const workComplete = url.pathname.match(/^\/api\/orders\/([^/]+)\/work\/complete$/);
         if (request.method === 'POST' && workComplete) {
-          if (!hasRole('master', 'admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только мастеру' } });
+          if (!capabilities.performWork) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только мастеру' } });
           const result = repository.completeOrderWork(tenantId, workComplete[1], { qualityControlEnabled });
           if (result.kind === 'updated') return sendJson(response, 200, result.order);
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'order_not_found', message: 'Заказ не найден' } });
@@ -279,7 +331,7 @@ export function createDetailFlowServer({
           if (!qualityControlEnabled) return sendJson(response, 410, {
             error: { code: 'feature_deprecated', message: 'Этап контроля качества временно отключён' }
           });
-          if (!hasRole('qc', 'admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только контролю качества' } });
+          if (!capabilities.performQualityControl) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Доступно только контролю качества' } });
           const result = repository.submitQualityControl(tenantId, orderQc[1], await readJson(request));
           if (result.kind === 'updated') return sendJson(response, 200, result.order);
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'order_not_found', message: 'Заказ не найден' } });
@@ -288,7 +340,7 @@ export function createDetailFlowServer({
         }
         const orderHandover = url.pathname.match(/^\/api\/orders\/([^/]+)\/handover$/);
         if (request.method === 'POST' && orderHandover) {
-          if (!hasRole('admin')) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Недостаточно прав для выдачи автомобиля' } });
+          if (!capabilities.closeOrders) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Недостаточно прав для выдачи автомобиля' } });
           const result = repository.closeOrderHandover(tenantId, orderHandover[1], await readJson(request));
           if (result.kind === 'updated') return sendJson(response, 200, result.order);
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'order_not_found', message: 'Заказ не найден' } });

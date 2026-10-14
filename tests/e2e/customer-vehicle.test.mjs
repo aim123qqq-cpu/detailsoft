@@ -217,8 +217,11 @@ test('mobile customer → vehicle → services → booking flow works end to end
 
     await page.getByTestId('profile-nav').click();
     await page.getByTestId('profile-screen').waitFor();
+    await page.waitForFunction(() => document.querySelector('[data-testid="profile-screen"]')?.textContent?.includes('Клиенты и автомобили'));
     assert.match(await page.getByTestId('profile-screen').innerText(), /DetailFlow Studio/);
     assert.match(await page.getByTestId('profile-screen').innerText(), /Администратор/);
+    assert.match(await page.getByTestId('profile-screen').innerText(), /Контроль качества временно отключён/);
+    assert.match(await page.getByTestId('profile-screen').innerText(), /Права вычисляются сервером/);
     await page.waitForTimeout(250);
     await page.screenshot({ path: resolve(artifacts, '25-profile.png') });
 

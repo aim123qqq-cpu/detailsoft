@@ -32,6 +32,11 @@ export class DetailFlowRepository {
     this.db = db;
   }
 
+  getTenant(tenantId) {
+    const tenant = this.db.prepare('SELECT id, name, timezone FROM tenants WHERE id = ?').get(tenantId);
+    return tenant ? { id: tenant.id, name: tenant.name, timezone: tenant.timezone } : null;
+  }
+
   searchCustomers(tenantId, phone) {
     const normalized = normalizePhone(phone);
     if (normalized.length < 4) return [];
