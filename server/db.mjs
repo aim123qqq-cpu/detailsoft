@@ -154,6 +154,13 @@ export function seedDatabase(db) {
       ['tenant_demo', '[0,1,2,3,4,5,6]', '09:00', '20:00', 30, 2],
       ['tenant_other', '[0,1,2,3,4,5,6]', '09:00', '20:00', 30, 1]
     ]);
+    insertMany(db, `INSERT OR IGNORE INTO tenant_members
+      (id, tenant_id, display_name, roles_json, status) VALUES (?, ?, ?, ?, ?)`, [
+      ['member_demo_owner', 'tenant_demo', 'Анна Смирнова', '["owner","admin"]', 'active'],
+      ['member_demo_master', 'tenant_demo', 'Дмитрий Соколов', '["master"]', 'active'],
+      ['member_demo_intake', 'tenant_demo', 'Ирина Лебедева', '["intake"]', 'active'],
+      ['member_other_owner', 'tenant_other', 'Олег Петров', '["owner"]', 'active']
+    ]);
     db.prepare(`INSERT OR IGNORE INTO orders
       (id, tenant_id, customer_id, vehicle_id, status)
       VALUES (?, ?, ?, ?, ?)`)

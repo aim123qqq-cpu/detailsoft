@@ -35,7 +35,7 @@ export function createDetailFlowServer({
   staticDir = null,
   features = { qualityControl: false },
   authTokens = new Map([
-    ['demo-session-token', { tenantId: 'tenant_demo', displayName: 'Анна', roles: ['admin', 'intake', 'master', 'qc'] }],
+    ['demo-session-token', { tenantId: 'tenant_demo', displayName: 'Анна', roles: ['owner', 'admin', 'intake', 'master', 'qc'] }],
     ['other-session-token', { tenantId: 'tenant_other', displayName: 'Администратор', roles: ['admin', 'intake', 'master', 'qc'] }]
   ])
 } = {}) {
@@ -54,7 +54,7 @@ export function createDetailFlowServer({
         const token = typeof authorization === 'string' && authorization.startsWith('Bearer ')
           ? authorization.slice('Bearer '.length)
           : '';
-        const session = authTokens.get(token);
+        const session = authTokens.get(token) ?? repository.authenticateTeamToken(token);
         const tenantId = typeof session === 'string' ? session : session?.tenantId;
         const roles = typeof session === 'string' ? ['admin', 'intake', 'master', 'qc'] : session?.roles ?? [];
         const hasRole = (...allowed) => allowed.some((role) => roles.includes(role));
@@ -69,6 +69,7 @@ export function createDetailFlowServer({
           closeOrders: hasRole('admin'),
           manageCatalog: hasRole('admin', 'owner'),
           manageSettings: hasRole('admin', 'owner'),
+          manageTeam: hasRole('owner'),
           viewAnalytics: hasRole('admin', 'owner')
         };
         if (!tenantId) {
@@ -212,6 +213,41 @@ export function createDetailFlowServer({
             error: { code: 'tenant_not_found', message: 'Центр не найден' }
           });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте график и вместимость центра' } });
+        }
+        if (request.method === 'GET' && url.pathname === '/api/tenants/current/team') {
+          if (!capabilities.manageTeam) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Команда доступна только владельцу центра' }
+          });
+          return sendJson(response, 200, { items: repository.listTeamMembers(tenantId) });
+        }
+        if (request.method === 'POST' && url.pathname === '/api/tenants/current/team') {
+          if (!capabilities.manageTeam) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Добавлять сотрудников может только владелец центра' }
+          });
+          const result = repository.createTeamMember(tenantId, await readJson(request));
+          if (result.kind === 'created') return sendJson(response, 201, {
+            member: result.member, accessToken: result.accessToken
+          });
+          return sendJson(response, 422, {
+            error: { code: 'validation_error', message: 'Укажите имя и хотя бы одну доступную роль' }
+          });
+        }
+        const teamMemberPatch = url.pathname.match(/^\/api\/tenants\/current\/team\/([^/]+)$/);
+        if (request.method === 'PATCH' && teamMemberPatch) {
+          if (!capabilities.manageTeam) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Изменять команду может только владелец центра' }
+          });
+          const result = repository.updateTeamMember(tenantId, teamMemberPatch[1], await readJson(request));
+          if (result.kind === 'updated') return sendJson(response, 200, result.member);
+          if (result.kind === 'not_found') return sendJson(response, 404, {
+            error: { code: 'team_member_not_found', message: 'Сотрудник не найден' }
+          });
+          if (result.kind === 'conflict') return sendJson(response, 409, {
+            error: { code: 'last_owner_required', message: 'В центре должен остаться хотя бы один активный владелец' }
+          });
+          return sendJson(response, 422, {
+            error: { code: 'validation_error', message: 'Проверьте роли и статус сотрудника' }
+          });
         }
         if (request.method === 'POST' && url.pathname === '/api/bookings/quote-preview') {
           const result = repository.previewBookingQuote(tenantId, await readJson(request));

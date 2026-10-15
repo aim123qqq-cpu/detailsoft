@@ -63,8 +63,20 @@ export type SessionContext = {
     closeOrders: boolean;
     manageCatalog: boolean;
     manageSettings: boolean;
+    manageTeam: boolean;
     viewAnalytics: boolean;
   };
+};
+
+export type TeamRole = 'owner' | 'admin' | 'intake' | 'master';
+
+export type TeamMember = {
+  id: string;
+  displayName: string;
+  roles: TeamRole[];
+  status: 'active' | 'blocked';
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type CenterSettings = {

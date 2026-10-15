@@ -342,6 +342,26 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.getByRole('button', { name: '← Профиль' }).click();
     await page.getByTestId('profile-screen').waitFor();
 
+    await page.getByTestId('team-entry').click();
+    await page.getByTestId('team-screen').waitFor();
+    assert.match(await page.getByTestId('team-screen').innerText(), /Команда и роли/);
+    await page.getByText('Дмитрий Соколов', { exact: true }).waitFor();
+    assert.match(await page.getByTestId('team-screen').innerText(), /Дмитрий Соколов/);
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: resolve(artifacts, '40-team.png') });
+    await page.getByTestId('add-team-member').click();
+    await page.getByLabel('Имя сотрудника').fill('Мария Орлова');
+    await page.getByRole('button', { name: /Мастер/ }).click();
+    await page.screenshot({ path: resolve(artifacts, '41-team-member-form.png') });
+    await page.getByTestId('create-team-member').click();
+    await page.getByTestId('team-access-token').waitFor();
+    assert.match(await page.getByTestId('team-access-token').innerText(), /df_[a-f0-9]{48}/);
+    await page.screenshot({ path: resolve(artifacts, '42-team-access-token.png') });
+    await page.getByRole('button', { name: 'Готово' }).click();
+    assert.match(await page.getByTestId('team-screen').innerText(), /Мария Орлова/);
+    await page.getByRole('button', { name: '← Профиль' }).click();
+    await page.getByTestId('profile-screen').waitFor();
+
     await page.setViewportSize({ width: 820, height: 1024 });
     const profileColumns = await page.getByTestId('profile-screen').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length);
     assert.equal(profileColumns, 2, 'tablet profile uses two readable content columns');

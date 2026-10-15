@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from './api';
 import { CatalogScreen } from './CatalogScreen';
 import { CenterSettingsScreen } from './CenterSettingsScreen';
+import { TeamScreen } from './TeamScreen';
 import type { SessionContext } from './types';
 
 const roleLabels: Record<string, string> = {
@@ -22,6 +23,7 @@ const capabilityLabels: Array<[keyof SessionContext['capabilities'], string]> = 
   ['closeOrders', 'Выдача автомобилей'],
   ['manageCatalog', 'Каталог и цены'],
   ['manageSettings', 'Настройки центра'],
+  ['manageTeam', 'Команда и роли'],
   ['viewAnalytics', 'Статистика']
 ];
 
@@ -35,6 +37,7 @@ export function ProfileScreen() {
   const [reloadKey, setReloadKey] = useState(0);
   const [showCatalog, setShowCatalog] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showTeam, setShowTeam] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -65,6 +68,7 @@ export function ProfileScreen() {
 
   if (showCatalog) return <CatalogScreen onBack={() => setShowCatalog(false)}/>;
   if (showSettings) return <CenterSettingsScreen onBack={() => setShowSettings(false)}/>;
+  if (showTeam) return <TeamScreen onBack={() => setShowTeam(false)}/>;
 
   return (
     <section className="screen profile-screen" data-testid="profile-screen">
@@ -103,6 +107,9 @@ export function ProfileScreen() {
       </button>}
       {session.capabilities.manageSettings && <button className="profile-catalog-entry profile-settings-entry" data-testid="center-settings-entry" onClick={() => setShowSettings(true)}>
         <span><i>◷</i><b>График и загрузка</b><small>Рабочие дни, часы и вместимость</small></span><strong>Открыть →</strong>
+      </button>}
+      {session.capabilities.manageTeam && <button className="profile-catalog-entry profile-team-entry" data-testid="team-entry" onClick={() => setShowTeam(true)}>
+        <span><i>👥</i><b>Команда</b><small>Сотрудники, роли и блокировка доступа</small></span><strong>Открыть →</strong>
       </button>}
 
       <p className="profile-version">DetailFlow · локальная рабочая версия</p>

@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { normalizePhone, normalizePlate, normalizeSearch } from './domain/normalize.mjs';
 
 function mapVehicle(row) {
@@ -26,6 +26,19 @@ function apiTimestamp(value) {
   if (!value) return null;
   return new Date(value.endsWith?.('Z') ? value : `${value.replace(' ', 'T')}Z`).toISOString();
 }
+
+function mapTeamMember(row) {
+  return {
+    id: row.id,
+    displayName: row.display_name,
+    roles: JSON.parse(row.roles_json),
+    status: row.status,
+    createdAt: apiTimestamp(row.created_at),
+    updatedAt: apiTimestamp(row.updated_at)
+  };
+}
+
+const assignableTeamRoles = ['owner', 'admin', 'intake', 'master'];
 
 function timeToMinutes(value) {
   const match = /^(\d{2}):(\d{2})$/.exec(String(value ?? ''));
@@ -97,6 +110,79 @@ export class DetailFlowRepository {
   getTenant(tenantId) {
     const tenant = this.db.prepare('SELECT id, name, timezone FROM tenants WHERE id = ?').get(tenantId);
     return tenant ? { id: tenant.id, name: tenant.name, timezone: tenant.timezone } : null;
+  }
+
+  authenticateTeamToken(token) {
+    if (!token) return null;
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const row = this.db.prepare(`SELECT member.tenant_id, member.display_name, member.roles_json
+      FROM tenant_member_tokens token
+      JOIN tenant_members member ON member.id = token.member_id AND member.tenant_id = token.tenant_id
+      WHERE token.token_hash = ? AND member.status = 'active'`).get(tokenHash);
+    return row ? {
+      tenantId: row.tenant_id,
+      displayName: row.display_name,
+      roles: JSON.parse(row.roles_json)
+    } : null;
+  }
+
+  listTeamMembers(tenantId) {
+    return this.db.prepare(`SELECT id, display_name, roles_json, status, created_at, updated_at
+      FROM tenant_members WHERE tenant_id = ?
+      ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, display_name COLLATE NOCASE`)
+      .all(tenantId).map(mapTeamMember);
+  }
+
+  createTeamMember(tenantId, input) {
+    const displayName = String(input?.displayName ?? '').trim();
+    const roles = Array.isArray(input?.roles) ? [...new Set(input.roles)].sort() : [];
+    if (displayName.length < 2 || displayName.length > 80 || !roles.length ||
+      roles.some((role) => !assignableTeamRoles.includes(role))) return { kind: 'invalid' };
+    const id = `member_${randomUUID()}`;
+    const accessToken = `df_${randomBytes(24).toString('hex')}`;
+    const tokenHash = createHash('sha256').update(accessToken).digest('hex');
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`INSERT INTO tenant_members
+        (id, tenant_id, display_name, roles_json) VALUES (?, ?, ?, ?)`)
+        .run(id, tenantId, displayName, JSON.stringify(roles));
+      this.db.prepare(`INSERT INTO tenant_member_tokens
+        (id, tenant_id, member_id, token_hash) VALUES (?, ?, ?, ?)`)
+        .run(`member_token_${randomUUID()}`, tenantId, id, tokenHash);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    const member = this.db.prepare(`SELECT id, display_name, roles_json, status, created_at, updated_at
+      FROM tenant_members WHERE id = ? AND tenant_id = ?`).get(id, tenantId);
+    return { kind: 'created', member: mapTeamMember(member), accessToken };
+  }
+
+  updateTeamMember(tenantId, memberId, input) {
+    const current = this.db.prepare(`SELECT id, display_name, roles_json, status, created_at, updated_at
+      FROM tenant_members WHERE id = ? AND tenant_id = ?`).get(memberId, tenantId);
+    if (!current) return { kind: 'not_found' };
+    const hasRoles = Array.isArray(input?.roles);
+    const hasStatus = input?.status !== undefined;
+    if (!hasRoles && !hasStatus) return { kind: 'invalid' };
+    const roles = hasRoles ? [...new Set(input.roles)].sort() : JSON.parse(current.roles_json);
+    const status = hasStatus ? input.status : current.status;
+    if (!roles.length || roles.some((role) => !assignableTeamRoles.includes(role)) ||
+      !['active', 'blocked'].includes(status)) return { kind: 'invalid' };
+    const wasActiveOwner = current.status === 'active' && JSON.parse(current.roles_json).includes('owner');
+    const remainsActiveOwner = status === 'active' && roles.includes('owner');
+    if (wasActiveOwner && !remainsActiveOwner) {
+      const activeOwners = this.db.prepare(`SELECT roles_json FROM tenant_members
+        WHERE tenant_id = ? AND status = 'active'`).all(tenantId)
+        .filter((member) => JSON.parse(member.roles_json).includes('owner')).length;
+      if (activeOwners <= 1) return { kind: 'conflict' };
+    }
+    this.db.prepare(`UPDATE tenant_members SET roles_json = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND tenant_id = ?`).run(JSON.stringify(roles), status, memberId, tenantId);
+    const updated = this.db.prepare(`SELECT id, display_name, roles_json, status, created_at, updated_at
+      FROM tenant_members WHERE id = ? AND tenant_id = ?`).get(memberId, tenantId);
+    return { kind: 'updated', member: mapTeamMember(updated) };
   }
 
   getCenterSettings(tenantId) {

@@ -1,4 +1,4 @@
-import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, CenterSettings, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, Vehicle, WorkOrder } from './types';
+import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, CenterSettings, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, TeamMember, TeamRole, Vehicle, WorkOrder } from './types';
 
 const sessionHeaders = { authorization: 'Bearer demo-session-token' };
 
@@ -78,6 +78,19 @@ export const api = {
   },
   updateCenterSettings(input: Omit<CenterSettings, 'timezone'>) {
     return request<CenterSettings>('/api/tenants/current/settings', {
+      method: 'PATCH', body: JSON.stringify(input)
+    });
+  },
+  listTeam(signal?: AbortSignal) {
+    return request<{ items: TeamMember[] }>('/api/tenants/current/team', { signal });
+  },
+  createTeamMember(input: { displayName: string; roles: TeamRole[] }) {
+    return request<{ member: TeamMember; accessToken: string }>('/api/tenants/current/team', {
+      method: 'POST', body: JSON.stringify(input)
+    });
+  },
+  updateTeamMember(memberId: string, input: { roles?: TeamRole[]; status?: TeamMember['status'] }) {
+    return request<TeamMember>(`/api/tenants/current/team/${encodeURIComponent(memberId)}`, {
       method: 'PATCH', body: JSON.stringify(input)
     });
   },
