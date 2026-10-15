@@ -18,6 +18,18 @@ before(async () => {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 
+  const settingsResponse = await api('/api/tenants/current/settings', {
+    method: 'PATCH',
+    body: {
+      workingDays: [0, 1, 2, 3, 4, 5, 6],
+      openTime: '00:00',
+      closeTime: '20:00',
+      slotStepMinutes: 30,
+      simultaneousCapacity: 2
+    }
+  });
+  assert.equal(settingsResponse.status, 200);
+
   const bookingResponse = await api('/api/bookings', {
     method: 'POST',
     headers: { 'idempotency-key': 'analytics-booking' },

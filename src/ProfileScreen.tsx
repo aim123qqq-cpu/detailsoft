@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
 import { CatalogScreen } from './CatalogScreen';
+import { CenterSettingsScreen } from './CenterSettingsScreen';
 import type { SessionContext } from './types';
 
 const roleLabels: Record<string, string> = {
@@ -20,6 +21,7 @@ const capabilityLabels: Array<[keyof SessionContext['capabilities'], string]> = 
   ['performWork', 'Выполнение работ'],
   ['closeOrders', 'Выдача автомобилей'],
   ['manageCatalog', 'Каталог и цены'],
+  ['manageSettings', 'Настройки центра'],
   ['viewAnalytics', 'Статистика']
 ];
 
@@ -32,6 +34,7 @@ export function ProfileScreen() {
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [showCatalog, setShowCatalog] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -61,6 +64,7 @@ export function ProfileScreen() {
   const grantedCapabilities = capabilityLabels.filter(([capability]) => session.capabilities[capability]);
 
   if (showCatalog) return <CatalogScreen onBack={() => setShowCatalog(false)}/>;
+  if (showSettings) return <CenterSettingsScreen onBack={() => setShowSettings(false)}/>;
 
   return (
     <section className="screen profile-screen" data-testid="profile-screen">
@@ -96,6 +100,9 @@ export function ProfileScreen() {
 
       {session.capabilities.manageCatalog && <button className="profile-catalog-entry" data-testid="catalog-entry" onClick={() => setShowCatalog(true)}>
         <span><i>₽</i><b>Каталог услуг</b><small>Цены, длительность и доступность</small></span><strong>Открыть →</strong>
+      </button>}
+      {session.capabilities.manageSettings && <button className="profile-catalog-entry profile-settings-entry" data-testid="center-settings-entry" onClick={() => setShowSettings(true)}>
+        <span><i>◷</i><b>График и загрузка</b><small>Рабочие дни, часы и вместимость</small></span><strong>Открыть →</strong>
       </button>}
 
       <p className="profile-version">DetailFlow · локальная рабочая версия</p>

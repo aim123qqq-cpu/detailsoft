@@ -151,7 +151,7 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.getByTestId('master-work').waitFor();
     assert.equal(await page.locator('[data-testid^="work-operation-"]').count(), 2);
     await page.getByTestId('toggle-work-pause').click();
-    assert.match(await page.getByTestId('master-work').innerText(), /Пауза/);
+    assert.match(await page.getByTestId('master-work').innerText(), /Пауза/i);
     await page.getByTestId('toggle-work-pause').click();
     await page.getByTestId('work-operation-0').click();
     await page.waitForFunction(() => document.querySelector('[data-testid="master-work"]')?.textContent?.includes('1 выполнено'));
@@ -320,6 +320,25 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.getByTestId('save-catalog-item').click();
     await page.getByTestId('catalog-manager').waitFor();
     assert.match(await page.getByTestId('catalog-card-service_wash').innerText(), /1\s?770\s?₽/);
+    await page.getByRole('button', { name: '← Профиль' }).click();
+    await page.getByTestId('profile-screen').waitFor();
+
+    await page.getByTestId('center-settings-entry').click();
+    await page.getByTestId('center-settings-screen').waitFor();
+    assert.match(await page.getByTestId('center-settings-screen').innerText(), /График и загрузка/);
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: resolve(artifacts, '38-center-settings.png') });
+    await page.getByRole('button', { name: 'Суббота' }).click();
+    await page.getByRole('button', { name: 'Воскресенье' }).click();
+    await page.getByLabel('Время открытия').fill('10:00');
+    await page.getByLabel('Время закрытия').fill('19:00');
+    await page.getByRole('button', { name: '60 мин' }).click();
+    await page.getByRole('button', { name: 'Увеличить вместимость' }).click();
+    await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }));
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: resolve(artifacts, '39-center-capacity.png') });
+    await page.getByTestId('save-center-settings').click();
+    await page.getByText(/График сохранён/).waitFor();
     await page.getByRole('button', { name: '← Профиль' }).click();
     await page.getByTestId('profile-screen').waitFor();
 

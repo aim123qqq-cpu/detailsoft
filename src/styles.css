@@ -715,6 +715,8 @@ button.workspace-card:hover, button.workspace-card:focus-visible { border-color:
 .profile-catalog-entry b { font-size: 13px; }
 .profile-catalog-entry small { margin-top: 3px; color: #81909a; font-size: 10px; }
 .profile-catalog-entry > strong { flex: 0 0 auto; color: #ff9d70; font-size: 10px; }
+.profile-settings-entry { margin-top: 8px; border-color: #34414b; background: linear-gradient(135deg, rgba(54,201,150,.08), #121920 58%); }
+.profile-settings-entry i { color: #b9f2dd; background: rgba(54,201,150,.16); }
 .profile-version { margin: 18px 0 0; color: #53606b; font-size: 9px; text-align: center; }
 
 .catalog-manager, .catalog-editor { padding-bottom: 118px; }
@@ -759,6 +761,37 @@ button.workspace-card:hover, button.workspace-card:focus-visible { border-color:
 .catalog-price-row input { width: 100%; min-width: 0; }
 .catalog-save { margin-top: 13px; }
 
+.center-settings-screen { padding-bottom: 120px; }
+.center-settings-hero { margin-top: 10px; padding: 17px; border: 1px solid #34414b; border-radius: 17px; background: radial-gradient(circle at 100% 0, rgba(54,201,150,.16), transparent 48%), #151e25; }
+.center-settings-hero > span { color: #70d8b1; font-size: 9px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.center-settings-hero h2 { margin: 7px 0 5px; font-size: 23px; letter-spacing: -.04em; }
+.center-settings-hero p { margin: 0; color: #8996a0; font-size: 11px; line-height: 1.5; }
+.settings-panel { margin-top: 12px; padding: 14px; border: 1px solid #303d47; border-radius: 15px; background: #121920; }
+.settings-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.settings-panel-heading > span { color: #8e9aa4; font-size: 10px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.settings-panel-heading > strong { color: #ff9d70; font-size: 10px; }
+.working-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 13px; }
+.working-days button { min-width: 0; min-height: 44px; padding: 0; border: 1px solid #34414b; border-radius: 10px; color: #87949e; background: #0c1319; font-size: 10px; font-weight: 900; cursor: pointer; }
+.working-days button.selected { border-color: rgba(255,121,57,.62); color: #211109; background: var(--primary); }
+.schedule-hours > div:nth-child(2) { display: grid; grid-template-columns: 1fr 20px 1fr; align-items: end; gap: 8px; margin-top: 13px; }
+.schedule-hours > div:nth-child(2) > span { padding-bottom: 13px; color: #687681; text-align: center; }
+.schedule-hours label { display: grid; gap: 6px; color: #83909a; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.schedule-hours input { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid #35424c; border-radius: 10px; color: #eef1f3; background: #0c1319; font-size: 14px; font-weight: 800; color-scheme: dark; }
+.slot-step-picker { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 13px; }
+.slot-step-picker button { min-width: 0; min-height: 44px; padding: 0; border: 1px solid #34414b; border-radius: 10px; color: #8c99a3; background: #0c1319; font-size: 10px; font-weight: 800; cursor: pointer; }
+.slot-step-picker button.selected { border-color: #6b8d80; color: #8ee7c5; background: rgba(54,201,150,.09); }
+.capacity-panel { display: grid; grid-template-columns: minmax(0,1fr) 126px; align-items: center; gap: 12px; }
+.capacity-panel > div:first-child > span { color: #d5dce1; font-size: 12px; font-weight: 900; }
+.capacity-panel > div:first-child p { margin: 5px 0 0; color: #7f8c96; font-size: 9px; line-height: 1.45; }
+.capacity-control { display: grid; grid-template-columns: 38px 1fr 38px; align-items: center; gap: 4px; padding: 5px; border-radius: 12px; background: #0c1319; }
+.capacity-control button { min-width: 0; min-height: 42px; border: 1px solid #34414b; border-radius: 9px; color: #ff9d70; background: #172029; font-size: 20px; cursor: pointer; }
+.capacity-control button:disabled { opacity: .35; }
+.capacity-control strong { display: grid; place-items: center; color: #f4f6f7; font-size: 19px; }
+.capacity-control small { color: #778590; font-size: 7px; font-weight: 700; }
+.settings-saved { margin-top: 12px; padding: 11px 13px; border: 1px solid rgba(54,201,150,.3); border-radius: 11px; color: #80dcb9; background: rgba(54,201,150,.08); font-size: 10px; font-weight: 800; }
+.settings-save { margin-top: 12px; }
+.schedule-closed { grid-column: 1 / -1; min-height: 52px; display: grid; place-items: center; padding: 10px; border: 1px dashed #34414b; border-radius: 10px; color: #8d9aa5; font-size: 11px; text-align: center; }
+
 .bottom-nav { position: fixed; z-index: 30; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%, var(--app-width)); min-height: 76px; padding: 7px 5px max(8px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(5, 1fr); background: rgba(13,19,25,.94); border-top: 1px solid #27313b; backdrop-filter: blur(18px); }
 .bottom-nav button { min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #7f8b96; background: transparent; border: 0; font-size: 11px; font-weight: 700; cursor: pointer; }
 .bottom-nav button.active { color: var(--primary); }
@@ -788,6 +821,8 @@ button.workspace-card:hover, button.workspace-card:focus-visible { border-color:
   .profile-access { grid-column: 2; grid-row: 1 / span 2; }
   .profile-settings, .profile-catalog-entry, .profile-version { grid-column: 1 / -1; }
   .catalog-managed-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .center-settings-screen { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 14px; }
+  .center-settings-screen > .details-back, .center-settings-hero, .center-settings-screen > .workspace-state, .center-settings-screen > .form-error, .settings-saved, .settings-save { grid-column: 1 / -1; }
   .reschedule-submit { bottom: calc(84px + env(safe-area-inset-bottom)); }
   .quote-dock { bottom: 78px; }
   .intake-actions { bottom: 76px; }

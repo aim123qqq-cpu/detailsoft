@@ -1,4 +1,4 @@
-import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, Vehicle, WorkOrder } from './types';
+import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, CenterSettings, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, Vehicle, WorkOrder } from './types';
 
 const sessionHeaders = { authorization: 'Bearer demo-session-token' };
 
@@ -72,6 +72,14 @@ export const api = {
   },
   getManagedCatalog(signal?: AbortSignal) {
     return request<ManagedCatalog>('/api/tenants/current/catalog', { signal });
+  },
+  getCenterSettings(signal?: AbortSignal) {
+    return request<CenterSettings>('/api/tenants/current/settings', { signal });
+  },
+  updateCenterSettings(input: Omit<CenterSettings, 'timezone'>) {
+    return request<CenterSettings>('/api/tenants/current/settings', {
+      method: 'PATCH', body: JSON.stringify(input)
+    });
   },
   updateManagedCatalogItem(item: ManagedCatalogItem, input: {
     name: string;

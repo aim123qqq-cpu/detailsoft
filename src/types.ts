@@ -62,8 +62,18 @@ export type SessionContext = {
     performQualityControl: boolean;
     closeOrders: boolean;
     manageCatalog: boolean;
+    manageSettings: boolean;
     viewAnalytics: boolean;
   };
+};
+
+export type CenterSettings = {
+  timezone: string;
+  workingDays: number[];
+  openTime: string;
+  closeTime: string;
+  slotStepMinutes: 15 | 30 | 60 | 90 | 120;
+  simultaneousCapacity: number;
 };
 
 export type CatalogPrice = {
@@ -151,6 +161,7 @@ export type Booking = {
 export type BookingAvailability = {
   date: string;
   durationMinutes: number;
+  closed: boolean;
   slots: Array<{ time: string; startAt: string; available: boolean }>;
 };
 

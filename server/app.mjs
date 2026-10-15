@@ -68,6 +68,7 @@ export function createDetailFlowServer({
           performQualityControl: qualityControlEnabled && hasRole('admin', 'qc'),
           closeOrders: hasRole('admin'),
           manageCatalog: hasRole('admin', 'owner'),
+          manageSettings: hasRole('admin', 'owner'),
           viewAnalytics: hasRole('admin', 'owner')
         };
         if (!tenantId) {
@@ -191,6 +192,26 @@ export function createDetailFlowServer({
             error: { code: 'catalog_item_not_found', message: 'Позиция каталога не найдена' }
           });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте данные и цены каталога' } });
+        }
+        if (request.method === 'GET' && url.pathname === '/api/tenants/current/settings') {
+          if (!capabilities.manageSettings) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Настройки доступны владельцу или администратору' }
+          });
+          const settings = repository.getCenterSettings(tenantId);
+          return settings
+            ? sendJson(response, 200, settings)
+            : sendJson(response, 404, { error: { code: 'tenant_not_found', message: 'Центр не найден' } });
+        }
+        if (request.method === 'PATCH' && url.pathname === '/api/tenants/current/settings') {
+          if (!capabilities.manageSettings) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для изменения настроек' }
+          });
+          const result = repository.updateCenterSettings(tenantId, await readJson(request));
+          if (result.kind === 'updated') return sendJson(response, 200, result.settings);
+          if (result.kind === 'not_found') return sendJson(response, 404, {
+            error: { code: 'tenant_not_found', message: 'Центр не найден' }
+          });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте график и вместимость центра' } });
         }
         if (request.method === 'POST' && url.pathname === '/api/bookings/quote-preview') {
           const result = repository.previewBookingQuote(tenantId, await readJson(request));

@@ -148,6 +148,12 @@ export function seedDatabase(db) {
       (tenant_id, simultaneous_capacity) VALUES (?, ?)`, [
       ['tenant_demo', 2], ['tenant_other', 1]
     ]);
+    insertMany(db, `INSERT OR IGNORE INTO tenant_operating_settings
+      (tenant_id, working_days_json, open_time, close_time, slot_step_minutes, simultaneous_capacity)
+      VALUES (?, ?, ?, ?, ?, ?)`, [
+      ['tenant_demo', '[0,1,2,3,4,5,6]', '09:00', '20:00', 30, 2],
+      ['tenant_other', '[0,1,2,3,4,5,6]', '09:00', '20:00', 30, 1]
+    ]);
     db.prepare(`INSERT OR IGNORE INTO orders
       (id, tenant_id, customer_id, vehicle_id, status)
       VALUES (?, ?, ?, ?, ?)`)

@@ -191,12 +191,11 @@ export function ScheduleStep({
   onBack: () => void;
   onStartIntake: (booking: Booking) => void;
 }) {
-  const dates = useMemo(() => Array.from({ length: 5 }, (_, index) => {
+  const dates = useMemo(() => Array.from({ length: 7 }, (_, index) => {
     const date = new Date();
     date.setDate(date.getDate() + index + 1);
     return date;
   }), []);
-  const slots = ['09:00', '10:30', '12:00', '14:30', '16:00', '18:00'];
   const [dateKey, setDateKey] = useState(localDateKey(dates[0]));
   const [time, setTime] = useState('14:30');
   const [booking, setBooking] = useState<Booking | null>(null);
@@ -214,8 +213,8 @@ export function ScheduleStep({
         setAvailability(result);
         setTime((current) => {
           const selectedSlot = result.slots.find((slot) => slot.time === current);
-          if (!selectedSlot || selectedSlot.available) return current;
-          return result.slots.find((slot) => slot.available)?.time ?? current;
+          if (selectedSlot?.available) return current;
+          return result.slots.find((slot) => slot.available)?.time ?? '';
         });
       })
       .catch((requestError: Error) => requestError.name !== 'AbortError' && setError(requestError.message));
@@ -226,12 +225,14 @@ export function ScheduleStep({
     setLoading(true);
     setError('');
     try {
+      const selectedSlot = availability?.slots.find((slot) => slot.time === time && slot.available);
+      if (!selectedSlot) throw new Error('Выберите доступное время');
       const created = await api.createBooking({
         ...(leadId ? { leadId } : {}),
         customerId: customer.id,
         vehicleId: vehicle.id,
         channel: channelCodes[channel] ?? 'call',
-        startAt: `${dateKey}T${time}:00+03:00`,
+        startAt: selectedSlot.startAt,
         selections
       }, idempotencyKey.current);
       setBooking(created);
@@ -278,10 +279,10 @@ export function ScheduleStep({
         })}
       </div>
       <div className="time-section"><h3>Свободное время</h3><div className="time-grid">
-        {slots.map((slot) => {
-          const isAvailable = availability?.slots.find((item) => item.time === slot)?.available ?? true;
-          return <button key={slot} data-testid={`slot-${slot}`} className={time === slot ? 'selected' : ''} disabled={!isAvailable} onClick={() => setTime(slot)}>{slot}</button>;
-        })}
+        {!availability && <span className="slots-loading"><i className="spinner"/> Проверяем график</span>}
+        {availability?.slots.map((slot) => <button key={slot.time} data-testid={`slot-${slot.time}`} className={time === slot.time ? 'selected' : ''} disabled={!slot.available} onClick={() => setTime(slot.time)}>{slot.time}</button>)}
+        {availability?.closed && <span className="schedule-closed">В этот день центр не работает</span>}
+        {availability && !availability.closed && availability.slots.length === 0 && <span className="schedule-closed">Нет слотов для выбранной длительности</span>}
       </div></div>
       <div className="booking-recap">
         <div className="recap-heading"><span>Состав записи</span><button onClick={onBack}>Изменить</button></div>
@@ -289,7 +290,7 @@ export function ScheduleStep({
         <div className="recap-total"><span><small>Предварительно</small><strong>{formatMoney(quote.totalAmountMinor)}</strong></span><em>{formatDuration(quote.totalDurationMinutes)}</em></div>
       </div>
       {error && <div className="inline-error">{error}</div>}
-      <button className="primary-button confirm-booking" data-testid="confirm-booking" onClick={submit} disabled={loading}>
+      <button className="primary-button confirm-booking" data-testid="confirm-booking" onClick={submit} disabled={loading || !availability?.slots.some((slot) => slot.time === time && slot.available)}>
         {loading ? <span className="spinner light"/> : 'Подтвердить запись'}
       </button>
     </section>

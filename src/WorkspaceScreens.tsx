@@ -231,6 +231,7 @@ function BookingDetails({ item, onBack, onChanged }: {
           {!availability ? <span className="slots-loading"><i className="spinner"/> Проверяем загрузку</span> : availability.slots.map((slot) => (
             <button key={slot.time} disabled={!slot.available} className={selectedStartAt === slot.startAt ? 'selected' : ''} onClick={() => setSelectedStartAt(slot.startAt)}>{slot.time}</button>
           ))}
+          {availability?.closed && <span className="schedule-closed">В этот день центр не работает</span>}
         </div>
         {error && <p className="form-error">{error}</p>}
         <button className="primary-button reschedule-submit" disabled={!selectedStartAt || loading} onClick={() => applyChange({ startAt: selectedStartAt })}>{loading ? 'Переносим…' : 'Подтвердить перенос'}</button>

@@ -27,6 +27,52 @@ function apiTimestamp(value) {
   return new Date(value.endsWith?.('Z') ? value : `${value.replace(' ', 'T')}Z`).toISOString();
 }
 
+function timeToMinutes(value) {
+  const match = /^(\d{2}):(\d{2})$/.exec(String(value ?? ''));
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  return hours < 24 && minutes < 60 ? hours * 60 + minutes : null;
+}
+
+function minutesToTime(value) {
+  return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
+}
+
+function localDateTime(date, time, timezone) {
+  const [year, month, day] = date.split('-').map(Number);
+  const [hour, minute] = time.split(':').map(Number);
+  const utcGuess = Date.UTC(year, month - 1, day, hour, minute);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+  }).formatToParts(new Date(utcGuess));
+  const part = (type) => Number(parts.find((entry) => entry.type === type)?.value);
+  const representedUtc = Date.UTC(part('year'), part('month') - 1, part('day'), part('hour'), part('minute'));
+  const offsetMinutes = Math.round((representedUtc - utcGuess) / 60_000);
+  const sign = offsetMinutes >= 0 ? '+' : '-';
+  const absolute = Math.abs(offsetMinutes);
+  const offset = `${sign}${String(Math.floor(absolute / 60)).padStart(2, '0')}:${String(absolute % 60).padStart(2, '0')}`;
+  return `${date}T${time}:00${offset}`;
+}
+
+function localBookingParts(startAt, timezone) {
+  const date = new Date(startAt);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+  }).formatToParts(date);
+  const part = (type) => Number(parts.find((entry) => entry.type === type)?.value);
+  const year = part('year');
+  const month = part('month');
+  const day = part('day');
+  return {
+    dayOfWeek: new Date(Date.UTC(year, month - 1, day)).getUTCDay(),
+    minuteOfDay: part('hour') * 60 + part('minute')
+  };
+}
+
 function mapLead(row) {
   if (!row) return null;
   return {
@@ -51,6 +97,53 @@ export class DetailFlowRepository {
   getTenant(tenantId) {
     const tenant = this.db.prepare('SELECT id, name, timezone FROM tenants WHERE id = ?').get(tenantId);
     return tenant ? { id: tenant.id, name: tenant.name, timezone: tenant.timezone } : null;
+  }
+
+  getCenterSettings(tenantId) {
+    const row = this.db.prepare(`SELECT tenant.timezone, settings.working_days_json, settings.open_time,
+        settings.close_time, settings.slot_step_minutes,
+        COALESCE(settings.simultaneous_capacity, legacy.simultaneous_capacity, 1) simultaneous_capacity
+      FROM tenants tenant
+      LEFT JOIN tenant_operating_settings settings ON settings.tenant_id = tenant.id
+      LEFT JOIN tenant_booking_settings legacy ON legacy.tenant_id = tenant.id
+      WHERE tenant.id = ?`).get(tenantId);
+    if (!row) return null;
+    return {
+      timezone: row.timezone,
+      workingDays: row.working_days_json ? JSON.parse(row.working_days_json) : [0, 1, 2, 3, 4, 5, 6],
+      openTime: row.open_time ?? '09:00',
+      closeTime: row.close_time ?? '20:00',
+      slotStepMinutes: row.slot_step_minutes ?? 30,
+      simultaneousCapacity: row.simultaneous_capacity ?? 1
+    };
+  }
+
+  updateCenterSettings(tenantId, input) {
+    const tenant = this.db.prepare('SELECT id FROM tenants WHERE id = ?').get(tenantId);
+    if (!tenant || typeof input !== 'object' || !input) return { kind: tenant ? 'invalid' : 'not_found' };
+    const workingDays = Array.isArray(input.workingDays) ? [...new Set(input.workingDays)].sort((left, right) => left - right) : [];
+    const openTime = String(input.openTime ?? '');
+    const closeTime = String(input.closeTime ?? '');
+    const openMinutes = timeToMinutes(openTime);
+    const closeMinutes = timeToMinutes(closeTime);
+    const slotStepMinutes = Number(input.slotStepMinutes);
+    const simultaneousCapacity = Number(input.simultaneousCapacity);
+    if (!workingDays.length || workingDays.some((day) => !Number.isInteger(day) || day < 0 || day > 6) ||
+      openMinutes === null || closeMinutes === null || closeMinutes - openMinutes < 60 ||
+      ![15, 30, 60, 90, 120].includes(slotStepMinutes) ||
+      !Number.isInteger(simultaneousCapacity) || simultaneousCapacity < 1 || simultaneousCapacity > 20) {
+      return { kind: 'invalid' };
+    }
+    this.db.prepare(`INSERT INTO tenant_operating_settings
+      (tenant_id, working_days_json, open_time, close_time, slot_step_minutes, simultaneous_capacity, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(tenant_id) DO UPDATE SET working_days_json = excluded.working_days_json,
+        open_time = excluded.open_time, close_time = excluded.close_time,
+        slot_step_minutes = excluded.slot_step_minutes, simultaneous_capacity = excluded.simultaneous_capacity,
+        updated_at = CURRENT_TIMESTAMP`).run(
+          tenantId, JSON.stringify(workingDays), openTime, closeTime, slotStepMinutes, simultaneousCapacity
+        );
+    return { kind: 'updated', settings: this.getCenterSettings(tenantId) };
   }
 
   listLeads(tenantId, limit = 50) {
@@ -639,13 +732,19 @@ export class DetailFlowRepository {
     return { kind: 'created', booking: this.getBooking(tenantId, bookingId) };
   }
 
-  isBookingSlotAvailable(tenantId, startAt, durationMinutes, excludeBookingId = null) {
+  isBookingSlotAvailable(tenantId, startAt, durationMinutes, excludeBookingId = null, centerSettings = null) {
     const start = Date.parse(startAt);
     if (!Number.isFinite(start) || !Number.isInteger(durationMinutes) || durationMinutes <= 0) return false;
+    const settings = centerSettings ?? this.getCenterSettings(tenantId);
+    if (!settings) return false;
+    const local = localBookingParts(startAt, settings.timezone);
+    const openMinutes = timeToMinutes(settings.openTime);
+    const closeMinutes = timeToMinutes(settings.closeTime);
+    if (!local || openMinutes === null || closeMinutes === null || !settings.workingDays.includes(local.dayOfWeek) ||
+      local.minuteOfDay < openMinutes || local.minuteOfDay + durationMinutes > closeMinutes ||
+      (local.minuteOfDay - openMinutes) % settings.slotStepMinutes !== 0) return false;
     const end = start + durationMinutes * 60_000;
-    const settings = this.db.prepare('SELECT simultaneous_capacity FROM tenant_booking_settings WHERE tenant_id = ?')
-      .get(tenantId);
-    const capacity = settings?.simultaneous_capacity ?? 1;
+    const capacity = settings.simultaneousCapacity;
     const bookings = this.db.prepare(`SELECT id, start_at, estimated_duration_minutes
       FROM bookings WHERE tenant_id = ? AND status = 'CONFIRMED'`).all(tenantId);
     const overlapping = bookings.filter((booking) => {
@@ -661,11 +760,23 @@ export class DetailFlowRepository {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 720) {
       return { kind: 'invalid' };
     }
-    const slots = ['09:00', '10:30', '12:00', '14:30', '16:00', '18:00'].map((time) => {
-      const startAt = `${date}T${time}:00+03:00`;
-      return { time, startAt, available: this.isBookingSlotAvailable(tenantId, startAt, durationMinutes) };
-    });
-    return { kind: 'available', date, durationMinutes, slots };
+    const settings = this.getCenterSettings(tenantId);
+    if (!settings) return { kind: 'invalid' };
+    const [year, month, day] = date.split('-').map(Number);
+    const calendarDate = new Date(Date.UTC(year, month - 1, day));
+    if (calendarDate.toISOString().slice(0, 10) !== date) return { kind: 'invalid' };
+    if (!settings.workingDays.includes(calendarDate.getUTCDay())) {
+      return { kind: 'available', date, durationMinutes, closed: true, slots: [] };
+    }
+    const openMinutes = timeToMinutes(settings.openTime);
+    const closeMinutes = timeToMinutes(settings.closeTime);
+    const slots = [];
+    for (let minute = openMinutes; minute + durationMinutes <= closeMinutes; minute += settings.slotStepMinutes) {
+      const time = minutesToTime(minute);
+      const startAt = localDateTime(date, time, settings.timezone);
+      slots.push({ time, startAt, available: this.isBookingSlotAvailable(tenantId, startAt, durationMinutes, null, settings) });
+    }
+    return { kind: 'available', date, durationMinutes, closed: false, slots };
   }
 
   listBookings(tenantId, limit = 20) {
