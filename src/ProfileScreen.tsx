@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
+import { CatalogScreen } from './CatalogScreen';
 import type { SessionContext } from './types';
 
 const roleLabels: Record<string, string> = {
@@ -18,6 +19,7 @@ const capabilityLabels: Array<[keyof SessionContext['capabilities'], string]> = 
   ['assignMasters', 'Назначение мастеров'],
   ['performWork', 'Выполнение работ'],
   ['closeOrders', 'Выдача автомобилей'],
+  ['manageCatalog', 'Каталог и цены'],
   ['viewAnalytics', 'Статистика']
 ];
 
@@ -29,6 +31,7 @@ export function ProfileScreen() {
   const [session, setSession] = useState<SessionContext | null>(null);
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const [showCatalog, setShowCatalog] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -56,6 +59,8 @@ export function ProfileScreen() {
 
   const roleNames = session.actor.roles.map((role) => roleLabels[role] ?? role);
   const grantedCapabilities = capabilityLabels.filter(([capability]) => session.capabilities[capability]);
+
+  if (showCatalog) return <CatalogScreen onBack={() => setShowCatalog(false)}/>;
 
   return (
     <section className="screen profile-screen" data-testid="profile-screen">
@@ -88,6 +93,10 @@ export function ProfileScreen() {
         <div><span><i>₽</i><b>Валюта смет</b></span><strong>{session.preferences.currency === 'RUB' ? 'Российский рубль' : session.preferences.currency}</strong></div>
         <div><span><i>RU</i><b>Язык интерфейса</b></span><strong>{session.preferences.locale === 'ru-RU' ? 'Русский' : session.preferences.locale}</strong></div>
       </section>
+
+      {session.capabilities.manageCatalog && <button className="profile-catalog-entry" data-testid="catalog-entry" onClick={() => setShowCatalog(true)}>
+        <span><i>₽</i><b>Каталог услуг</b><small>Цены, длительность и доступность</small></span><strong>Открыть →</strong>
+      </button>}
 
       <p className="profile-version">DetailFlow · локальная рабочая версия</p>
     </section>

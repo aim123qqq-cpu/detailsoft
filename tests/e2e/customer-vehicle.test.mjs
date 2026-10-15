@@ -304,6 +304,25 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.waitForTimeout(250);
     await page.screenshot({ path: resolve(artifacts, '25-profile.png') });
 
+    await page.getByTestId('catalog-entry').click();
+    await page.getByTestId('catalog-manager').waitFor();
+    assert.match(await page.getByTestId('catalog-manager').innerText(), /Услуги и цены/);
+    assert.match(await page.getByTestId('catalog-card-service_wash').innerText(), /Бережная мойка/);
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: resolve(artifacts, '35-catalog-manager.png') });
+    await page.getByTestId('catalog-card-service_wash').getByRole('button', { name: 'Редактировать' }).click();
+    await page.getByTestId('catalog-editor').waitFor();
+    await page.screenshot({ path: resolve(artifacts, '36-catalog-editor.png') });
+    await page.getByLabel('Предварительная мойка цена').fill('450');
+    await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }));
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: resolve(artifacts, '37-catalog-prices.png') });
+    await page.getByTestId('save-catalog-item').click();
+    await page.getByTestId('catalog-manager').waitFor();
+    assert.match(await page.getByTestId('catalog-card-service_wash').innerText(), /1\s?770\s?₽/);
+    await page.getByRole('button', { name: '← Профиль' }).click();
+    await page.getByTestId('profile-screen').waitFor();
+
     await page.setViewportSize({ width: 820, height: 1024 });
     const profileColumns = await page.getByTestId('profile-screen').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length);
     assert.equal(profileColumns, 2, 'tablet profile uses two readable content columns');

@@ -1,4 +1,4 @@
-import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, Lead, LeadStatus, OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, Vehicle, WorkOrder } from './types';
+import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, Vehicle, WorkOrder } from './types';
 
 const sessionHeaders = { authorization: 'Bearer demo-session-token' };
 
@@ -69,6 +69,22 @@ export const api = {
   },
   getServices(vehicleId: string, signal?: AbortSignal) {
     return request<ServiceCatalog>(`/api/tenants/current/services?vehicleId=${encodeURIComponent(vehicleId)}`, { signal });
+  },
+  getManagedCatalog(signal?: AbortSignal) {
+    return request<ManagedCatalog>('/api/tenants/current/catalog', { signal });
+  },
+  updateManagedCatalogItem(item: ManagedCatalogItem, input: {
+    name: string;
+    category: string;
+    description: string;
+    pricingMode: ManagedCatalogItem['pricingMode'];
+    active: boolean;
+    prices: Array<{ operationId?: string; tenantClass: string; amountMinor: number; durationMinutes: number }>;
+  }) {
+    const collection = item.type === 'service' ? 'services' : 'packages';
+    return request<ManagedCatalogItem>(`/api/tenants/current/catalog/${collection}/${encodeURIComponent(item.id)}`, {
+      method: 'PATCH', body: JSON.stringify(input)
+    });
   },
   previewQuote(vehicleId: string, selections: QuoteSelection[], signal?: AbortSignal) {
     return request<BookingQuote>('/api/bookings/quote-preview', {

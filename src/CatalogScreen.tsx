@@ -1,0 +1,156 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { api } from './api';
+import type { ManagedCatalog, ManagedCatalogItem } from './types';
+
+const money = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
+
+function itemPrice(item: ManagedCatalogItem, tenantClass: string) {
+  if (item.type === 'package') return item.prices?.find((price) => price.tenantClass === tenantClass) ?? null;
+  const prices = item.operations.map((operation) => operation.prices?.find((price) => price.tenantClass === tenantClass)).filter(Boolean);
+  if (prices.length !== item.operations.length) return null;
+  return {
+    tenantClass,
+    amountMinor: prices.reduce((sum, price) => sum + (price?.amountMinor ?? 0), 0),
+    durationMinutes: prices.reduce((sum, price) => sum + (price?.durationMinutes ?? 0), 0)
+  };
+}
+
+export function CatalogScreen({ onBack }: { onBack: () => void }) {
+  const [catalog, setCatalog] = useState<ManagedCatalog | null>(null);
+  const [tenantClass, setTenantClass] = useState('');
+  const [kind, setKind] = useState<'service' | 'package'>('service');
+  const [showArchived, setShowArchived] = useState(false);
+  const [editing, setEditing] = useState<ManagedCatalogItem | null>(null);
+  const [error, setError] = useState('');
+  const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setError('');
+    api.getManagedCatalog(controller.signal)
+      .then((result) => {
+        setCatalog(result);
+        setTenantClass((current) => current || result.vehicleClasses[0] || '');
+      })
+      .catch((requestError: Error) => { if (requestError.name !== 'AbortError') setError(requestError.message); });
+    return () => controller.abort();
+  }, [revision]);
+
+  const items = useMemo(() => catalog?.items.filter((item) => item.type === kind && (showArchived || item.active)) ?? [], [catalog, kind, showArchived]);
+
+  if (editing && catalog) return <CatalogEditor
+    key={`${editing.id}-${tenantClass}`}
+    item={editing}
+    tenantClass={tenantClass}
+    onCancel={() => setEditing(null)}
+    onSaved={(updated) => {
+      setCatalog((current) => current ? { ...current, items: current.items.map((item) => item.id === updated.id ? updated : item) } : current);
+      setEditing(null);
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }}
+  />;
+
+  return <section className="screen catalog-manager" data-testid="catalog-manager">
+    <button className="details-back" onClick={onBack}>← Профиль</button>
+    <div className="catalog-manager-hero">
+      <span>Каталог центра</span>
+      <h2>Услуги и цены</h2>
+      <p>Изменения применяются к новым расчётам. Старые записи и сметы сохраняют свои суммы.</p>
+    </div>
+    {error && <div className="workspace-state error-state"><strong>Не удалось загрузить каталог</strong><span>{error}</span><button onClick={() => setRevision((value) => value + 1)}>Повторить</button></div>}
+    {!catalog && !error && <div className="workspace-state"><span className="spinner"/> Загружаем каталог</div>}
+    {catalog && <>
+      <div className="catalog-class-picker" aria-label="Класс автомобиля">
+        <span>Цены для класса</span>
+        <div>{catalog.vehicleClasses.map((value) => <button key={value} className={tenantClass === value ? 'selected' : ''} onClick={() => setTenantClass(value)}>{value}</button>)}</div>
+      </div>
+      <div className="workspace-section-tabs catalog-kind-tabs" role="tablist" aria-label="Тип позиции">
+        <button role="tab" aria-selected={kind === 'service'} className={kind === 'service' ? 'selected' : ''} onClick={() => setKind('service')}>Услуги</button>
+        <button role="tab" aria-selected={kind === 'package'} className={kind === 'package' ? 'selected' : ''} onClick={() => setKind('package')}>Пакеты</button>
+      </div>
+      <label className="catalog-archive-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)}/><span>Показывать архивные</span></label>
+      <div className="catalog-managed-list">{items.map((item) => {
+        const price = itemPrice(item, tenantClass);
+        return <article key={item.id} className={`catalog-managed-card ${item.active ? '' : 'archived'}`} data-testid={`catalog-card-${item.id}`}>
+          <div><span>{item.category}</span><i>{item.active ? 'Активна' : 'Архив'}</i></div>
+          <h3>{item.name}</h3>
+          <p>{item.description}</p>
+          <div className="catalog-managed-summary">
+            <span><small>{item.type === 'service' ? `${item.operations.length} операции` : `${item.operations.length} в пакете`}</small><strong>{price ? money.format(price.amountMinor / 100) : 'Нет цены'}</strong></span>
+            <span><small>Длительность</small><strong>{price ? `${price.durationMinutes} мин` : '—'}</strong></span>
+          </div>
+          <button onClick={() => setEditing(item)}>Редактировать</button>
+        </article>;
+      })}</div>
+      {items.length === 0 && <div className="workspace-state"><strong>Позиции не найдены</strong><span>Включите показ архивных позиций</span></div>}
+    </>}
+  </section>;
+}
+
+function CatalogEditor({ item, tenantClass, onCancel, onSaved }: {
+  item: ManagedCatalogItem;
+  tenantClass: string;
+  onCancel: () => void;
+  onSaved: (item: ManagedCatalogItem) => void;
+}) {
+  const [name, setName] = useState(item.name);
+  const [category, setCategory] = useState(item.category);
+  const [description, setDescription] = useState(item.description);
+  const [pricingMode, setPricingMode] = useState(item.pricingMode);
+  const [active, setActive] = useState(item.active);
+  const initialRows = item.type === 'service'
+    ? item.operations.map((operation) => ({ operationId: operation.id, name: operation.name, price: operation.prices?.find((price) => price.tenantClass === tenantClass) }))
+    : [{ operationId: undefined, name: 'Пакет целиком', price: item.prices?.find((price) => price.tenantClass === tenantClass) }];
+  const [rows, setRows] = useState(() => initialRows.map((row) => ({
+    operationId: row.operationId,
+    name: row.name,
+    amount: String((row.price?.amountMinor ?? 0) / 100),
+    duration: String(row.price?.durationMinutes ?? 30)
+  })));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const titleRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    titleRef.current?.focus();
+  }, []);
+
+  const save = async () => {
+    setSaving(true); setError('');
+    try {
+      const updated = await api.updateManagedCatalogItem(item, {
+        name, category, description, pricingMode, active,
+        prices: rows.map((row) => ({
+          ...(row.operationId ? { operationId: row.operationId } : {}),
+          tenantClass,
+          amountMinor: Math.round(Number(row.amount) * 100),
+          durationMinutes: Number(row.duration)
+        }))
+      });
+      onSaved(updated);
+    } catch (requestError) { setError((requestError as Error).message); }
+    finally { setSaving(false); }
+  };
+
+  const valid = name.trim().length >= 2 && category.trim().length >= 2 && rows.every((row) => Number(row.amount) >= 0 && Number.isInteger(Number(row.duration)) && Number(row.duration) > 0);
+
+  return <section className="screen catalog-editor" data-testid="catalog-editor">
+    <button className="details-back" onClick={onCancel}>← Каталог</button>
+    <div className="catalog-editor-title"><span>{item.type === 'service' ? 'Услуга' : 'Пакет'} · {tenantClass}</span><h2 ref={titleRef} tabIndex={-1}>{item.name}</h2><p>Меняются только будущие расчёты.</p></div>
+    <div className="catalog-editor-form">
+      <label>Название<input value={name} onChange={(event) => setName(event.target.value)}/></label>
+      <label>Категория<input value={category} onChange={(event) => setCategory(event.target.value)}/></label>
+      <label>Описание<textarea value={description} onChange={(event) => setDescription(event.target.value)}/></label>
+      {item.type === 'service' && <label>Отображение цены<select value={pricingMode} onChange={(event) => setPricingMode(event.target.value as ManagedCatalogItem['pricingMode'])}><option value="fixed">Точная цена</option><option value="from">Цена от</option><option value="inspection">После осмотра</option></select></label>}
+      <label className="catalog-active-toggle"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)}/><span><strong>Доступно для записи</strong><small>{active ? 'Клиенты могут выбрать позицию' : 'Позиция останется только в истории'}</small></span></label>
+    </div>
+    <div className="catalog-price-editor"><div><span>{item.type === 'service' ? 'Операции и цены' : 'Цена пакета'}</span><strong>{tenantClass}</strong></div>{rows.map((row, index) => <div className="catalog-price-row" key={row.operationId ?? 'package'}>
+      <strong>{row.name}</strong>
+      <label>Цена, ₽<input aria-label={`${row.name} цена`} type="number" min="0" step="50" value={row.amount} onChange={(event) => setRows((current) => current.map((value, rowIndex) => rowIndex === index ? { ...value, amount: event.target.value } : value))}/></label>
+      <label>Минуты<input aria-label={`${row.name} длительность`} type="number" min="1" max="1440" value={row.duration} onChange={(event) => setRows((current) => current.map((value, rowIndex) => rowIndex === index ? { ...value, duration: event.target.value } : value))}/></label>
+    </div>)}</div>
+    {error && <p className="form-error">{error}</p>}
+    <button className="primary-button catalog-save" data-testid="save-catalog-item" disabled={!valid || saving} onClick={save}>{saving ? 'Сохраняем…' : 'Сохранить изменения'}</button>
+  </section>;
+}

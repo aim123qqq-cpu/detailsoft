@@ -67,6 +67,7 @@ export function createDetailFlowServer({
           performWork: hasRole('admin', 'master'),
           performQualityControl: qualityControlEnabled && hasRole('admin', 'qc'),
           closeOrders: hasRole('admin'),
+          manageCatalog: hasRole('admin', 'owner'),
           viewAnalytics: hasRole('admin', 'owner')
         };
         if (!tenantId) {
@@ -171,6 +172,25 @@ export function createDetailFlowServer({
             categories: result.categories
           });
           return sendJson(response, 404, { error: { code: 'vehicle_not_found', message: 'Автомобиль не найден' } });
+        }
+        if (request.method === 'GET' && url.pathname === '/api/tenants/current/catalog') {
+          if (!capabilities.manageCatalog) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Каталог доступен владельцу или администратору' }
+          });
+          return sendJson(response, 200, repository.getManagedCatalog(tenantId));
+        }
+        const managedCatalogItem = url.pathname.match(/^\/api\/tenants\/current\/catalog\/(services|packages)\/([^/]+)$/);
+        if (request.method === 'PATCH' && managedCatalogItem) {
+          if (!capabilities.manageCatalog) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для изменения каталога' }
+          });
+          const type = managedCatalogItem[1] === 'services' ? 'service' : 'package';
+          const result = repository.updateManagedCatalogItem(tenantId, type, managedCatalogItem[2], await readJson(request));
+          if (result.kind === 'updated') return sendJson(response, 200, result.item);
+          if (result.kind === 'not_found') return sendJson(response, 404, {
+            error: { code: 'catalog_item_not_found', message: 'Позиция каталога не найдена' }
+          });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте данные и цены каталога' } });
         }
         if (request.method === 'POST' && url.pathname === '/api/bookings/quote-preview') {
           const result = repository.previewBookingQuote(tenantId, await readJson(request));

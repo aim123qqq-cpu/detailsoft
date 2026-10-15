@@ -61,8 +61,32 @@ export type SessionContext = {
     performWork: boolean;
     performQualityControl: boolean;
     closeOrders: boolean;
+    manageCatalog: boolean;
     viewAnalytics: boolean;
   };
+};
+
+export type CatalogPrice = {
+  tenantClass: string;
+  amountMinor: number;
+  durationMinutes: number;
+};
+
+export type ManagedCatalogItem = {
+  id: string;
+  type: 'service' | 'package';
+  category: string;
+  name: string;
+  description: string;
+  pricingMode: 'fixed' | 'from' | 'inspection';
+  active: boolean;
+  operations: Array<{ id: string; name: string; prices?: CatalogPrice[] }>;
+  prices?: CatalogPrice[];
+};
+
+export type ManagedCatalog = {
+  vehicleClasses: string[];
+  items: ManagedCatalogItem[];
 };
 
 export type ServiceOperation = { id: string; name: string };

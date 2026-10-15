@@ -54,6 +54,7 @@ test('session describes the authenticated employee, tenant and effective capabil
     performWork: true,
     performQualityControl: false,
     closeOrders: true,
+    manageCatalog: true,
     viewAnalytics: true
   });
 });
@@ -68,6 +69,7 @@ test('session capabilities are derived on the backend and remain tenant scoped',
   assert.equal(intake.capabilities.assignMasters, false);
   assert.equal(intake.capabilities.performWork, false);
   assert.equal(intake.capabilities.closeOrders, false);
+  assert.equal(intake.capabilities.manageCatalog, false);
   assert.equal(intake.capabilities.viewAnalytics, false);
 
   const otherResponse = await getSession('other-token');
@@ -75,6 +77,7 @@ test('session capabilities are derived on the backend and remain tenant scoped',
   const other = await otherResponse.json();
   assert.equal(other.tenant.id, 'tenant_other');
   assert.equal(other.tenant.name, 'Другой центр');
+  assert.equal(other.capabilities.manageCatalog, true);
   assert.equal(other.capabilities.viewAnalytics, true);
 
   assert.equal((await getSession('unknown-token')).status, 401);
