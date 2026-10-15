@@ -41,6 +41,12 @@ export function seedDatabase(db) {
       ['cust_alexey', 'tenant_demo', 'Алексей Морозов', '+7 913 123-45-67', '79131234567', 6],
       ['cust_other', 'tenant_other', 'Скрытый клиент', '+7 913 123-45-67', '79131234567', 2]
     ]);
+    insertMany(db, `INSERT OR IGNORE INTO leads
+      (id, tenant_id, customer_id, channel, status, contact_name, phone_display, phone_normalized, note)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+      ['lead_demo_telegram', 'tenant_demo', 'cust_alexey', 'telegram', 'NEW', 'Алексей Морозов', '+7 913 123-45-67', '79131234567', 'Уточнить стоимость керамики кузова'],
+      ['lead_demo_call', 'tenant_demo', null, 'call', 'CONTACTED', 'Марина', '+7 999 204-18-90', '79992041890', 'Перезвонить после 18:00']
+    ]);
     insertMany(db, `INSERT OR IGNORE INTO vehicles
       (id, tenant_id, catalog_variant_id, make, model, generation, body_type,
        plate_display, plate_normalized, color, system_vehicle_class, status)

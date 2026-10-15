@@ -19,6 +19,21 @@ export type Customer = {
   vehicles: Vehicle[];
 };
 
+export type LeadStatus = 'NEW' | 'CONTACTED' | 'CONVERTED' | 'LOST';
+
+export type Lead = {
+  id: string;
+  channel: 'telegram' | 'vk' | 'instagram' | 'call' | 'in_person';
+  status: LeadStatus;
+  contactName: string;
+  phoneDisplay: string;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+  bookingId: string | null;
+  customer: null | { id: string; name: string };
+};
+
 export type CatalogVariant = {
   id: string;
   make: string;
@@ -96,6 +111,7 @@ export type BookingStatus = 'DRAFT' | 'CONFIRMED' | 'ARRIVED' | 'CANCELLED' | 'N
 
 export type Booking = {
   id: string;
+  leadId: string | null;
   customerId: string;
   vehicleId: string;
   channel: string;

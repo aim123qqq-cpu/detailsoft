@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from './api';
 import { productFeatures } from './features';
-import type { BookingAvailability, BookingListItem, BookingStatus, OrderListItem, WorkOrder } from './types';
+import type { BookingAvailability, BookingListItem, BookingStatus, Lead, LeadStatus, OrderListItem, WorkOrder } from './types';
 
 const money = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
 const bookingDate = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
@@ -45,31 +45,102 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   return <div className="workspace-state error-state"><strong>Не удалось загрузить</strong><span>{message}</span><button onClick={onRetry}>Повторить</button></div>;
 }
 
-export function BookingsWorkspace({ onNew }: { onNew: () => void }) {
-  const { items, loading, error, retry } = useWorkspaceItems(api.listBookings);
+export function BookingsWorkspace({ onNew, onLeadConvert }: { onNew: () => void; onLeadConvert: (lead: Lead) => void }) {
+  const bookings = useWorkspaceItems(api.listBookings);
+  const leads = useWorkspaceItems(api.listLeads);
+  const [tab, setTab] = useState<'bookings' | 'leads'>('bookings');
   const [selected, setSelected] = useState<BookingListItem | null>(null);
-  const upcoming = useMemo(() => items.filter((item) => item.status === 'CONFIRMED' && Date.parse(item.startAt) >= Date.now()).length, [items]);
 
   useEffect(() => {
     if (selected) window.scrollTo({ top: 0, behavior: 'auto' });
   }, [selected?.id]);
 
   if (selected) {
-    return <BookingDetails item={selected} onBack={() => { setSelected(null); retry(); }} onChanged={setSelected}/>;
+    return <BookingDetails item={selected} onBack={() => { setSelected(null); bookings.retry(); }} onChanged={setSelected}/>;
   }
 
   return (
     <section className="screen workspace-screen" data-testid="bookings-workspace">
       <div className="workspace-hero">
         <span>Расписание центра</span>
-        <div><strong>{items.length}</strong><small>записей</small><strong>{upcoming}</strong><small>впереди</small></div>
+        <div><strong>{bookings.items.length}</strong><small>записей</small><strong>{leads.items.filter((item) => item.status === 'NEW').length}</strong><small>новых</small></div>
       </div>
+      <div className="workspace-section-tabs" role="tablist" aria-label="Записи и обращения">
+        <button role="tab" aria-selected={tab === 'bookings'} className={tab === 'bookings' ? 'selected' : ''} onClick={() => setTab('bookings')}>Расписание <span>{bookings.items.length}</span></button>
+        <button role="tab" aria-selected={tab === 'leads'} className={tab === 'leads' ? 'selected' : ''} onClick={() => setTab('leads')}>Обращения <span>{leads.items.filter((item) => item.status === 'NEW' || item.status === 'CONTACTED').length}</span></button>
+      </div>
+      {tab === 'leads' ? <LeadsPanel data={leads} onConvert={onLeadConvert}/> : <>
       <div className="workspace-toolbar"><div><h2>Ближайшие визиты</h2><p>Клиент, автомобиль и состав записи</p></div><button onClick={onNew}>+ Новая</button></div>
-      {loading ? <LoadingState/> : error ? <ErrorState message={error} onRetry={retry}/> : items.length === 0 ? (
+      {bookings.loading ? <LoadingState/> : bookings.error ? <ErrorState message={bookings.error} onRetry={bookings.retry}/> : bookings.items.length === 0 ? (
         <div className="workspace-state"><strong>Записей пока нет</strong><span>Создайте первую запись для клиента</span><button onClick={onNew}>Создать запись</button></div>
-      ) : <div className="workspace-list">{items.map((item) => <BookingCard key={item.id} item={item} onOpen={() => setSelected(item)}/>)}</div>}
+      ) : <div className="workspace-list">{bookings.items.map((item) => <BookingCard key={item.id} item={item} onOpen={() => setSelected(item)}/>)}</div>}</>}
     </section>
   );
+}
+
+const leadStatuses: Record<LeadStatus, { label: string; className: string }> = {
+  NEW: { label: 'Новое', className: 'active' }, CONTACTED: { label: 'В работе', className: 'confirmed' },
+  CONVERTED: { label: 'Запись создана', className: 'ready' }, LOST: { label: 'Потеряно', className: 'cancelled' }
+};
+const leadChannelLabels: Record<Lead['channel'], string> = {
+  telegram: 'Telegram', vk: 'VK', instagram: 'Instagram', call: 'Звонок', in_person: 'На месте'
+};
+
+function LeadsPanel({ data, onConvert }: {
+  data: { items: Lead[]; loading: boolean; error: string; retry: () => void };
+  onConvert: (lead: Lead) => void;
+}) {
+  const [filter, setFilter] = useState<'active' | 'all'>('active');
+  const [creating, setCreating] = useState(false);
+  const [channel, setChannel] = useState<Lead['channel']>('telegram');
+  const [contactName, setContactName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const visible = filter === 'all' ? data.items : data.items.filter((lead) => lead.status === 'NEW' || lead.status === 'CONTACTED');
+
+  const create = async () => {
+    setSaving(true); setError('');
+    try {
+      await api.createLead({ channel, contactName, phone, note });
+      setCreating(false); setContactName(''); setPhone(''); setNote(''); data.retry();
+    } catch (requestError) { setError((requestError as Error).message); }
+    finally { setSaving(false); }
+  };
+  const changeStatus = async (lead: Lead, status: 'CONTACTED' | 'LOST') => {
+    setSaving(true); setError('');
+    try { await api.updateLeadStatus(lead.id, status); data.retry(); }
+    catch (requestError) { setError((requestError as Error).message); }
+    finally { setSaving(false); }
+  };
+
+  return <div className="leads-panel" data-testid="leads-panel">
+    <div className="workspace-toolbar"><div><h2>Входящие обращения</h2><p>Новые запросы до выбора услуг и времени</p></div><button onClick={() => setCreating((value) => !value)}>+ Обращение</button></div>
+    <div className="workspace-filters"><button className={filter === 'active' ? 'selected' : ''} onClick={() => setFilter('active')}>Активные</button><button className={filter === 'all' ? 'selected' : ''} onClick={() => setFilter('all')}>Все</button></div>
+    {creating && <div className="lead-create-form" data-testid="lead-create-form">
+      <div className="lead-channel-grid">{(Object.keys(leadChannelLabels) as Lead['channel'][]).map((value) => <button key={value} className={channel === value ? 'selected' : ''} onClick={() => setChannel(value)}>{leadChannelLabels[value]}</button>)}</div>
+      <label>Имя<input value={contactName} onChange={(event) => setContactName(event.target.value)} placeholder="Как обращаться"/></label>
+      <label>Телефон<input data-testid="lead-phone" value={phone} inputMode="tel" onChange={(event) => setPhone(event.target.value)} placeholder="+7 999 000-00-00"/></label>
+      <label>Что нужно<textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Услуга, пожелания, когда перезвонить"/></label>
+      {error && <p className="form-error">{error}</p>}
+      <button className="primary-button" data-testid="save-lead" disabled={saving || contactName.trim().length < 2 || phone.replace(/\D/g, '').length < 7} onClick={create}>{saving ? 'Сохраняем…' : 'Сохранить обращение'}</button>
+    </div>}
+    {data.loading ? <LoadingState/> : data.error ? <ErrorState message={data.error} onRetry={data.retry}/> : visible.length === 0 ? <div className="workspace-state"><strong>Активных обращений нет</strong><span>Новые запросы появятся здесь</span></div> : <div className="lead-list">{visible.map((lead) => {
+      const status = leadStatuses[lead.status];
+      return <article className="lead-card" key={lead.id} data-testid={`lead-card-${lead.id}`}>
+        <div className="lead-card-top"><span className={`status-pill ${status.className}`}>{status.label}</span><span>{leadChannelLabels[lead.channel]}</span></div>
+        <h3>{lead.contactName}</h3><a href={`tel:${lead.phoneDisplay}`}>{lead.phoneDisplay}</a><p>{lead.note || 'Комментарий не добавлен'}</p>
+        {lead.customer && <small>Клиент найден: {lead.customer.name}</small>}
+        {(lead.status === 'NEW' || lead.status === 'CONTACTED') && <div className="lead-actions">
+          {lead.status === 'NEW' && <button disabled={saving} onClick={() => changeStatus(lead, 'CONTACTED')}>В работу</button>}
+          <button className="primary" disabled={saving} onClick={() => onConvert(lead)}>В запись →</button>
+          <button className="danger" disabled={saving} onClick={() => changeStatus(lead, 'LOST')}>Потеряно</button>
+        </div>}
+        {lead.bookingId && <div className="lead-linked">✓ Связано с записью #{lead.bookingId.replace('booking_', '').slice(0, 7)}</div>}
+      </article>;
+    })}</div>}
+  </div>;
 }
 
 function BookingCard({ item, onOpen }: { item: BookingListItem; onOpen: () => void }) {

@@ -490,6 +490,34 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .workspace-toolbar h2 { margin: 0 0 4px; font-size: 20px; letter-spacing: -.03em; }
 .workspace-toolbar p { margin: 0; color: var(--muted); font-size: 12px; }
 .workspace-toolbar > button, .workspace-state button { flex: 0 0 auto; min-height: 44px; padding: 0 14px; border: 1px solid rgba(255,121,57,.45); border-radius: 11px; color: #ff9a6a; background: rgba(255,121,57,.09); font-size: 12px; font-weight: 800; cursor: pointer; }
+.workspace-section-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin: 14px 0; padding: 4px; border-radius: 12px; background: #0b1116; }
+.workspace-section-tabs button { border: 0; border-radius: 9px; color: #82909b; background: transparent; font-size: 11px; font-weight: 800; cursor: pointer; }
+.workspace-section-tabs button.selected { color: #fff; background: #1b2630; }
+.workspace-section-tabs span { margin-left: 4px; padding: 2px 6px; border-radius: 999px; color: #aeb8c0; background: #2b3741; font-size: 9px; }
+.lead-conversion-banner { display: grid; gap: 4px; margin-bottom: 14px; padding: 12px 13px; border: 1px solid rgba(255,121,57,.35); border-radius: 12px; background: rgba(255,121,57,.07); }
+.lead-conversion-banner span { color: #ff9d70; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.lead-conversion-banner strong { font-size: 14px; }
+.lead-conversion-banner small { color: #9ca8b2; font-size: 10px; line-height: 1.4; }
+.leads-panel .workspace-toolbar { margin-top: 0; }
+.lead-create-form { display: grid; gap: 10px; margin: 12px 0 16px; padding: 13px; border: 1px solid #33404a; border-radius: 13px; background: #111920; }
+.lead-create-form label { display: grid; gap: 6px; color: #99a5ae; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.lead-create-form input, .lead-create-form textarea { padding: 10px 11px; border: 1px solid #35424c; border-radius: 9px; outline: 0; color: #ecf0f2; background: #0c1319; font: inherit; font-size: 12px; text-transform: none; }
+.lead-create-form textarea { min-height: 72px; resize: vertical; }
+.lead-channel-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.lead-channel-grid button { min-height: 38px; border: 1px solid #303d47; border-radius: 8px; color: #8f9ca6; background: #0d141a; font-size: 9px; font-weight: 800; cursor: pointer; }
+.lead-channel-grid button.selected { border-color: rgba(255,121,57,.55); color: #ff9e70; background: rgba(255,121,57,.09); }
+.lead-list { display: grid; gap: 10px; }
+.lead-card { padding: 13px; border: 1px solid #303d47; border-radius: 13px; background: linear-gradient(145deg, #151e26, #10171d); }
+.lead-card-top { display: flex; align-items: center; justify-content: space-between; color: #7f8c96; font-size: 10px; font-weight: 700; }
+.lead-card h3 { margin: 10px 0 2px; font-size: 15px; }
+.lead-card > a { color: #b9c3ca; font-size: 12px; text-decoration: none; }
+.lead-card > p { margin: 9px 0; color: #8d9aa4; font-size: 11px; line-height: 1.45; }
+.lead-card > small { color: #75c9aa; font-size: 10px; }
+.lead-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 11px; }
+.lead-actions button { min-width: 0; min-height: 42px; padding: 0 5px; border: 1px solid #34424c; border-radius: 9px; color: #9ba7b0; background: #10171d; font-size: 9px; font-weight: 800; cursor: pointer; }
+.lead-actions button.primary { border-color: var(--primary); color: #211109; background: var(--primary); }
+.lead-actions button.danger { color: #df8c8c; }
+.lead-linked { margin-top: 10px; color: #70c8a7; font-size: 10px; font-weight: 800; }
 .workspace-filters { display: flex; gap: 7px; overflow-x: auto; margin: 0 -18px 14px; padding: 0 18px 5px; scrollbar-width: none; }
 .workspace-filters button { flex: 0 0 auto; min-height: 40px; padding: 0 14px; border: 1px solid #313d48; border-radius: 20px; color: #9ca8b3; background: #111820; font-size: 12px; font-weight: 700; cursor: pointer; }
 .workspace-filters button.selected { border-color: rgba(255,121,57,.55); color: #ff9a6a; background: rgba(255,121,57,.11); }

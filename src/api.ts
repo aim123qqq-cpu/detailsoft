@@ -1,4 +1,4 @@
-import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, Vehicle, WorkOrder } from './types';
+import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, Lead, LeadStatus, OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, Vehicle, WorkOrder } from './types';
 
 const sessionHeaders = { authorization: 'Bearer demo-session-token' };
 
@@ -31,6 +31,17 @@ export const api = {
   },
   listBookings(signal?: AbortSignal) {
     return request<{ items: BookingListItem[] }>('/api/bookings?limit=20', { signal });
+  },
+  listLeads(signal?: AbortSignal) {
+    return request<{ items: Lead[] }>('/api/leads?limit=50', { signal });
+  },
+  createLead(input: { customerId?: string; channel: Lead['channel']; contactName: string; phone: string; note: string }) {
+    return request<Lead>('/api/leads', { method: 'POST', body: JSON.stringify(input) });
+  },
+  updateLeadStatus(leadId: string, status: Extract<LeadStatus, 'CONTACTED' | 'LOST'>) {
+    return request<Lead>(`/api/leads/${encodeURIComponent(leadId)}`, {
+      method: 'PATCH', body: JSON.stringify({ status })
+    });
   },
   listOrders(signal?: AbortSignal) {
     return request<{ items: OrderListItem[] }>('/api/orders?limit=20', { signal });
@@ -75,6 +86,7 @@ export const api = {
     });
   },
   createBooking(input: {
+    leadId?: string;
     customerId: string;
     vehicleId: string;
     channel: string;

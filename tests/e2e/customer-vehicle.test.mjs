@@ -226,6 +226,37 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.waitForTimeout(400);
     await page.screenshot({ path: resolve(artifacts, '20-booking-cancelled.png'), fullPage: true });
 
+    await page.getByRole('button', { name: '← Все записи' }).click();
+    await page.getByRole('tab', { name: /Обращения/ }).click();
+    await page.getByTestId('leads-panel').waitFor();
+    assert.match(await page.getByTestId('leads-panel').innerText(), /Алексей Морозов/);
+    assert.match(await page.getByTestId('leads-panel').innerText(), /Telegram/);
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: resolve(artifacts, '32-leads-inbox.png'), fullPage: true });
+
+    await page.getByTestId('lead-card-lead_demo_telegram').getByRole('button', { name: /В запись/ }).click();
+    await page.locator('.lead-conversion-banner').waitFor();
+    await page.getByTestId('customer-result').waitFor();
+    assert.equal(await page.getByTestId('main-search').inputValue(), '+7 913 123-45-67');
+    await page.waitForTimeout(250);
+    await page.screenshot({ path: resolve(artifacts, '33-lead-conversion.png'), fullPage: true });
+    await page.getByTestId('vehicle-veh_mazda').click();
+    await page.getByTestId('services-screen').waitFor();
+    await page.getByTestId('offering-service_wash').locator('.offering-main').click();
+    await page.getByTestId('choose-time').click();
+    await page.getByTestId('schedule-screen').waitFor();
+    await page.getByTestId('slot-18:00').click();
+    await page.getByTestId('confirm-booking').click();
+    await page.getByTestId('booking-confirmed').waitFor();
+
+    await page.getByTestId('bookings-nav').click();
+    await page.getByRole('tab', { name: /Обращения/ }).click();
+    await page.getByRole('button', { name: 'Все' }).click();
+    await page.getByTestId('lead-card-lead_demo_telegram').waitFor();
+    assert.match(await page.getByTestId('lead-card-lead_demo_telegram').innerText(), /Запись создана/);
+    assert.match(await page.getByTestId('lead-card-lead_demo_telegram').innerText(), /Связано с записью/);
+    await page.screenshot({ path: resolve(artifacts, '34-lead-converted.png'), fullPage: true });
+
     await page.getByTestId('orders-nav').click();
     await page.getByTestId('orders-workspace').waitFor();
     await page.waitForFunction(() => document.querySelector('[data-testid="orders-workspace"]')?.textContent?.includes('Алексей Морозов'));

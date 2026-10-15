@@ -178,6 +178,7 @@ export function ScheduleStep({
   channel,
   selections,
   quote,
+  leadId,
   onBack,
   onStartIntake
 }: {
@@ -186,6 +187,7 @@ export function ScheduleStep({
   channel: string;
   selections: QuoteSelection[];
   quote: BookingQuote;
+  leadId?: string;
   onBack: () => void;
   onStartIntake: (booking: Booking) => void;
 }) {
@@ -225,6 +227,7 @@ export function ScheduleStep({
     setError('');
     try {
       const created = await api.createBooking({
+        ...(leadId ? { leadId } : {}),
         customerId: customer.id,
         vehicleId: vehicle.id,
         channel: channelCodes[channel] ?? 'call',

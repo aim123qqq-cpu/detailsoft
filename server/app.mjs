@@ -93,6 +93,35 @@ export function createDetailFlowServer({
         if (request.method === 'GET' && url.pathname === '/api/customers') {
           return sendJson(response, 200, { items: repository.searchCustomers(tenantId, url.searchParams.get('phone') ?? '') });
         }
+        if (request.method === 'GET' && url.pathname === '/api/leads') {
+          return sendJson(response, 200, { items: repository.listLeads(tenantId, url.searchParams.get('limit') ?? 50) });
+        }
+        if (request.method === 'POST' && url.pathname === '/api/leads') {
+          if (!capabilities.manageBookings) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для создания обращения' }
+          });
+          const result = repository.createLead(tenantId, await readJson(request));
+          if (result.kind === 'created') return sendJson(response, 201, result.lead);
+          if (result.kind === 'not_found') return sendJson(response, 404, {
+            error: { code: 'customer_not_found', message: 'Клиент не найден' }
+          });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите имя, телефон и канал обращения' } });
+        }
+        const leadPatch = url.pathname.match(/^\/api\/leads\/([^/]+)$/);
+        if (request.method === 'PATCH' && leadPatch) {
+          if (!capabilities.manageBookings) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для изменения обращения' }
+          });
+          const result = repository.updateLeadStatus(tenantId, leadPatch[1], (await readJson(request)).status);
+          if (result.kind === 'updated') return sendJson(response, 200, result.lead);
+          if (result.kind === 'not_found') return sendJson(response, 404, {
+            error: { code: 'lead_not_found', message: 'Обращение не найдено' }
+          });
+          if (result.kind === 'conflict') return sendJson(response, 409, {
+            error: { code: result.code, message: result.message }
+          });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Неизвестный статус обращения' } });
+        }
         if (request.method === 'POST' && url.pathname === '/api/customers') {
           if (!capabilities.manageCustomers) return sendJson(response, 403, {
             error: { code: 'forbidden', message: 'Недостаточно прав для создания клиента' }

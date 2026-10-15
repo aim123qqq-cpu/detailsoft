@@ -5,7 +5,7 @@ import { OrderFlow } from './OrderFlow';
 import { BookingsWorkspace, OrdersWorkspace } from './WorkspaceScreens';
 import { AnalyticsScreen } from './AnalyticsScreen';
 import { ProfileScreen } from './ProfileScreen';
-import type { Booking, BookingQuote, CatalogVariant, Customer, QuoteSelection, Vehicle } from './types';
+import type { Booking, BookingQuote, CatalogVariant, Customer, Lead, QuoteSelection, Vehicle } from './types';
 
 type Workspace = 'bookings' | 'new' | 'orders' | 'analytics' | 'profile';
 
@@ -30,6 +30,9 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
 
 const bodyLabels: Record<string, string> = { sedan: 'седан', hatchback: 'хэтчбек', suv: 'кроссовер' };
 const channels = ['Telegram', 'VK', 'Instagram', 'Звонок', 'На месте'];
+const leadChannelLabels: Record<Lead['channel'], string> = {
+  telegram: 'Telegram', vk: 'VK', instagram: 'Instagram', call: 'Звонок', in_person: 'На месте'
+};
 
 function formatPhoneInput(value: string) {
   const digits = value.replace(/\D/g, '').replace(/^8/, '7').slice(0, 11);
@@ -100,6 +103,7 @@ export function App() {
   const [serviceSelections, setServiceSelections] = useState<QuoteSelection[]>([]);
   const [bookingQuote, setBookingQuote] = useState<BookingQuote | null>(null);
   const [activeBooking, setActiveBooking] = useState<Booking | null>(null);
+  const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [orderHeader, setOrderHeader] = useState('Приёмка автомобиля');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -165,11 +169,30 @@ export function App() {
     setServiceSelections([]);
     setBookingQuote(null);
     setActiveBooking(null);
+    setActiveLead(null);
     setOrderHeader('Приёмка автомобиля');
     setError('');
     setSearchRetryKey(0);
     setShowCreateCustomer(false);
     setNewCustomerName('');
+  };
+
+  const startLeadBooking = (lead: Lead) => {
+    setWorkspace('new');
+    setStep(1);
+    setMode('phone');
+    setChannel(leadChannelLabels[lead.channel]);
+    setQuery(formatPhoneInput(lead.phoneDisplay));
+    setCustomers([]);
+    setPlateVehicles([]);
+    setSelectedCustomer(null);
+    setSelectedVehicle(null);
+    setServiceSelections([]);
+    setBookingQuote(null);
+    setActiveBooking(null);
+    setActiveLead(lead);
+    setNewCustomerName(lead.contactName);
+    setError('');
   };
 
   const selectWorkspace = (nextWorkspace: Workspace) => {
@@ -207,12 +230,13 @@ export function App() {
       {!online && <div className="connectivity-banner" data-testid="offline-banner" role="status" aria-live="polite"><strong>Нет подключения</strong><span>Можно продолжить ввод — данные формы не пропадут</span></div>}
       <Header step={step} workspace={workspace} orderTitle={orderHeader} onBack={() => workspace !== 'new' ? startNewBooking() : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
       <main id="main-content" tabIndex={-1}>
-        {workspace === 'bookings' && <BookingsWorkspace onNew={startNewBooking}/>}
+        {workspace === 'bookings' && <BookingsWorkspace onNew={startNewBooking} onLeadConvert={startLeadBooking}/>}
         {workspace === 'orders' && <OrdersWorkspace/>}
         {workspace === 'analytics' && <AnalyticsScreen/>}
         {workspace === 'profile' && <ProfileScreen/>}
         {workspace === 'new' && step === 1 && (
           <section className="screen" aria-label="Поиск клиента и автомобиля">
+            {activeLead && <div className="lead-conversion-banner"><span>Обращение · {leadChannelLabels[activeLead.channel]}</span><strong>{activeLead.contactName}</strong><small>Выберите клиента и автомобиль — обращение закроется после создания записи.</small></div>}
             <div className="context-line"><span className="live-dot"/> DetailFlow Studio <span>·</span> Сегодня, 14:30</div>
             <div className="section-block compact">
               <label className="section-label">Канал обращения</label>
@@ -300,6 +324,7 @@ export function App() {
             channel={channel}
             selections={serviceSelections}
             quote={bookingQuote}
+            leadId={activeLead?.id}
             onBack={() => setStep(3)}
             onStartIntake={(booking) => { setActiveBooking(booking); setStep(5); }}
           />
