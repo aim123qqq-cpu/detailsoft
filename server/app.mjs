@@ -157,6 +157,33 @@ export function createDetailFlowServer({
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: `${result.resource}_not_found`, message: 'Связанная запись не найдена' } });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте госномер, цвет и модель' } });
         }
+        const vehicleProfile = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/profile$/);
+        if (request.method === 'GET' && vehicleProfile) {
+          if (!capabilities.manageCustomers) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для просмотра карточки автомобиля' }
+          });
+          const profile = repository.getVehicleProfile(tenantId, vehicleProfile[1]);
+          return profile
+            ? sendJson(response, 200, profile)
+            : sendJson(response, 404, { error: { code: 'vehicle_not_found', message: 'Автомобиль не найден' } });
+        }
+        const vehicleTransfer = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/transfer$/);
+        if (request.method === 'POST' && vehicleTransfer) {
+          if (!capabilities.manageCustomers) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для смены владельца' }
+          });
+          const result = repository.transferVehicleOwner(tenantId, vehicleTransfer[1], (await readJson(request)).customerId);
+          if (result.kind === 'transferred') return sendJson(response, 200, result.profile);
+          if (result.kind === 'same_owner') return sendJson(response, 409, {
+            error: { code: 'same_owner', message: 'Этот клиент уже указан владельцем' }
+          });
+          if (result.kind === 'invalid') return sendJson(response, 422, {
+            error: { code: 'validation_error', message: 'Выберите нового владельца' }
+          });
+          return sendJson(response, 404, {
+            error: { code: `${result.resource}_not_found`, message: 'Автомобиль или клиент не найден' }
+          });
+        }
         const vehiclePatch = url.pathname.match(/^\/api\/vehicles\/([^/]+)$/);
         if (request.method === 'PATCH' && vehiclePatch) {
           if (!capabilities.manageCustomers) return sendJson(response, 403, {

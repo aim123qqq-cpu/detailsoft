@@ -354,7 +354,8 @@ export class DetailFlowRepository {
         c.id customer_id, c.name customer_name, c.phone_display customer_phone
       FROM vehicles v
       LEFT JOIN customer_vehicles cv
-        ON cv.tenant_id = v.tenant_id AND cv.vehicle_id = v.id AND cv.valid_to IS NULL
+        ON cv.tenant_id = v.tenant_id AND cv.vehicle_id = v.id
+       AND cv.valid_to IS NULL AND cv.relation_type = 'owner'
       LEFT JOIN customers c ON c.tenant_id = cv.tenant_id AND c.id = cv.customer_id
       LEFT JOIN tenant_vehicle_class_rules r
         ON r.tenant_id = v.tenant_id
@@ -431,11 +432,112 @@ export class DetailFlowRepository {
 
   updateVehicleStatus(tenantId, vehicleId, status) {
     if (!['active', 'inactive', 'sold'].includes(status)) return { kind: 'invalid' };
-    const result = this.db.prepare(`UPDATE vehicles
-      SET status = ?, archived_at = CASE WHEN ? = 'active' THEN NULL ELSE CURRENT_TIMESTAMP END
-      WHERE id = ? AND tenant_id = ?`).run(status, status, vehicleId, tenantId);
-    if (!result.changes) return { kind: 'not_found' };
+    const vehicle = this.db.prepare('SELECT id, status FROM vehicles WHERE id = ? AND tenant_id = ?').get(vehicleId, tenantId);
+    if (!vehicle) return { kind: 'not_found' };
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`UPDATE vehicles
+        SET status = ?, archived_at = CASE WHEN ? = 'active' THEN NULL ELSE CURRENT_TIMESTAMP END
+        WHERE id = ? AND tenant_id = ?`).run(status, status, vehicleId, tenantId);
+      if (vehicle.status !== status) {
+        this.db.prepare(`INSERT INTO vehicle_audit_events
+          (id, tenant_id, vehicle_id, event_type, details_json)
+          VALUES (?, ?, ?, 'VEHICLE_STATUS_CHANGED', ?)`).run(
+            `va_${randomUUID()}`, tenantId, vehicleId,
+            JSON.stringify({ fromStatus: vehicle.status, toStatus: status })
+          );
+      }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
     return { kind: 'updated', vehicle: this.db.prepare('SELECT id, status, archived_at archivedAt FROM vehicles WHERE id = ?').get(vehicleId) };
+  }
+
+  getVehicleProfile(tenantId, vehicleId) {
+    const vehicleRow = this.db.prepare(`SELECT v.*, r.tenant_class
+      FROM vehicles v
+      LEFT JOIN tenant_vehicle_class_rules r
+        ON r.tenant_id = v.tenant_id
+       AND (r.variant_id = v.catalog_variant_id OR (r.variant_id IS NULL AND r.class_match = v.system_vehicle_class))
+      WHERE v.id = ? AND v.tenant_id = ?
+      ORDER BY r.priority DESC LIMIT 1`).get(vehicleId, tenantId);
+    if (!vehicleRow) return null;
+
+    const ownership = this.db.prepare(`SELECT cv.id, cv.relation_type, cv.valid_from, cv.valid_to,
+        c.id customer_id, c.name customer_name, c.phone_display
+      FROM customer_vehicles cv
+      JOIN customers c ON c.id = cv.customer_id AND c.tenant_id = cv.tenant_id
+      WHERE cv.tenant_id = ? AND cv.vehicle_id = ? AND cv.relation_type = 'owner'
+      ORDER BY cv.valid_to IS NULL DESC, cv.valid_from DESC, cv.created_at DESC`).all(tenantId, vehicleId).map((row) => ({
+        linkId: row.id,
+        relationType: row.relation_type,
+        validFrom: apiTimestamp(row.valid_from),
+        validTo: apiTimestamp(row.valid_to),
+        active: row.valid_to === null,
+        customer: { id: row.customer_id, name: row.customer_name, phoneDisplay: row.phone_display }
+      }));
+    const visits = this.db.prepare(`SELECT o.id, o.status, o.created_at,
+        c.id customer_id, c.name customer_name
+      FROM orders o
+      JOIN customers c ON c.id = o.customer_id AND c.tenant_id = o.tenant_id
+      WHERE o.tenant_id = ? AND o.vehicle_id = ?
+      ORDER BY o.created_at DESC, o.id DESC`).all(tenantId, vehicleId).map((row) => ({
+        id: row.id,
+        status: row.status,
+        createdAt: apiTimestamp(row.created_at),
+        customer: { id: row.customer_id, name: row.customer_name }
+      }));
+    const audit = this.db.prepare(`SELECT id, event_type, details_json, created_at
+      FROM vehicle_audit_events WHERE tenant_id = ? AND vehicle_id = ?
+      ORDER BY created_at DESC, rowid DESC`).all(tenantId, vehicleId).map((row) => ({
+        id: row.id,
+        type: row.event_type,
+        details: JSON.parse(row.details_json),
+        createdAt: apiTimestamp(row.created_at)
+      }));
+    return {
+      vehicle: mapVehicle(vehicleRow),
+      currentOwner: ownership.find((link) => link.active)?.customer ?? null,
+      ownership,
+      visits,
+      audit
+    };
+  }
+
+  transferVehicleOwner(tenantId, vehicleId, customerId) {
+    if (typeof customerId !== 'string' || !customerId.trim()) return { kind: 'invalid' };
+    const vehicle = this.db.prepare('SELECT id FROM vehicles WHERE id = ? AND tenant_id = ?').get(vehicleId, tenantId);
+    if (!vehicle) return { kind: 'not_found', resource: 'vehicle' };
+    const customer = this.db.prepare(`SELECT id FROM customers
+      WHERE id = ? AND tenant_id = ? AND archived_at IS NULL`).get(customerId, tenantId);
+    if (!customer) return { kind: 'not_found', resource: 'customer' };
+    const currentLinks = this.db.prepare(`SELECT id, customer_id FROM customer_vehicles
+      WHERE tenant_id = ? AND vehicle_id = ? AND relation_type = 'owner' AND valid_to IS NULL`).all(tenantId, vehicleId);
+    if (currentLinks.some((link) => link.customer_id === customerId)) return { kind: 'same_owner' };
+
+    const newLinkId = `link_${randomUUID()}`;
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`UPDATE customer_vehicles
+        SET valid_to = CURRENT_TIMESTAMP, is_primary = 0
+        WHERE tenant_id = ? AND vehicle_id = ? AND relation_type = 'owner' AND valid_to IS NULL`).run(tenantId, vehicleId);
+      this.db.prepare(`INSERT INTO customer_vehicles
+        (id, tenant_id, customer_id, vehicle_id, relation_type, is_primary)
+        VALUES (?, ?, ?, ?, 'owner', 1)`).run(newLinkId, tenantId, customerId, vehicleId);
+      this.db.prepare(`INSERT INTO vehicle_audit_events
+        (id, tenant_id, vehicle_id, event_type, details_json)
+        VALUES (?, ?, ?, 'OWNER_TRANSFERRED', ?)`).run(
+          `va_${randomUUID()}`, tenantId, vehicleId,
+          JSON.stringify({ fromCustomerIds: currentLinks.map((link) => link.customer_id), toCustomerId: customerId, newLinkId })
+        );
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'transferred', profile: this.getVehicleProfile(tenantId, vehicleId) };
   }
 
   getVehiclePricingContext(tenantId, vehicleId) {

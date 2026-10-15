@@ -19,6 +19,31 @@ export type Customer = {
   vehicles: Vehicle[];
 };
 
+export type VehicleProfile = {
+  vehicle: Vehicle;
+  currentOwner: null | { id: string; name: string; phoneDisplay: string };
+  ownership: Array<{
+    linkId: string;
+    relationType: 'owner';
+    validFrom: string;
+    validTo: string | null;
+    active: boolean;
+    customer: { id: string; name: string; phoneDisplay: string };
+  }>;
+  visits: Array<{
+    id: string;
+    status: string;
+    createdAt: string;
+    customer: { id: string; name: string };
+  }>;
+  audit: Array<{
+    id: string;
+    type: 'OWNER_TRANSFERRED' | 'VEHICLE_STATUS_CHANGED';
+    details: Record<string, unknown>;
+    createdAt: string;
+  }>;
+};
+
 export type LeadStatus = 'NEW' | 'CONTACTED' | 'CONVERTED' | 'LOST';
 
 export type Lead = {

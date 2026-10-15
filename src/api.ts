@@ -1,4 +1,4 @@
-import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, CenterSettings, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, TeamMember, TeamRole, Vehicle, WorkOrder } from './types';
+import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, CenterSettings, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, TeamMember, TeamRole, Vehicle, VehicleProfile, WorkOrder } from './types';
 
 const sessionHeaders = { authorization: 'Bearer demo-session-token' };
 
@@ -69,6 +69,19 @@ export const api = {
   },
   createVehicle(input: { customerId: string; catalogVariantId: string; plateDisplay: string; color: string }) {
     return request<{ vehicle: Vehicle }>('/api/vehicles', { method: 'POST', body: JSON.stringify(input) });
+  },
+  getVehicleProfile(vehicleId: string, signal?: AbortSignal) {
+    return request<VehicleProfile>(`/api/vehicles/${encodeURIComponent(vehicleId)}/profile`, { signal });
+  },
+  updateVehicleStatus(vehicleId: string, status: Vehicle['status']) {
+    return request<{ id: string; status: Vehicle['status']; archivedAt: string | null }>(`/api/vehicles/${encodeURIComponent(vehicleId)}`, {
+      method: 'PATCH', body: JSON.stringify({ status })
+    });
+  },
+  transferVehicle(vehicleId: string, customerId: string) {
+    return request<VehicleProfile>(`/api/vehicles/${encodeURIComponent(vehicleId)}/transfer`, {
+      method: 'POST', body: JSON.stringify({ customerId })
+    });
   },
   getServices(vehicleId: string, signal?: AbortSignal) {
     return request<ServiceCatalog>(`/api/tenants/current/services?vehicleId=${encodeURIComponent(vehicleId)}`, { signal });

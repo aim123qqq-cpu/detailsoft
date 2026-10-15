@@ -880,6 +880,68 @@ button.workspace-card:hover, button.workspace-card:focus-visible { border-color:
 .settings-save { margin-top: 12px; }
 .schedule-closed { grid-column: 1 / -1; min-height: 52px; display: grid; place-items: center; padding: 10px; border: 1px dashed #34414b; border-radius: 10px; color: #8d9aa5; font-size: 11px; text-align: center; }
 
+.vehicle-profile-link { width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 9px; border: 1px solid #34414b; border-radius: 11px; color: #aab5bd; background: #10171d; font-size: 11px; font-weight: 800; cursor: pointer; }
+.vehicle-profile-screen { padding-bottom: 116px; }
+.vehicle-profile-hero { position: relative; display: grid; grid-template-columns: 48px minmax(0,1fr) auto; align-items: center; gap: 11px; margin-top: 10px; padding: 16px; border: 1px solid #35434e; border-radius: 18px; background: radial-gradient(circle at 100% 0, rgba(255,121,57,.2), transparent 54%), linear-gradient(145deg, #18222a, #10171d); }
+.vehicle-profile-mark { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 14px; color: #ffd1bb; background: rgba(255,121,57,.18); font-size: 28px; font-weight: 900; }
+.vehicle-profile-hero > div:nth-child(2) { min-width: 0; }
+.vehicle-profile-hero span { color: #ff9d70; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.vehicle-profile-hero h2 { overflow: hidden; margin: 5px 0 3px; font-size: 19px; letter-spacing: -.03em; text-overflow: ellipsis; white-space: nowrap; }
+.vehicle-profile-hero p { margin: 0; color: #85929c; font-size: 10px; }
+.vehicle-profile-hero > strong { padding: 7px 9px; border-radius: 7px; color: #11171c; background: #e8ecee; font-size: 11px; letter-spacing: .04em; white-space: nowrap; }
+.vehicle-status { position: absolute; right: 16px; bottom: -11px; padding: 5px 8px; border: 3px solid #0d141a; border-radius: 9px; color: #79dfb9; background: #17352b; font-size: 8px !important; }
+.vehicle-status.sold, .vehicle-status.inactive { color: #bdc5ca; background: #303a42; }
+.vehicle-success { margin-top: 17px; padding: 11px 13px; border: 1px solid rgba(54,201,150,.34); border-radius: 11px; color: #80dcb9; background: rgba(54,201,150,.08); font-size: 10px; font-weight: 800; }
+.vehicle-profile-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; margin-top: 17px; }
+.vehicle-profile-stats > div { display: grid; gap: 3px; padding: 11px 8px; border: 1px solid #2c3841; border-radius: 12px; background: #11181e; text-align: center; }
+.vehicle-profile-stats strong { font-size: 18px; }
+.vehicle-profile-stats span { color: #77858f; font-size: 9px; }
+.vehicle-owner-card, .vehicle-history-section, .vehicle-transfer { margin-top: 11px; padding: 14px; border: 1px solid #303d47; border-radius: 15px; background: #121920; }
+.vehicle-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.vehicle-section-heading > span { color: #99a5ae; font-size: 9px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }
+.vehicle-section-heading > i { padding: 4px 7px; border-radius: 7px; color: #73d5b0; background: rgba(54,201,150,.09); font-size: 8px; font-style: normal; font-weight: 800; }
+.vehicle-owner-row { display: grid; grid-template-columns: 42px minmax(0,1fr); align-items: center; gap: 11px; margin-top: 13px; }
+.vehicle-owner-row > b { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 13px; color: #ffd1bc; background: #513326; font-size: 11px; }
+.vehicle-owner-row > span { display: grid; gap: 4px; }
+.vehicle-owner-row strong { font-size: 14px; }
+.vehicle-owner-row small { color: #85939d; font-size: 10px; }
+.vehicle-owner-actions { display: grid; grid-template-columns: 1.1fr .9fr; gap: 7px; margin-top: 13px; }
+.vehicle-owner-actions button { min-height: 44px; padding: 7px; border: 1px solid rgba(255,121,57,.4); border-radius: 10px; color: #ff9d70; background: rgba(255,121,57,.07); font-size: 9px; font-weight: 900; cursor: pointer; }
+.vehicle-owner-actions button:last-child { border-color: #394550; color: #8e9ba4; background: #0c1319; }
+.vehicle-transfer { border-color: rgba(255,121,57,.42); background: radial-gradient(circle at 100% 0, rgba(255,121,57,.11), transparent 45%), #121920; }
+.vehicle-transfer > span { color: #ff9d70; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.vehicle-transfer h3 { margin: 7px 0 4px; font-size: 17px; }
+.vehicle-transfer > p { margin: 0 0 13px; color: #82909a; font-size: 10px; line-height: 1.5; }
+.vehicle-transfer > label { display: grid; gap: 6px; color: #8996a0; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.vehicle-transfer input { min-height: 46px; padding: 10px 12px; border: 1px solid #3a4751; border-radius: 10px; outline: 0; color: #f0f3f5; background: #0a1015; font-size: 14px; }
+.transfer-candidates { display: grid; gap: 7px; margin-top: 10px; }
+.transfer-candidates > button { min-height: 58px; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding: 10px 11px; border: 1px solid #34414b; border-radius: 11px; color: #d9dfe3; background: #0d141a; text-align: left; cursor: pointer; }
+.transfer-candidates > button.selected { border-color: #71d5af; background: rgba(54,201,150,.08); }
+.transfer-candidates b { font-size: 11px; }
+.transfer-candidates small { grid-column: 1; color: #7f8d97; font-size: 9px; }
+.transfer-candidates i { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: #78dbb6; font-size: 17px; font-style: normal; }
+.transfer-candidates > small { padding: 10px; border: 1px dashed #36424c; border-radius: 9px; color: #7c8993; font-size: 9px; line-height: 1.5; }
+.transfer-confirm { margin-top: 11px; padding: 11px; border-radius: 11px; background: #0b1116; }
+.transfer-confirm p { margin: 0 0 9px; color: #9ca8b0; font-size: 10px; line-height: 1.5; }
+.transfer-confirm button { width: 100%; min-height: 44px; border: 0; border-radius: 10px; color: #211109; background: var(--primary); font-size: 10px; font-weight: 900; cursor: pointer; }
+.vehicle-timeline { display: grid; margin-top: 12px; }
+.vehicle-timeline > div { position: relative; min-height: 59px; display: grid; grid-template-columns: 14px minmax(0,1fr) auto; gap: 9px; align-items: start; padding-bottom: 11px; }
+.vehicle-timeline > div:not(:last-child)::before { content: ''; position: absolute; top: 14px; bottom: -1px; left: 5px; width: 1px; background: #3a4650; }
+.vehicle-timeline > div > i { position: relative; z-index: 1; width: 11px; height: 11px; margin-top: 2px; border: 2px solid #697781; border-radius: 50%; background: #121920; }
+.vehicle-timeline > div.active > i { border-color: #65d2a9; background: #2d8e69; box-shadow: 0 0 0 4px rgba(54,201,150,.08); }
+.vehicle-timeline > div > span { display: grid; gap: 4px; }
+.vehicle-timeline strong { font-size: 11px; }
+.vehicle-timeline small { color: #74828c; font-size: 9px; }
+.vehicle-timeline b { padding: 4px 6px; border-radius: 7px; color: #8f9ba4; background: #222c34; font-size: 8px; }
+.vehicle-timeline .active b { color: #78dcb7; background: rgba(54,201,150,.1); }
+.vehicle-visits { display: grid; gap: 7px; margin-top: 11px; }
+.vehicle-visits > div { min-height: 55px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 11px; border-radius: 10px; background: #0d141a; }
+.vehicle-visits span { display: grid; gap: 4px; }
+.vehicle-visits strong { font-size: 11px; }
+.vehicle-visits small { color: #788690; font-size: 9px; }
+.vehicle-visits b { color: #73d5b0; font-size: 8px; text-transform: uppercase; }
+.vehicle-empty { margin: 12px 0 0; color: #7b8993; font-size: 10px; }
+
 .bottom-nav { position: fixed; z-index: 30; bottom: 0; left: 50%; transform: translateX(-50%); width: min(100%, var(--app-width)); min-height: 76px; padding: 7px 5px max(8px, env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(5, 1fr); background: rgba(13,19,25,.94); border-top: 1px solid #27313b; backdrop-filter: blur(18px); }
 .bottom-nav button { min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #7f8b96; background: transparent; border: 0; font-size: 11px; font-weight: 700; cursor: pointer; }
 .bottom-nav button.active { color: var(--primary); }

@@ -5,6 +5,7 @@ import { OrderFlow } from './OrderFlow';
 import { BookingsWorkspace, OrdersWorkspace } from './WorkspaceScreens';
 import { AnalyticsScreen } from './AnalyticsScreen';
 import { ProfileScreen } from './ProfileScreen';
+import { VehicleProfileScreen } from './VehicleProfileScreen';
 import type { Booking, BookingQuote, CatalogVariant, Customer, Lead, QuoteSelection, Vehicle } from './types';
 
 type Workspace = 'bookings' | 'new' | 'orders' | 'analytics' | 'profile';
@@ -111,6 +112,7 @@ export function App() {
   const [searchRetryKey, setSearchRetryKey] = useState(0);
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
+  const [profileVehicleId, setProfileVehicleId] = useState<string | null>(null);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'auto' });
@@ -175,6 +177,7 @@ export function App() {
     setSearchRetryKey(0);
     setShowCreateCustomer(false);
     setNewCustomerName('');
+    setProfileVehicleId(null);
   };
 
   const startLeadBooking = (lead: Lead) => {
@@ -228,13 +231,14 @@ export function App() {
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Перейти к содержимому</a>
       {!online && <div className="connectivity-banner" data-testid="offline-banner" role="status" aria-live="polite"><strong>Нет подключения</strong><span>Можно продолжить ввод — данные формы не пропадут</span></div>}
-      <Header step={step} workspace={workspace} orderTitle={orderHeader} onBack={() => workspace !== 'new' ? startNewBooking() : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
+      <Header step={step} workspace={workspace} orderTitle={orderHeader} onBack={() => workspace !== 'new' ? startNewBooking() : profileVehicleId ? setProfileVehicleId(null) : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
       <main id="main-content" tabIndex={-1}>
         {workspace === 'bookings' && <BookingsWorkspace onNew={startNewBooking} onLeadConvert={startLeadBooking}/>}
         {workspace === 'orders' && <OrdersWorkspace/>}
         {workspace === 'analytics' && <AnalyticsScreen/>}
         {workspace === 'profile' && <ProfileScreen/>}
-        {workspace === 'new' && step === 1 && (
+        {workspace === 'new' && step === 1 && profileVehicleId && <VehicleProfileScreen vehicleId={profileVehicleId} onBack={() => setProfileVehicleId(null)}/>}
+        {workspace === 'new' && step === 1 && !profileVehicleId && (
           <section className="screen" aria-label="Поиск клиента и автомобиля">
             {activeLead && <div className="lead-conversion-banner"><span>Обращение · {leadChannelLabels[activeLead.channel]}</span><strong>{activeLead.contactName}</strong><small>Выберите клиента и автомобиль — обращение закроется после создания записи.</small></div>}
             <div className="context-line"><span className="live-dot"/> DetailFlow Studio <span>·</span> Сегодня, 14:30</div>
@@ -298,6 +302,7 @@ export function App() {
               <div className="customer-result" key={vehicle.id}>
                 {vehicle.customer && <div className="found-owner"><Icon name="user"/> {vehicle.customer.name} <span>{vehicle.customer.phoneDisplay}</span></div>}
                 <VehicleCard vehicle={vehicle} onSelect={() => chooseVehicle(vehicle, vehicle.customer)}/>
+                <button className="vehicle-profile-link" data-testid={`open-vehicle-profile-${vehicle.id}`} onClick={() => setProfileVehicleId(vehicle.id)}><Icon name="clipboard" size={17}/> История и владелец</button>
               </div>
             ))}
           </section>
