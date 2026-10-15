@@ -145,6 +145,12 @@ export function createDetailFlowServer({
         if (request.method === 'GET' && url.pathname === '/api/vehicle-catalog/variants') {
           return sendJson(response, 200, { items: repository.searchCatalog(url.searchParams.get('q') ?? '') });
         }
+        if (request.method === 'GET' && url.pathname === '/api/tenants/current/vehicle-classes') {
+          if (!capabilities.manageCustomers) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для просмотра классов автомобиля' }
+          });
+          return sendJson(response, 200, { items: repository.listVehicleClasses(tenantId) });
+        }
         if (request.method === 'POST' && url.pathname === '/api/vehicles') {
           if (!capabilities.manageCustomers) return sendJson(response, 403, {
             error: { code: 'forbidden', message: 'Недостаточно прав для добавления автомобиля' }
@@ -189,7 +195,21 @@ export function createDetailFlowServer({
           if (!capabilities.manageCustomers) return sendJson(response, 403, {
             error: { code: 'forbidden', message: 'Недостаточно прав для изменения автомобиля' }
           });
-          const result = repository.updateVehicleStatus(tenantId, vehiclePatch[1], (await readJson(request)).status);
+          const input = await readJson(request);
+          const detailKeys = ['bodyType', 'tenantClass'];
+          const hasDetails = detailKeys.some((key) => Object.hasOwn(input, key));
+          if (hasDetails && Object.hasOwn(input, 'status')) return sendJson(response, 422, {
+            error: { code: 'validation_error', message: 'Изменяйте статус и параметры автомобиля отдельными действиями' }
+          });
+          const detailResult = hasDetails
+            ? repository.updateVehicleDetails(tenantId, vehiclePatch[1], input)
+            : null;
+          if (detailResult?.kind === 'updated' && !Object.hasOwn(input, 'status')) return sendJson(response, 200, detailResult.vehicle);
+          if (detailResult?.kind === 'not_found') return sendJson(response, 404, { error: { code: 'vehicle_not_found', message: 'Автомобиль не найден' } });
+          if (detailResult?.kind === 'invalid') return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте кузов и класс автомобиля' } });
+          const result = Object.hasOwn(input, 'status')
+            ? repository.updateVehicleStatus(tenantId, vehiclePatch[1], input.status)
+            : { kind: 'invalid' };
           if (result.kind === 'updated') return sendJson(response, 200, result.vehicle);
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'vehicle_not_found', message: 'Автомобиль не найден' } });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Неизвестный статус' } });
@@ -207,6 +227,27 @@ export function createDetailFlowServer({
             error: { code: 'forbidden', message: 'Каталог доступен владельцу или администратору' }
           });
           return sendJson(response, 200, repository.getManagedCatalog(tenantId));
+        }
+        if (request.method === 'POST' && url.pathname === '/api/tenants/current/catalog/operations') {
+          if (!capabilities.manageCatalog) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для изменения каталога' }
+          });
+          const result = repository.createCatalogOperation(tenantId, await readJson(request));
+          if (result.kind === 'created') return sendJson(response, 201, result.operation);
+          if (result.kind === 'duplicate') return sendJson(response, 409, {
+            error: { code: 'operation_exists', message: 'Операция с таким названием уже существует' }
+          });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте название операции' } });
+        }
+        const managedCatalogCreate = url.pathname.match(/^\/api\/tenants\/current\/catalog\/(services|packages)$/);
+        if (request.method === 'POST' && managedCatalogCreate) {
+          if (!capabilities.manageCatalog) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для изменения каталога' }
+          });
+          const type = managedCatalogCreate[1] === 'services' ? 'service' : 'package';
+          const result = repository.createManagedCatalogItem(tenantId, type, await readJson(request));
+          if (result.kind === 'created') return sendJson(response, 201, result.item);
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте позицию, операции и стартовые цены' } });
         }
         const managedCatalogItem = url.pathname.match(/^\/api\/tenants\/current\/catalog\/(services|packages)\/([^/]+)$/);
         if (request.method === 'PATCH' && managedCatalogItem) {

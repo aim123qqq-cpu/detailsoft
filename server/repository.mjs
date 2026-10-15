@@ -4,6 +4,7 @@ import { normalizePhone, normalizePlate, normalizeSearch } from './domain/normal
 function mapVehicle(row) {
   return {
     id: row.id,
+    catalogVariantId: row.catalog_variant_id ?? null,
     make: row.make,
     model: row.model,
     generation: row.generation,
@@ -333,9 +334,10 @@ export class DetailFlowRepository {
   }
 
   listCustomerVehicles(tenantId, customerId, includeArchived) {
-    const rows = this.db.prepare(`SELECT v.*, r.tenant_class
+    const rows = this.db.prepare(`SELECT v.*, COALESCE(o.tenant_class, r.tenant_class) tenant_class
       FROM customer_vehicles cv
       JOIN vehicles v ON v.id = cv.vehicle_id AND v.tenant_id = cv.tenant_id
+      LEFT JOIN vehicle_pricing_overrides o ON o.vehicle_id = v.id AND o.tenant_id = v.tenant_id
       LEFT JOIN tenant_vehicle_class_rules r
         ON r.tenant_id = v.tenant_id
        AND (r.variant_id = v.catalog_variant_id OR (r.variant_id IS NULL AND r.class_match = v.system_vehicle_class))
@@ -350,9 +352,10 @@ export class DetailFlowRepository {
   searchVehicles(tenantId, plate) {
     const normalized = normalizePlate(plate);
     if (normalized.length < 2) return [];
-    const rows = this.db.prepare(`SELECT v.*, r.tenant_class,
+    const rows = this.db.prepare(`SELECT v.*, COALESCE(o.tenant_class, r.tenant_class) tenant_class,
         c.id customer_id, c.name customer_name, c.phone_display customer_phone
       FROM vehicles v
+      LEFT JOIN vehicle_pricing_overrides o ON o.vehicle_id = v.id AND o.tenant_id = v.tenant_id
       LEFT JOIN customer_vehicles cv
         ON cv.tenant_id = v.tenant_id AND cv.vehicle_id = v.id
        AND cv.valid_to IS NULL AND cv.relation_type = 'owner'
@@ -392,13 +395,37 @@ export class DetailFlowRepository {
     }));
   }
 
+  listVehicleClasses(tenantId) {
+    return this.db.prepare(`SELECT DISTINCT tenant_class FROM tenant_vehicle_class_rules
+      WHERE tenant_id = ? ORDER BY tenant_class`).all(tenantId).map((row) => row.tenant_class);
+  }
+
   createVehicle(tenantId, input) {
     const customer = this.db.prepare('SELECT id FROM customers WHERE id = ? AND tenant_id = ? AND archived_at IS NULL')
       .get(input.customerId, tenantId);
     if (!customer) return { kind: 'not_found', resource: 'customer' };
-    const variant = this.db.prepare('SELECT * FROM vehicle_catalog_variants WHERE id = ?')
-      .get(input.catalogVariantId);
-    if (!variant) return { kind: 'not_found', resource: 'catalog_variant' };
+    const catalogRequested = typeof input.catalogVariantId === 'string' && input.catalogVariantId.trim().length > 0;
+    if (catalogRequested && input.manual) return { kind: 'invalid' };
+    const variant = catalogRequested
+      ? this.db.prepare('SELECT * FROM vehicle_catalog_variants WHERE id = ?').get(input.catalogVariantId)
+      : null;
+    const manual = input.manual && typeof input.manual === 'object' ? {
+      make: String(input.manual.make ?? '').trim(),
+      model: String(input.manual.model ?? '').trim(),
+      generation: String(input.manual.generation ?? '').trim() || null,
+      body_type: String(input.manual.bodyType ?? '').trim(),
+      system_vehicle_class: String(input.manual.systemVehicleClass ?? '').trim() || null
+    } : null;
+    const allowedBodyTypes = new Set(['sedan', 'hatchback', 'suv', 'wagon', 'coupe', 'van', 'pickup', 'other']);
+    if (catalogRequested && !variant) return { kind: 'not_found', resource: 'catalog_variant' };
+    if (!variant && (!manual || manual.make.length < 2 || manual.model.length < 1 ||
+      manual.make.length > 80 || manual.model.length > 80 || !allowedBodyTypes.has(manual.body_type))) {
+      return { kind: 'invalid' };
+    }
+    const vehicleData = variant ?? manual;
+    const tenantClass = String(input.tenantClass ?? '').trim() || null;
+    if (tenantClass && !this.db.prepare(`SELECT 1 FROM tenant_vehicle_class_rules
+      WHERE tenant_id = ? AND tenant_class = ? LIMIT 1`).get(tenantId, tenantClass)) return { kind: 'invalid' };
     const plateNormalized = normalizePlate(input.plateDisplay);
     if (plateNormalized.length < 3 || !String(input.color ?? '').trim()) return { kind: 'invalid' };
 
@@ -414,13 +441,15 @@ export class DetailFlowRepository {
         (id, tenant_id, catalog_variant_id, make, model, generation, body_type,
          plate_display, plate_normalized, color, system_vehicle_class)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-          vehicleId, tenantId, variant.id, variant.make, variant.model, variant.generation,
-          variant.body_type, String(input.plateDisplay).trim(), plateNormalized,
-          String(input.color).trim(), variant.system_vehicle_class
+          vehicleId, tenantId, variant?.id ?? null, vehicleData.make, vehicleData.model, vehicleData.generation,
+          vehicleData.body_type, String(input.plateDisplay).trim(), plateNormalized,
+          String(input.color).trim(), vehicleData.system_vehicle_class
         );
       this.db.prepare(`INSERT INTO customer_vehicles
         (id, tenant_id, customer_id, vehicle_id, relation_type, is_primary)
         VALUES (?, ?, ?, ?, 'owner', 1)`).run(linkId, tenantId, input.customerId, vehicleId);
+      if (tenantClass) this.db.prepare(`INSERT INTO vehicle_pricing_overrides
+        (vehicle_id, tenant_id, tenant_class) VALUES (?, ?, ?)`).run(vehicleId, tenantId, tenantClass);
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
@@ -455,9 +484,35 @@ export class DetailFlowRepository {
     return { kind: 'updated', vehicle: this.db.prepare('SELECT id, status, archived_at archivedAt FROM vehicles WHERE id = ?').get(vehicleId) };
   }
 
+  updateVehicleDetails(tenantId, vehicleId, input) {
+    if (!input || typeof input !== 'object') return { kind: 'invalid' };
+    const vehicle = this.db.prepare('SELECT id, body_type FROM vehicles WHERE id = ? AND tenant_id = ?').get(vehicleId, tenantId);
+    if (!vehicle) return { kind: 'not_found' };
+    const allowedBodyTypes = new Set(['sedan', 'hatchback', 'suv', 'wagon', 'coupe', 'van', 'pickup', 'other']);
+    const bodyType = input.bodyType === undefined ? vehicle.body_type : String(input.bodyType);
+    if (!allowedBodyTypes.has(bodyType)) return { kind: 'invalid' };
+    const tenantClass = input.tenantClass === undefined ? undefined : String(input.tenantClass).trim();
+    if (tenantClass !== undefined && (!tenantClass || !this.db.prepare(`SELECT 1 FROM tenant_vehicle_class_rules
+      WHERE tenant_id = ? AND tenant_class = ? LIMIT 1`).get(tenantId, tenantClass))) return { kind: 'invalid' };
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare('UPDATE vehicles SET body_type = ? WHERE id = ? AND tenant_id = ?').run(bodyType, vehicleId, tenantId);
+      if (tenantClass !== undefined) this.db.prepare(`INSERT INTO vehicle_pricing_overrides
+        (vehicle_id, tenant_id, tenant_class, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(vehicle_id) DO UPDATE SET tenant_class = excluded.tenant_class, updated_at = CURRENT_TIMESTAMP`)
+        .run(vehicleId, tenantId, tenantClass);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'updated', vehicle: this.getVehicleProfile(tenantId, vehicleId)?.vehicle };
+  }
+
   getVehicleProfile(tenantId, vehicleId) {
-    const vehicleRow = this.db.prepare(`SELECT v.*, r.tenant_class
+    const vehicleRow = this.db.prepare(`SELECT v.*, COALESCE(o.tenant_class, r.tenant_class) tenant_class
       FROM vehicles v
+      LEFT JOIN vehicle_pricing_overrides o ON o.vehicle_id = v.id AND o.tenant_id = v.tenant_id
       LEFT JOIN tenant_vehicle_class_rules r
         ON r.tenant_id = v.tenant_id
        AND (r.variant_id = v.catalog_variant_id OR (r.variant_id IS NULL AND r.class_match = v.system_vehicle_class))
@@ -542,7 +597,7 @@ export class DetailFlowRepository {
 
   getVehiclePricingContext(tenantId, vehicleId) {
     return this.db.prepare(`SELECT v.id, v.tenant_id, v.status,
-        COALESCE((
+        COALESCE(o.tenant_class, (
           SELECT r.tenant_class
           FROM tenant_vehicle_class_rules r
           WHERE r.tenant_id = v.tenant_id
@@ -551,6 +606,7 @@ export class DetailFlowRepository {
           LIMIT 1
         ), v.system_vehicle_class, 'Стандарт') tenant_class
       FROM vehicles v
+      LEFT JOIN vehicle_pricing_overrides o ON o.vehicle_id = v.id AND o.tenant_id = v.tenant_id
       WHERE v.id = ? AND v.tenant_id = ?`).get(vehicleId, tenantId);
   }
 
@@ -673,7 +729,101 @@ export class DetailFlowRepository {
             durationMinutes: price.duration_minutes
           }))
       }));
-    return { vehicleClasses, items: [...packages, ...services] };
+    const operationLibrary = this.db.prepare(`SELECT id, name, active
+      FROM service_operations WHERE tenant_id = ? ORDER BY active DESC, name`).all(tenantId).map((operation) => ({
+        id: operation.id,
+        name: operation.name,
+        active: Boolean(operation.active)
+      }));
+    return { vehicleClasses, operationLibrary, items: [...packages, ...services] };
+  }
+
+  createCatalogOperation(tenantId, input) {
+    const name = String(input?.name ?? '').trim();
+    if (name.length < 2 || name.length > 120) return { kind: 'invalid' };
+    const duplicate = this.db.prepare(`SELECT id FROM service_operations
+      WHERE tenant_id = ? AND lower(name) = lower(?)`).get(tenantId, name);
+    if (duplicate) return { kind: 'duplicate' };
+    const operation = { id: `op_${randomUUID()}`, name, active: true };
+    this.db.prepare(`INSERT INTO service_operations (id, tenant_id, name, active)
+      VALUES (?, ?, ?, 1)`).run(operation.id, tenantId, name);
+    return { kind: 'created', operation };
+  }
+
+  createManagedCatalogItem(tenantId, type, input) {
+    if (!['service', 'package'].includes(type) || !input || typeof input !== 'object') return { kind: 'invalid' };
+    const name = String(input.name ?? '').trim();
+    const category = String(input.category ?? '').trim();
+    const description = String(input.description ?? '').trim();
+    const pricingMode = type === 'service' ? String(input.pricingMode ?? '') : 'fixed';
+    const vehicleClasses = this.db.prepare(`SELECT DISTINCT tenant_class FROM tenant_vehicle_class_rules
+      WHERE tenant_id = ?`).all(tenantId).map((row) => row.tenant_class);
+    if (name.length < 2 || name.length > 120 || category.length < 2 || category.length > 80 ||
+      description.length > 500 || !vehicleClasses.length ||
+      (type === 'service' && !['fixed', 'from', 'inspection'].includes(pricingMode))) return { kind: 'invalid' };
+
+    let operationIds;
+    let operationPrices = [];
+    let amountMinor;
+    let durationMinutes;
+    if (type === 'service') {
+      if (!Array.isArray(input.operationPrices) || !input.operationPrices.length || input.operationPrices.length > 50) return { kind: 'invalid' };
+      operationPrices = input.operationPrices.map((price) => ({
+        operationId: String(price?.operationId ?? ''),
+        amountMinor: Number(price?.amountMinor),
+        durationMinutes: Number(price?.durationMinutes)
+      }));
+      operationIds = operationPrices.map((price) => price.operationId);
+      if (new Set(operationIds).size !== operationIds.length || operationPrices.some((price) =>
+        !Number.isInteger(price.amountMinor) || price.amountMinor < 0 || price.amountMinor > 100_000_000 ||
+        !Number.isInteger(price.durationMinutes) || price.durationMinutes < 1 || price.durationMinutes > 1440)) return { kind: 'invalid' };
+    } else {
+      if (!Array.isArray(input.operationIds) || !input.operationIds.length || input.operationIds.length > 50) return { kind: 'invalid' };
+      operationIds = [...new Set(input.operationIds.map((id) => String(id)))];
+      amountMinor = Number(input.amountMinor);
+      durationMinutes = Number(input.durationMinutes);
+      if (operationIds.length !== input.operationIds.length || !Number.isInteger(amountMinor) || amountMinor < 0 || amountMinor > 100_000_000 ||
+        !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 1440) return { kind: 'invalid' };
+    }
+    const placeholders = operationIds.map(() => '?').join(',');
+    const operationCount = this.db.prepare(`SELECT COUNT(*) count FROM service_operations
+      WHERE tenant_id = ? AND active = 1 AND id IN (${placeholders})`).get(tenantId, ...operationIds).count;
+    if (operationCount !== operationIds.length) return { kind: 'invalid' };
+
+    const itemId = `${type === 'service' ? 'service' : 'package'}_${randomUUID()}`;
+    this.db.exec('BEGIN');
+    try {
+      if (type === 'service') {
+        this.db.prepare(`INSERT INTO tenant_services
+          (id, tenant_id, category, name, description, pricing_mode, active)
+          VALUES (?, ?, ?, ?, ?, ?, 1)`).run(itemId, tenantId, category, name, description, pricingMode);
+        const insertRelation = this.db.prepare(`INSERT INTO tenant_service_operations
+          (service_id, operation_id, sequence) VALUES (?, ?, ?)`);
+        const insertPrice = this.db.prepare(`INSERT INTO service_operation_prices
+          (service_id, operation_id, tenant_class, amount_minor, duration_minutes) VALUES (?, ?, ?, ?, ?)`);
+        operationPrices.forEach((price, index) => {
+          insertRelation.run(itemId, price.operationId, index + 1);
+          for (const tenantClass of vehicleClasses) insertPrice.run(
+            itemId, price.operationId, tenantClass, price.amountMinor, price.durationMinutes
+          );
+        });
+      } else {
+        this.db.prepare(`INSERT INTO service_packages
+          (id, tenant_id, category, name, description, active) VALUES (?, ?, ?, ?, ?, 1)`)
+          .run(itemId, tenantId, category, name, description);
+        const insertRelation = this.db.prepare(`INSERT INTO service_package_operations
+          (package_id, operation_id, sequence) VALUES (?, ?, ?)`);
+        operationIds.forEach((operationId, index) => insertRelation.run(itemId, operationId, index + 1));
+        const insertPrice = this.db.prepare(`INSERT INTO service_package_prices
+          (package_id, tenant_class, amount_minor, duration_minutes) VALUES (?, ?, ?, ?)`);
+        for (const tenantClass of vehicleClasses) insertPrice.run(itemId, tenantClass, amountMinor, durationMinutes);
+      }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'created', item: this.getManagedCatalog(tenantId).items.find((item) => item.id === itemId) };
   }
 
   updateManagedCatalogItem(tenantId, type, itemId, input) {
@@ -684,13 +834,22 @@ export class DetailFlowRepository {
     const active = input.active;
     const prices = input.prices;
     const pricingMode = type === 'service' ? String(input.pricingMode ?? '') : 'fixed';
+    const operationIds = input.operationIds === undefined ? null
+      : Array.isArray(input.operationIds) ? [...new Set(input.operationIds.map((id) => String(id)))] : [];
     if (name.length < 2 || name.length > 120 || category.length < 2 || category.length > 80 ||
       description.length > 500 || typeof active !== 'boolean' || !Array.isArray(prices) || prices.length > 100 ||
-      (type === 'service' && !['fixed', 'from', 'inspection'].includes(pricingMode))) return { kind: 'invalid' };
+      (type === 'service' && !['fixed', 'from', 'inspection'].includes(pricingMode)) ||
+      (operationIds && (!operationIds.length || operationIds.length > 50 || operationIds.length !== input.operationIds.length))) return { kind: 'invalid' };
 
     const table = type === 'service' ? 'tenant_services' : 'service_packages';
     const item = this.db.prepare(`SELECT id FROM ${table} WHERE id = ? AND tenant_id = ?`).get(itemId, tenantId);
     if (!item) return { kind: 'not_found' };
+    if (operationIds) {
+      const placeholders = operationIds.map(() => '?').join(',');
+      const operationCount = this.db.prepare(`SELECT COUNT(*) count FROM service_operations
+        WHERE tenant_id = ? AND active = 1 AND id IN (${placeholders})`).get(tenantId, ...operationIds).count;
+      if (operationCount !== operationIds.length) return { kind: 'invalid' };
+    }
     const allowedClasses = new Set(this.db.prepare(`SELECT DISTINCT tenant_class
       FROM tenant_vehicle_class_rules WHERE tenant_id = ?`).all(tenantId).map((row) => row.tenant_class));
     const normalizedPrices = [];
@@ -702,15 +861,21 @@ export class DetailFlowRepository {
         !Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 1440) return { kind: 'invalid' };
       if (type === 'service') {
         const operationId = String(price?.operationId ?? '');
-        const relation = this.db.prepare(`SELECT 1 FROM tenant_service_operations relation
-          JOIN service_operations operation ON operation.id = relation.operation_id
-          WHERE relation.service_id = ? AND relation.operation_id = ? AND operation.tenant_id = ?`).get(itemId, operationId, tenantId);
-        if (!relation) return { kind: 'invalid' };
+        const allowedOperation = operationIds
+          ? operationIds.includes(operationId)
+          : Boolean(this.db.prepare(`SELECT 1 FROM tenant_service_operations relation
+              JOIN service_operations operation ON operation.id = relation.operation_id
+              WHERE relation.service_id = ? AND relation.operation_id = ? AND operation.tenant_id = ?`).get(itemId, operationId, tenantId));
+        if (!allowedOperation) return { kind: 'invalid' };
         normalizedPrices.push({ operationId, tenantClass, amountMinor, durationMinutes });
       } else {
         normalizedPrices.push({ tenantClass, amountMinor, durationMinutes });
       }
     }
+    if (type === 'service' && operationIds && operationIds.some((operationId) =>
+      !normalizedPrices.some((price) => price.operationId === operationId) &&
+      !this.db.prepare(`SELECT 1 FROM service_operation_prices
+        WHERE service_id = ? AND operation_id = ? LIMIT 1`).get(itemId, operationId))) return { kind: 'invalid' };
 
     this.db.exec('BEGIN');
     try {
@@ -724,6 +889,26 @@ export class DetailFlowRepository {
         for (const price of normalizedPrices) updatePrice.run(
           itemId, price.operationId, price.tenantClass, price.amountMinor, price.durationMinutes
         );
+        if (operationIds) {
+          this.db.prepare('DELETE FROM tenant_service_operations WHERE service_id = ?').run(itemId);
+          const insertRelation = this.db.prepare(`INSERT INTO tenant_service_operations
+            (service_id, operation_id, sequence) VALUES (?, ?, ?)`);
+          operationIds.forEach((operationId, index) => insertRelation.run(itemId, operationId, index + 1));
+          const selectedPlaceholders = operationIds.map(() => '?').join(',');
+          this.db.prepare(`DELETE FROM service_operation_prices
+            WHERE service_id = ? AND operation_id NOT IN (${selectedPlaceholders})`).run(itemId, ...operationIds);
+          for (const operationId of operationIds) {
+            const seed = normalizedPrices.find((price) => price.operationId === operationId) ??
+              this.db.prepare(`SELECT operation_id operationId, amount_minor amountMinor, duration_minutes durationMinutes
+                FROM service_operation_prices WHERE service_id = ? AND operation_id = ? LIMIT 1`).get(itemId, operationId);
+            if (!seed) throw new Error('missing_operation_price');
+            for (const tenantClass of allowedClasses) this.db.prepare(`INSERT INTO service_operation_prices
+              (service_id, operation_id, tenant_class, amount_minor, duration_minutes) VALUES (?, ?, ?, ?, ?)
+              ON CONFLICT(service_id, operation_id, tenant_class) DO NOTHING`).run(
+                itemId, operationId, tenantClass, seed.amountMinor, seed.durationMinutes
+              );
+          }
+        }
       } else {
         this.db.prepare(`UPDATE service_packages SET category = ?, name = ?, description = ?, active = ?
           WHERE id = ? AND tenant_id = ?`).run(category, name, description, Number(active), itemId, tenantId);
@@ -734,6 +919,12 @@ export class DetailFlowRepository {
         for (const price of normalizedPrices) updatePrice.run(
           itemId, price.tenantClass, price.amountMinor, price.durationMinutes
         );
+        if (operationIds) {
+          this.db.prepare('DELETE FROM service_package_operations WHERE package_id = ?').run(itemId);
+          const insertRelation = this.db.prepare(`INSERT INTO service_package_operations
+            (package_id, operation_id, sequence) VALUES (?, ?, ?)`);
+          operationIds.forEach((operationId, index) => insertRelation.run(itemId, operationId, index + 1));
+        }
       }
       this.db.exec('COMMIT');
     } catch (error) {

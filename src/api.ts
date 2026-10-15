@@ -67,8 +67,18 @@ export const api = {
   createCustomer(input: { name: string; phone: string }) {
     return request<Customer>('/api/customers', { method: 'POST', body: JSON.stringify(input) });
   },
-  createVehicle(input: { customerId: string; catalogVariantId: string; plateDisplay: string; color: string }) {
+  createVehicle(input: {
+    customerId: string;
+    catalogVariantId?: string;
+    manual?: { make: string; model: string; generation?: string; bodyType: string };
+    tenantClass?: string;
+    plateDisplay: string;
+    color: string;
+  }) {
     return request<{ vehicle: Vehicle }>('/api/vehicles', { method: 'POST', body: JSON.stringify(input) });
+  },
+  listVehicleClasses(signal?: AbortSignal) {
+    return request<{ items: string[] }>('/api/tenants/current/vehicle-classes', { signal });
   },
   getVehicleProfile(vehicleId: string, signal?: AbortSignal) {
     return request<VehicleProfile>(`/api/vehicles/${encodeURIComponent(vehicleId)}/profile`, { signal });
@@ -76,6 +86,11 @@ export const api = {
   updateVehicleStatus(vehicleId: string, status: Vehicle['status']) {
     return request<{ id: string; status: Vehicle['status']; archivedAt: string | null }>(`/api/vehicles/${encodeURIComponent(vehicleId)}`, {
       method: 'PATCH', body: JSON.stringify({ status })
+    });
+  },
+  updateVehicleDetails(vehicleId: string, input: { bodyType: string; tenantClass: string }) {
+    return request<Vehicle>(`/api/vehicles/${encodeURIComponent(vehicleId)}`, {
+      method: 'PATCH', body: JSON.stringify(input)
     });
   },
   transferVehicle(vehicleId: string, customerId: string) {
@@ -116,11 +131,32 @@ export const api = {
     description: string;
     pricingMode: ManagedCatalogItem['pricingMode'];
     active: boolean;
+    operationIds?: string[];
     prices: Array<{ operationId?: string; tenantClass: string; amountMinor: number; durationMinutes: number }>;
   }) {
     const collection = item.type === 'service' ? 'services' : 'packages';
     return request<ManagedCatalogItem>(`/api/tenants/current/catalog/${collection}/${encodeURIComponent(item.id)}`, {
       method: 'PATCH', body: JSON.stringify(input)
+    });
+  },
+  createCatalogOperation(name: string) {
+    return request<{ id: string; name: string; active: boolean }>('/api/tenants/current/catalog/operations', {
+      method: 'POST', body: JSON.stringify({ name })
+    });
+  },
+  createManagedCatalogItem(type: 'service' | 'package', input: {
+    name: string;
+    category: string;
+    description: string;
+    pricingMode?: ManagedCatalogItem['pricingMode'];
+    operationPrices?: Array<{ operationId: string; amountMinor: number; durationMinutes: number }>;
+    operationIds?: string[];
+    amountMinor?: number;
+    durationMinutes?: number;
+  }) {
+    const collection = type === 'service' ? 'services' : 'packages';
+    return request<ManagedCatalogItem>(`/api/tenants/current/catalog/${collection}`, {
+      method: 'POST', body: JSON.stringify(input)
     });
   },
   previewQuote(vehicleId: string, selections: QuoteSelection[], signal?: AbortSignal) {

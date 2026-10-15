@@ -1,5 +1,6 @@
 export type Vehicle = {
   id: string;
+  catalogVariantId?: string | null;
   make: string;
   model: string;
   generation?: string | null;
@@ -133,6 +134,7 @@ export type ManagedCatalogItem = {
 
 export type ManagedCatalog = {
   vehicleClasses: string[];
+  operationLibrary: Array<{ id: string; name: string; active: boolean }>;
   items: ManagedCatalogItem[];
 };
 

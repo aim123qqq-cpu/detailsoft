@@ -3,6 +3,7 @@ import { api } from './api';
 import type { Customer, VehicleProfile } from './types';
 
 const statusLabels = { active: 'В работе', inactive: 'Неактивен', sold: 'Продан' } as const;
+const bodyLabels: Record<string, string> = { sedan: 'Седан', hatchback: 'Хэтчбек', suv: 'Кроссовер', wagon: 'Универсал', coupe: 'Купе', van: 'Фургон', pickup: 'Пикап', other: 'Другой' };
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value));
@@ -25,6 +26,10 @@ export function VehicleProfileScreen({ vehicleId, onBack }: { vehicleId: string;
   const [candidate, setCandidate] = useState<Customer | null>(null);
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState('');
+  const [vehicleEditOpen, setVehicleEditOpen] = useState(false);
+  const [vehicleClasses, setVehicleClasses] = useState<string[]>([]);
+  const [editBodyType, setEditBodyType] = useState('sedan');
+  const [editTenantClass, setEditTenantClass] = useState('');
 
   const load = async (signal?: AbortSignal) => {
     setLoading(true);
@@ -92,6 +97,28 @@ export function VehicleProfileScreen({ vehicleId, onBack }: { vehicleId: string;
     }
   };
 
+  const openVehicleEdit = async () => {
+    setEditBodyType(profile?.vehicle.bodyType ?? 'other');
+    setEditTenantClass(profile?.vehicle.tenantClass ?? '');
+    setVehicleEditOpen(true);
+    setSuccess('');
+    if (!vehicleClasses.length) {
+      try { setVehicleClasses((await api.listVehicleClasses()).items); }
+      catch (requestError) { setError((requestError as Error).message); }
+    }
+  };
+
+  const saveVehicleDetails = async () => {
+    setBusy(true); setError('');
+    try {
+      await api.updateVehicleDetails(vehicleId, { bodyType: editBodyType, tenantClass: editTenantClass });
+      await load();
+      setVehicleEditOpen(false);
+      setSuccess('Кузов и тарификационный класс обновлены');
+    } catch (requestError) { setError((requestError as Error).message); }
+    finally { setBusy(false); }
+  };
+
   if (loading && !profile) return <section className="screen vehicle-profile-screen"><div className="workspace-state">Загружаем карточку автомобиля…</div></section>;
   if (!profile) return <section className="screen vehicle-profile-screen"><button className="details-back" onClick={onBack}>← К поиску</button><div className="form-error">{error || 'Карточка недоступна'}</div></section>;
 
@@ -114,6 +141,14 @@ export function VehicleProfileScreen({ vehicleId, onBack }: { vehicleId: string;
         <div><strong>{profile.ownership.length}</strong><span>владельцев</span></div>
         <div><strong>{profile.audit.length}</strong><span>изменений</span></div>
       </div>
+
+      <button className="vehicle-spec-action" data-testid="open-vehicle-spec" onClick={openVehicleEdit}><span><b>Параметры автомобиля</b><small>{bodyLabels[vehicle.bodyType ?? ''] ?? vehicle.bodyType} · класс {vehicle.tenantClass ?? 'не задан'}</small></span><strong>Изменить</strong></button>
+      {vehicleEditOpen && <div className="vehicle-spec-editor" data-testid="vehicle-spec-editor">
+        <div className="vehicle-section-heading"><span>Кузов и расчёт цены</span><i>только этот центр</i></div>
+        <p>Изменение повлияет на новые предварительные расчёты. История и готовые сметы останутся прежними.</p>
+        <div><label>Тип кузова<select value={editBodyType} onChange={(event) => setEditBodyType(event.target.value)}>{Object.entries(bodyLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Тарификационный класс<select value={editTenantClass} onChange={(event) => setEditTenantClass(event.target.value)}>{vehicleClasses.map((value) => <option key={value}>{value}</option>)}</select></label></div>
+        <div className="vehicle-spec-actions"><button onClick={() => setVehicleEditOpen(false)}>Отмена</button><button data-testid="save-vehicle-spec" disabled={busy || !editTenantClass} onClick={saveVehicleDetails}>Сохранить параметры</button></div>
+      </div>}
 
       <article className="vehicle-owner-card">
         <div className="vehicle-section-heading"><span>Текущий владелец</span><i>активная связь</i></div>
