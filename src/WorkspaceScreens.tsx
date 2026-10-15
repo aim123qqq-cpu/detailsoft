@@ -7,6 +7,8 @@ const money = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB
 const bookingDate = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
 const bookingTime = new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit' });
 const bookingDateLong = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+const calendarHeading = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' });
+const calendarWeekday = new Intl.DateTimeFormat('ru-RU', { weekday: 'short' });
 const bookingStatuses: Record<BookingStatus, { label: string; className: string }> = {
   DRAFT: { label: 'Черновик', className: 'active' },
   CONFIRMED: { label: 'Подтверждена', className: 'confirmed' },
@@ -45,18 +47,71 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   return <div className="workspace-state error-state"><strong>Не удалось загрузить</strong><span>{message}</span><button onClick={onRetry}>Повторить</button></div>;
 }
 
+function localDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function dateFromKey(value: string) {
+  return new Date(`${value}T12:00:00`);
+}
+
+function addCalendarDays(value: string, amount: number) {
+  const date = dateFromKey(value);
+  date.setDate(date.getDate() + amount);
+  return localDateKey(date);
+}
+
+function visitWord(count: number) {
+  const lastTwo = count % 100;
+  if (lastTwo >= 11 && lastTwo <= 14) return 'визитов';
+  if (count % 10 === 1) return 'визит';
+  if (count % 10 >= 2 && count % 10 <= 4) return 'визита';
+  return 'визитов';
+}
+
+function calendarWeek(value: string) {
+  const date = dateFromKey(value);
+  const offset = (date.getDay() + 6) % 7;
+  const monday = addCalendarDays(value, -offset);
+  return Array.from({ length: 7 }, (_, index) => addCalendarDays(monday, index));
+}
+
+function useCalendarItems(enabled: boolean, from: string, to: string) {
+  const [items, setItems] = useState<BookingListItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    setLoading(true); setError(''); setItems([]);
+    api.listBookingCalendar(from, to, controller.signal)
+      .then((result) => setItems(result.items))
+      .catch((requestError: Error) => { if (requestError.name !== 'AbortError') setError(requestError.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [enabled, from, to, revision]);
+  return { items, loading, error, retry: () => setRevision((value) => value + 1) };
+}
+
 export function BookingsWorkspace({ onNew, onLeadConvert }: { onNew: () => void; onLeadConvert: (lead: Lead) => void }) {
   const bookings = useWorkspaceItems(api.listBookings);
   const leads = useWorkspaceItems(api.listLeads);
   const [tab, setTab] = useState<'bookings' | 'leads'>('bookings');
+  const [calendarMode, setCalendarMode] = useState<'day' | 'week' | 'list'>('list');
+  const [calendarDate, setCalendarDate] = useState(localDateKey(new Date()));
   const [selected, setSelected] = useState<BookingListItem | null>(null);
+  const weekDays = useMemo(() => calendarWeek(calendarDate), [calendarDate]);
+  const calendarFrom = calendarMode === 'week' ? weekDays[0] : calendarDate;
+  const calendarTo = calendarMode === 'week' ? weekDays[6] : calendarDate;
+  const calendar = useCalendarItems(tab === 'bookings' && calendarMode !== 'list', calendarFrom, calendarTo);
 
   useEffect(() => {
     if (selected) window.scrollTo({ top: 0, behavior: 'auto' });
   }, [selected?.id]);
 
   if (selected) {
-    return <BookingDetails item={selected} onBack={() => { setSelected(null); bookings.retry(); }} onChanged={setSelected}/>;
+    return <BookingDetails item={selected} onBack={() => { setSelected(null); bookings.retry(); calendar.retry(); }} onChanged={setSelected}/>;
   }
 
   return (
@@ -70,12 +125,63 @@ export function BookingsWorkspace({ onNew, onLeadConvert }: { onNew: () => void;
         <button role="tab" aria-selected={tab === 'leads'} className={tab === 'leads' ? 'selected' : ''} onClick={() => setTab('leads')}>Обращения <span>{leads.items.filter((item) => item.status === 'NEW' || item.status === 'CONTACTED').length}</span></button>
       </div>
       {tab === 'leads' ? <LeadsPanel data={leads} onConvert={onLeadConvert}/> : <>
-      <div className="workspace-toolbar"><div><h2>Ближайшие визиты</h2><p>Клиент, автомобиль и состав записи</p></div><button onClick={onNew}>+ Новая</button></div>
-      {bookings.loading ? <LoadingState/> : bookings.error ? <ErrorState message={bookings.error} onRetry={bookings.retry}/> : bookings.items.length === 0 ? (
-        <div className="workspace-state"><strong>Записей пока нет</strong><span>Создайте первую запись для клиента</span><button onClick={onNew}>Создать запись</button></div>
-      ) : <div className="workspace-list">{bookings.items.map((item) => <BookingCard key={item.id} item={item} onOpen={() => setSelected(item)}/>)}</div>}</>}
+      <div className="calendar-view-switch" role="tablist" aria-label="Режим календаря">
+        <button role="tab" aria-selected={calendarMode === 'day'} className={calendarMode === 'day' ? 'selected' : ''} onClick={() => setCalendarMode('day')}>День</button>
+        <button role="tab" aria-selected={calendarMode === 'week'} className={calendarMode === 'week' ? 'selected' : ''} onClick={() => setCalendarMode('week')}>Неделя</button>
+        <button role="tab" aria-selected={calendarMode === 'list'} className={calendarMode === 'list' ? 'selected' : ''} onClick={() => setCalendarMode('list')}>Список</button>
+      </div>
+      {calendarMode === 'list' ? <>
+        <div className="workspace-toolbar"><div><h2>Ближайшие визиты</h2><p>Клиент, автомобиль и состав записи</p></div><button onClick={onNew}>+ Новая</button></div>
+        {bookings.loading ? <LoadingState/> : bookings.error ? <ErrorState message={bookings.error} onRetry={bookings.retry}/> : bookings.items.length === 0 ? (
+          <div className="workspace-state"><strong>Записей пока нет</strong><span>Создайте первую запись для клиента</span><button onClick={onNew}>Создать запись</button></div>
+        ) : <div className="workspace-list">{bookings.items.map((item) => <BookingCard key={item.id} item={item} onOpen={() => setSelected(item)}/>)}</div>}
+      </> : <CalendarPanel mode={calendarMode} date={calendarDate} weekDays={weekDays} data={calendar} onDate={setCalendarDate} onNew={onNew} onOpen={setSelected}/>}</>}
     </section>
   );
+}
+
+function CalendarPanel({ mode, date, weekDays, data, onDate, onNew, onOpen }: {
+  mode: 'day' | 'week';
+  date: string;
+  weekDays: string[];
+  data: { items: BookingListItem[]; loading: boolean; error: string; retry: () => void };
+  onDate: (date: string) => void;
+  onNew: () => void;
+  onOpen: (item: BookingListItem) => void;
+}) {
+  const activeItems = data.items.filter((item) => item.startAt.slice(0, 10) === date);
+  const rangeTitle = mode === 'day'
+    ? calendarHeading.format(dateFromKey(date))
+    : `${calendarHeading.format(dateFromKey(weekDays[0]))} — ${calendarHeading.format(dateFromKey(weekDays[6]))}`;
+  const shift = (amount: number) => onDate(addCalendarDays(date, mode === 'week' ? amount * 7 : amount));
+  const activeMinutes = activeItems.filter((item) => item.status !== 'CANCELLED').reduce((sum, item) => sum + item.estimatedDurationMinutes, 0);
+
+  return <div className="calendar-panel" data-testid="booking-calendar">
+    <div className="calendar-toolbar">
+      <button aria-label="Предыдущий период" onClick={() => shift(-1)}>‹</button>
+      <label><span>{mode === 'day' ? 'Выбранный день' : 'Рабочая неделя'}</span><strong>{rangeTitle}</strong><input aria-label="Дата календаря" type="date" value={date} onChange={(event) => onDate(event.target.value)}/></label>
+      <button aria-label="Следующий период" onClick={() => shift(1)}>›</button>
+    </div>
+    {mode === 'week' && <div className="calendar-week-strip" aria-label="Загрузка недели">{weekDays.map((day) => {
+      const count = data.items.filter((item) => item.startAt.slice(0, 10) === day && item.status !== 'CANCELLED').length;
+      const selected = day === date;
+      return <button key={day} aria-label={`${calendarWeekday.format(dateFromKey(day))}, ${calendarHeading.format(dateFromKey(day))}: ${count} записей`} aria-pressed={selected} className={selected ? 'selected' : ''} onClick={() => onDate(day)}><span>{calendarWeekday.format(dateFromKey(day)).slice(0, 2)}</span><strong>{dateFromKey(day).getDate()}</strong><i style={{ height: `${Math.min(100, 16 + count * 24)}%` }}/><small>{count}</small></button>;
+    })}</div>}
+    <div className="calendar-day-summary"><div><span>{calendarWeekday.format(dateFromKey(date))}</span><strong>{calendarHeading.format(dateFromKey(date))}</strong></div><div><strong>{activeItems.filter((item) => item.status !== 'CANCELLED').length}</strong><span>{visitWord(activeItems.filter((item) => item.status !== 'CANCELLED').length)} · {Math.round(activeMinutes / 60 * 10) / 10} ч</span></div><button onClick={onNew}>+ Запись</button></div>
+    {data.loading ? <LoadingState/> : data.error ? <ErrorState message={data.error} onRetry={data.retry}/> : activeItems.length === 0 ? <div className="calendar-empty"><strong>День свободен</strong><span>Записей на эту дату нет</span><button onClick={onNew}>Создать запись</button></div> : <div className="calendar-agenda">{activeItems.map((item) => <CalendarEvent key={item.id} item={item} onOpen={() => onOpen(item)}/>)}</div>}
+  </div>;
+}
+
+function CalendarEvent({ item, onOpen }: { item: BookingListItem; onOpen: () => void }) {
+  const start = new Date(item.startAt);
+  const end = new Date(start.getTime() + item.estimatedDurationMinutes * 60_000);
+  const status = bookingStatuses[item.status];
+  return <button className={`calendar-event ${status.className}`} data-testid={`calendar-booking-${item.id}`} onClick={onOpen}>
+    <span className="calendar-event-time"><strong>{bookingTime.format(start)}</strong><small>{bookingTime.format(end)}</small></span>
+    <i/>
+    <span className="calendar-event-body"><span><b>{item.customer.name}</b><em className="plate">{item.vehicle.plate}</em></span><small>{item.vehicle.make} {item.vehicle.model} · {item.estimatedDurationMinutes} мин</small><span className={`status-pill ${status.className}`}>{status.label}</span></span>
+    <strong>›</strong>
+  </button>;
 }
 
 const leadStatuses: Record<LeadStatus, { label: string; className: string }> = {

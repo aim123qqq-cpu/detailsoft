@@ -32,6 +32,9 @@ export const api = {
   listBookings(signal?: AbortSignal) {
     return request<{ items: BookingListItem[] }>('/api/bookings?limit=20', { signal });
   },
+  listBookingCalendar(from: string, to: string, signal?: AbortSignal) {
+    return request<{ items: BookingListItem[] }>(`/api/bookings?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=50`, { signal });
+  },
   listLeads(signal?: AbortSignal) {
     return request<{ items: Lead[] }>('/api/leads?limit=50', { signal });
   },

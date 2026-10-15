@@ -267,7 +267,16 @@ export function createDetailFlowServer({
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте дату и длительность' } });
         }
         if (request.method === 'GET' && url.pathname === '/api/bookings') {
-          return sendJson(response, 200, { items: repository.listBookings(tenantId, url.searchParams.get('limit') ?? 20) });
+          const result = repository.listBookings(
+            tenantId,
+            url.searchParams.get('limit') ?? 20,
+            url.searchParams.has('from') ? url.searchParams.get('from') : null,
+            url.searchParams.has('to') ? url.searchParams.get('to') : null
+          );
+          if (result.kind === 'listed') return sendJson(response, 200, { items: result.items });
+          return sendJson(response, 422, {
+            error: { code: 'validation_error', message: 'Диапазон календаря должен быть не больше 31 дня' }
+          });
         }
         if (request.method === 'POST' && url.pathname === '/api/bookings') {
           if (!capabilities.manageBookings) return sendJson(response, 403, {

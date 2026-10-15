@@ -48,6 +48,13 @@ function timeToMinutes(value) {
   return hours < 24 && minutes < 60 ? hours * 60 + minutes : null;
 }
 
+function calendarDateTimestamp(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? ''));
+  if (!match) return null;
+  const timestamp = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return new Date(timestamp).toISOString().slice(0, 10) === value ? timestamp : null;
+}
+
 function minutesToTime(value) {
   return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
 }
@@ -865,10 +872,22 @@ export class DetailFlowRepository {
     return { kind: 'available', date, durationMinutes, closed: false, slots };
   }
 
-  listBookings(tenantId, limit = 20) {
+  listBookings(tenantId, limit = 20, from = null, to = null) {
     const requestedLimit = Number(limit);
     const boundedLimit = Number.isInteger(requestedLimit) ? Math.min(50, Math.max(1, requestedLimit)) : 20;
-    return this.db.prepare(`SELECT b.id, b.channel, b.start_at, b.estimated_duration_minutes,
+    const hasRange = from !== null || to !== null;
+    const fromTimestamp = hasRange ? calendarDateTimestamp(from) : null;
+    const toTimestamp = hasRange ? calendarDateTimestamp(to) : null;
+    if (hasRange && (fromTimestamp === null || toTimestamp === null || toTimestamp < fromTimestamp ||
+      toTimestamp - fromTimestamp > 30 * 24 * 60 * 60 * 1000)) return { kind: 'invalid' };
+    const settings = hasRange ? this.getCenterSettings(tenantId) : null;
+    const nextDate = hasRange ? new Date(toTimestamp + 24 * 60 * 60 * 1000).toISOString().slice(0, 10) : null;
+    const fromStart = hasRange ? localDateTime(from, '00:00', settings.timezone) : null;
+    const toExclusive = hasRange ? localDateTime(nextDate, '00:00', settings.timezone) : null;
+    const rangeFilter = hasRange ? 'AND datetime(b.start_at) >= datetime(?) AND datetime(b.start_at) < datetime(?)' : '';
+    const order = hasRange ? 'datetime(b.start_at) ASC, b.rowid ASC' : 'b.start_at DESC, b.rowid DESC';
+    const parameters = hasRange ? [tenantId, fromStart, toExclusive, boundedLimit] : [tenantId, boundedLimit];
+    const items = this.db.prepare(`SELECT b.id, b.channel, b.start_at, b.estimated_duration_minutes,
         b.status, b.preliminary_amount_minor,
         c.id customer_id, c.name customer_name, c.phone_display customer_phone,
         v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color,
@@ -878,8 +897,9 @@ export class DetailFlowRepository {
       JOIN vehicles v ON v.id = b.vehicle_id AND v.tenant_id = b.tenant_id
       LEFT JOIN order_workflows w ON w.booking_id = b.id AND w.tenant_id = b.tenant_id
       WHERE b.tenant_id = ?
-      ORDER BY b.start_at DESC, b.rowid DESC
-      LIMIT ?`).all(tenantId, boundedLimit).map((row) => ({
+      ${rangeFilter}
+      ORDER BY ${order}
+      LIMIT ?`).all(...parameters).map((row) => ({
         id: row.id,
         channel: row.channel,
         startAt: row.start_at,
@@ -901,6 +921,7 @@ export class DetailFlowRepository {
           color: row.color
         }
       }));
+    return { kind: 'listed', items };
   }
 
   updateBooking(tenantId, bookingId, input) {

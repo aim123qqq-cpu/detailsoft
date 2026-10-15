@@ -192,6 +192,22 @@ test('bookings workspace lists only the current tenant records', async () => {
   assert.deepEqual((await foreign.json()).items, []);
 });
 
+test('calendar range is tenant scoped, validated and ordered chronologically', async () => {
+  const response = await api('/api/bookings?from=2026-10-20&to=2026-10-21&limit=50');
+  assert.equal(response.status, 200);
+  const items = (await response.json()).items;
+  assert.ok(items.length >= 3);
+  assert.ok(items.every((item) => item.startAt.slice(0, 10) === '2026-10-20' || item.startAt.slice(0, 10) === '2026-10-21'));
+  assert.deepEqual(items.map((item) => item.startAt), [...items.map((item) => item.startAt)].sort());
+
+  const foreign = await api('/api/bookings?from=2026-10-20&to=2026-10-21', { tenant: 'tenant_other' });
+  assert.deepEqual((await foreign.json()).items, []);
+  assert.equal((await api('/api/bookings?from=2026-10-21&to=2026-10-20')).status, 422);
+  assert.equal((await api('/api/bookings?from=2026-10-01&to=2026-11-15')).status, 422);
+  assert.equal((await api('/api/bookings?from=not-a-date&to=2026-10-20')).status, 422);
+  assert.equal((await api('/api/bookings?from=2026-10-20')).status, 422);
+});
+
 test('a confirmed booking can be rescheduled and cancelled without losing history', async () => {
   const createdResponse = await api('/api/bookings', {
     method: 'POST',

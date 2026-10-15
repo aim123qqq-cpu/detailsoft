@@ -208,6 +208,17 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.waitForTimeout(400);
     await page.screenshot({ path: resolve(artifacts, '16-bookings-workspace.png'), fullPage: true });
 
+    await page.getByRole('tab', { name: 'День' }).click();
+    await page.getByLabel('Дата календаря').fill('2026-10-24');
+    await page.getByTestId(`calendar-booking-${manageableBooking.id}`).waitFor();
+    assert.match(await page.getByTestId('booking-calendar').innerText(), /1\s+визит/);
+    await page.screenshot({ path: resolve(artifacts, '43-booking-calendar-day.png'), fullPage: true });
+    await page.getByRole('tab', { name: 'Неделя' }).click();
+    await page.getByTestId(`calendar-booking-${manageableBooking.id}`).waitFor();
+    assert.equal(await page.locator('.calendar-week-strip button').count(), 7);
+    await page.screenshot({ path: resolve(artifacts, '44-booking-calendar-week.png'), fullPage: true });
+    await page.getByRole('tab', { name: 'Список' }).click();
+
     await page.getByTestId(`booking-card-${manageableBooking.id}`).click();
     await page.getByTestId('booking-details').waitFor();
     await page.waitForTimeout(400);
