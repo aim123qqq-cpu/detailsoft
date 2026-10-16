@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { chromium } from 'playwright-core';
 import { createDetailFlowServer } from '../../server/app.mjs';
 
-const chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+import { chromePath } from './chrome.mjs';
 
 function fakeAdapter(provider, title, botName) {
   return {

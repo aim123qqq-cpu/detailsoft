@@ -77,6 +77,18 @@ export function createDetailFlowServer({
     try {
       const url = new URL(request.url, 'http://localhost');
       if (url.pathname === '/api/health') return sendJson(response, 200, { status: 'ok' });
+      if (url.pathname === '/api/ready') {
+        // Readiness for a load balancer or monitor: the database answers; bots are reported, not required.
+        const messengerStatus = Object.fromEntries([...adapters.keys()].map((provider) => [
+          provider, readyProviders.has(provider) ? 'ready' : 'unavailable'
+        ]));
+        try {
+          db.prepare('SELECT 1').get();
+        } catch {
+          return sendJson(response, 503, { status: 'unavailable', database: 'error', messengers: messengerStatus });
+        }
+        return sendJson(response, 200, { status: 'ready', database: 'ok', messengers: messengerStatus });
+      }
 
       // Public sign-in endpoints: the browser has no session yet.
       if (url.pathname === '/api/auth/providers' && request.method === 'GET') {

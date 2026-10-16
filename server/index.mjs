@@ -35,6 +35,21 @@ if (backupIntervalHours > 0) {
   server.on('close', () => clearInterval(timer));
 }
 
-server.listen(port, '127.0.0.1', () => {
-  console.log(`DetailFlow is running at http://127.0.0.1:${port}`);
+// Behind a reverse proxy on the same machine keep the default; HOST=0.0.0.0 exposes the port directly.
+const host = process.env.HOST ?? '127.0.0.1';
+server.listen(port, host, () => {
+  console.log(`DetailFlow is running at http://${host}:${port}`);
 });
+
+// Graceful stop for systemd/Docker/Ctrl+C: finish open requests, stop bots, close the database.
+let stopping = false;
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    if (stopping) return;
+    stopping = true;
+    console.log(`${signal} received, stopping DetailFlow`);
+    server.close(() => process.exit(0));
+    server.closeIdleConnections?.();
+    setTimeout(() => process.exit(1), 10_000).unref();
+  });
+}

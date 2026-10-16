@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { chromium } from 'playwright-core';
 import { createDetailFlowServer } from '../../server/app.mjs';
 
-const chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+import { chromePath } from './chrome.mjs';
 
 test('manual vehicle and catalog builder work as one mobile management complex', async () => {
   const server = createDetailFlowServer({ databasePath: ':memory:', seed: true, staticDir: resolve('dist') });
