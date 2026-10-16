@@ -121,7 +121,7 @@ export type CatalogVariant = {
 export type ApiError = { error: { code: string; message: string } };
 
 export type SessionContext = {
-  actor: { displayName: string; roles: string[]; memberId: string | null; authMethod: 'demo' | 'messenger' | 'access_token' };
+  actor: { displayName: string; roles: string[]; roleNames: string[]; memberId: string | null; authMethod: 'demo' | 'messenger' | 'access_token' };
   tenant: { id: string; name: string; timezone: string };
   preferences: { locale: string; currency: string };
   features: { qualityControl: boolean };
@@ -132,6 +132,7 @@ export type SessionContext = {
     approveEstimates: boolean;
     assignMasters: boolean;
     performWork: boolean;
+    acceptAssignments: boolean;
     performQualityControl: boolean;
     closeOrders: boolean;
     manageCatalog: boolean;
@@ -141,7 +142,21 @@ export type SessionContext = {
   };
 };
 
-export type TeamRole = 'owner' | 'admin' | 'intake' | 'master';
+/** System role key (owner, admin, intake, master) or a custom role key role_<uuid>. */
+export type TeamRole = string;
+
+export type Permission = { key: string; title: string; note: string };
+
+export type CenterRole = {
+  key: string;
+  name: string;
+  system: boolean;
+  /** The owner role: full access, not editable. */
+  locked: boolean;
+  archived: boolean;
+  permissions: string[];
+  memberCount: number;
+};
 
 export type TeamMember = {
   id: string;

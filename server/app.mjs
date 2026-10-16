@@ -5,6 +5,7 @@ import { openDatabase } from './db.mjs';
 import { DetailFlowRepository } from './repository.mjs';
 import { AuthRepository, MESSENGER_PROVIDERS } from './auth-repository.mjs';
 import { createBotDialog } from './messenger/bot-dialog.mjs';
+import { PERMISSIONS } from './roles-repository.mjs';
 
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -143,19 +144,23 @@ export function createDetailFlowServer({
         const roles = typeof session === 'string' ? ['admin', 'intake', 'master', 'qc'] : session?.roles ?? [];
         const hasRole = (...allowed) => allowed.some((role) => roles.includes(role));
         const actorName = typeof session === 'string' ? 'Сотрудник' : session?.displayName ?? 'Сотрудник';
+        // Permissions come from the center's roles (system roles with the owner's edits, plus custom roles).
+        const granted = tenantId ? repository.roles.permissionsFor(tenantId, roles) : new Set();
+        const can = (permission) => granted.has(permission);
         const capabilities = {
-          manageCustomers: hasRole('admin'),
-          manageBookings: hasRole('admin'),
-          manageIntake: hasRole('admin', 'intake'),
-          approveEstimates: hasRole('admin'),
-          assignMasters: hasRole('admin'),
-          performWork: hasRole('admin', 'master'),
+          manageCustomers: can('manageCustomers'),
+          manageBookings: can('manageBookings'),
+          manageIntake: can('manageIntake'),
+          approveEstimates: can('approveEstimates'),
+          assignMasters: can('assignMasters'),
+          performWork: can('performWork'),
+          acceptAssignments: can('acceptAssignments'),
           performQualityControl: qualityControlEnabled && hasRole('admin', 'qc'),
-          closeOrders: hasRole('admin'),
-          manageCatalog: hasRole('admin', 'owner'),
-          manageSettings: hasRole('admin', 'owner'),
-          manageTeam: hasRole('owner'),
-          viewAnalytics: hasRole('admin', 'owner')
+          closeOrders: can('closeOrders'),
+          manageCatalog: can('manageCatalog'),
+          manageSettings: can('manageSettings'),
+          manageTeam: can('manageTeam'),
+          viewAnalytics: can('viewAnalytics')
         };
         if (!tenantId) {
           return sendJson(response, 401, { error: { code: 'unauthorized', message: 'Требуется авторизация' } });
@@ -186,6 +191,7 @@ export function createDetailFlowServer({
             actor: {
               displayName: typeof session === 'string' ? 'Сотрудник' : session.displayName ?? 'Сотрудник',
               roles,
+              roleNames: repository.roles.listRoles(tenantId).filter((role) => roles.includes(role.key)).map((role) => role.name),
               memberId: session?.memberId ?? null,
               authMethod: authTokens.has(token) ? 'demo' : token.startsWith('dfs_') ? 'messenger' : 'access_token'
             },
@@ -459,6 +465,36 @@ export function createDetailFlowServer({
             ...member, messengerLinks: links.filter((link) => link.memberId === member.id)
           })) });
         }
+        if (url.pathname === '/api/tenants/current/roles' || url.pathname.startsWith('/api/tenants/current/roles/')) {
+          if (!capabilities.manageTeam) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Роли настраивает только владелец центра' }
+          });
+          const sendRoleResult = (result, status = 200) => {
+            if (result.kind === 'created' || result.kind === 'updated') return sendJson(response, status, result.role);
+            if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'role_not_found', message: 'Роль не найдена' } });
+            if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+            return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите название (2–40 символов) и хотя бы одно право' } });
+          };
+          if (request.method === 'GET' && url.pathname === '/api/tenants/current/roles') {
+            return sendJson(response, 200, {
+              permissions: PERMISSIONS,
+              items: repository.roles.listRoles(tenantId, { includeArchived: url.searchParams.get('includeArchived') === 'true' })
+            });
+          }
+          if (request.method === 'POST' && url.pathname === '/api/tenants/current/roles') {
+            return sendRoleResult(repository.roles.createRole(tenantId, await readJson(request), actorName), 201);
+          }
+          const roleMatch = url.pathname.match(/^\/api\/tenants\/current\/roles\/([^/]+)(?:\/(archive|restore|events))?$/);
+          if (roleMatch && request.method === 'PATCH' && !roleMatch[2]) {
+            return sendRoleResult(repository.roles.updateRole(tenantId, roleMatch[1], await readJson(request), actorName));
+          }
+          if (roleMatch && request.method === 'POST' && (roleMatch[2] === 'archive' || roleMatch[2] === 'restore')) {
+            return sendRoleResult(repository.roles.setRoleArchived(tenantId, roleMatch[1], roleMatch[2] === 'archive', actorName));
+          }
+          if (roleMatch && request.method === 'GET' && roleMatch[2] === 'events') {
+            return sendJson(response, 200, { items: repository.roles.listRoleEvents(tenantId, roleMatch[1]) });
+          }
+        }
         if (request.method === 'GET' && url.pathname === '/api/tenants/current/masters') {
           if (!capabilities.assignMasters) return sendJson(response, 403, {
             error: { code: 'forbidden', message: 'Список мастеров доступен тому, кто назначает работы' }
@@ -712,7 +748,7 @@ export function createDetailFlowServer({
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'order_not_found', message: 'Заказ не найден' } });
           if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
           if (result.code === 'not_a_master') return sendJson(response, 422, {
-            error: { code: 'not_a_master', message: 'Выберите активного сотрудника с ролью «Мастер»' }
+            error: { code: 'not_a_master', message: 'Выберите активного сотрудника с правом «Исполнитель заказов»' }
           });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите мастера' } });
         }

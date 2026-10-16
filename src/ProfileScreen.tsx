@@ -21,6 +21,7 @@ const capabilityLabels: Array<[keyof SessionContext['capabilities'], string]> = 
   ['approveEstimates', 'Согласование смет'],
   ['assignMasters', 'Назначение мастеров'],
   ['performWork', 'Выполнение работ'],
+  ['acceptAssignments', 'Исполнитель заказов'],
   ['closeOrders', 'Выдача автомобилей'],
   ['manageCatalog', 'Каталог и цены'],
   ['manageSettings', 'Настройки центра'],
@@ -71,7 +72,7 @@ export function ProfileScreen({ onSignIn }: { onSignIn: () => void }) {
     </section>
   );
 
-  const roleNames = session.actor.roles.map((role) => roleLabels[role] ?? role);
+  const roleNames = session.actor.roleNames?.length ? session.actor.roleNames : session.actor.roles.map((role) => roleLabels[role] ?? role);
   const grantedCapabilities = capabilityLabels.filter(([capability]) => session.capabilities[capability]);
 
   if (showCatalog) return <CatalogScreen onBack={() => setShowCatalog(false)}/>;

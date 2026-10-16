@@ -563,8 +563,8 @@ export function OrdersWorkspace({ onOpenCustomer, onOpenOrder, refreshToken }: {
   const { items, loading, error, retry } = useWorkspaceItems(api.listOrders);
   const [filter, setFilter] = useState<OrderFilter>('all');
   const [selected, setSelected] = useState<OrderListItem | null>(null);
-  const isMaster = Boolean(session?.actor.roles.includes('master'));
-  // A master without front-desk rights starts on their own queue.
+  const isMaster = Boolean(session?.capabilities.acceptAssignments);
+  // An order executor without front-desk rights starts on their own queue.
   const defaultApplied = useRef(false);
   useEffect(() => {
     if (!session || defaultApplied.current) return;

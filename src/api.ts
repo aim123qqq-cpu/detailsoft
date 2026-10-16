@@ -1,5 +1,5 @@
 import type { AuthProvider, CatalogOperation, LoginRequest, LoginStatus, MessengerProvider } from './types';
-import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, CenterSettings, Customer, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, OrderDocument, OrderDocumentContent, OrderDocumentType, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, TeamMember, TeamRole, Vehicle, VehicleProfile, WorkOrder } from './types';
+import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, CenterRole, CenterSettings, Customer, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, OrderDocument, OrderDocumentContent, OrderDocumentType, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, Permission, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, TeamMember, TeamRole, Vehicle, VehicleProfile, WorkOrder } from './types';
 
 const SESSION_KEY = 'detailflow.session';
 const DEMO_CHOICE_KEY = 'detailflow.demo';
@@ -222,6 +222,19 @@ export const api = {
     return request<TeamMember>(`/api/tenants/current/team/${encodeURIComponent(memberId)}`, {
       method: 'PATCH', body: JSON.stringify(input)
     });
+  },
+  listRoles(options: { includeArchived?: boolean } = {}, signal?: AbortSignal) {
+    return request<{ permissions: Permission[]; items: CenterRole[] }>(
+      `/api/tenants/current/roles${options.includeArchived ? '?includeArchived=true' : ''}`, { signal });
+  },
+  createRole(input: { name: string; permissions: string[] }) {
+    return request<CenterRole>('/api/tenants/current/roles', { method: 'POST', body: JSON.stringify(input) });
+  },
+  updateRole(key: string, input: { name?: string; permissions?: string[] }) {
+    return request<CenterRole>(`/api/tenants/current/roles/${encodeURIComponent(key)}`, { method: 'PATCH', body: JSON.stringify(input) });
+  },
+  setRoleArchived(key: string, archived: boolean) {
+    return request<CenterRole>(`/api/tenants/current/roles/${encodeURIComponent(key)}/${archived ? 'archive' : 'restore'}`, { method: 'POST' });
   },
   updateManagedCatalogItem(item: ManagedCatalogItem, input: {
     name: string;

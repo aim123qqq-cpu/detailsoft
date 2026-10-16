@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { normalizePhone, normalizePlate, normalizeSearch } from './domain/normalize.mjs';
+import { RolesRepository } from './roles-repository.mjs';
 
 function mapVehicle(row) {
   return {
@@ -39,7 +40,6 @@ function mapTeamMember(row) {
   };
 }
 
-const assignableTeamRoles = ['owner', 'admin', 'intake', 'master'];
 
 function timeToMinutes(value) {
   const match = /^(\d{2}):(\d{2})$/.exec(String(value ?? ''));
@@ -113,6 +113,7 @@ function mapLead(row) {
 export class DetailFlowRepository {
   constructor(db) {
     this.db = db;
+    this.roles = new RolesRepository(db);
   }
 
   getTenant(tenantId) {
@@ -144,8 +145,9 @@ export class DetailFlowRepository {
   createTeamMember(tenantId, input) {
     const displayName = String(input?.displayName ?? '').trim();
     const roles = Array.isArray(input?.roles) ? [...new Set(input.roles)].sort() : [];
+    const assignable = this.roles.assignableKeys(tenantId);
     if (displayName.length < 2 || displayName.length > 80 || !roles.length ||
-      roles.some((role) => !assignableTeamRoles.includes(role))) return { kind: 'invalid' };
+      roles.some((role) => !assignable.has(role))) return { kind: 'invalid' };
     const id = `member_${randomUUID()}`;
     const accessToken = `df_${randomBytes(24).toString('hex')}`;
     const tokenHash = createHash('sha256').update(accessToken).digest('hex');
@@ -176,7 +178,8 @@ export class DetailFlowRepository {
     if (!hasRoles && !hasStatus) return { kind: 'invalid' };
     const roles = hasRoles ? [...new Set(input.roles)].sort() : JSON.parse(current.roles_json);
     const status = hasStatus ? input.status : current.status;
-    if (!roles.length || roles.some((role) => !assignableTeamRoles.includes(role)) ||
+    const assignable = this.roles.assignableKeys(tenantId);
+    if (!roles.length || roles.some((role) => !assignable.has(role)) ||
       !['active', 'blocked'].includes(status)) return { kind: 'invalid' };
     const wasActiveOwner = current.status === 'active' && JSON.parse(current.roles_json).includes('owner');
     const remainsActiveOwner = status === 'active' && roles.includes('owner');
@@ -1984,14 +1987,14 @@ export class DetailFlowRepository {
     };
   }
 
-  /** Active team members with the master role and their current workload (approved or in-progress orders). */
+  /** Active team members whose roles grant acceptAssignments, with their workload (approved or in-progress orders). */
   listMasters(tenantId) {
     return this.db.prepare(`SELECT m.id, m.display_name, m.roles_json,
         (SELECT COUNT(*) FROM order_assignment_members a JOIN orders o ON o.id = a.order_id AND o.tenant_id = a.tenant_id
           WHERE a.tenant_id = m.tenant_id AND a.member_id = m.id AND o.status IN ('APPROVED', 'IN_PROGRESS')) active_orders
       FROM tenant_members m WHERE m.tenant_id = ? AND m.status = 'active'
       ORDER BY active_orders, m.display_name`).all(tenantId)
-      .filter((row) => JSON.parse(row.roles_json).includes('master'))
+      .filter((row) => this.roles.permissionsFor(tenantId, JSON.parse(row.roles_json)).has('acceptAssignments'))
       .map((row) => ({ id: row.id, displayName: row.display_name, activeOrders: row.active_orders }));
   }
 
@@ -2002,7 +2005,8 @@ export class DetailFlowRepository {
     if (memberId) {
       const member = this.db.prepare(`SELECT display_name, roles_json, status FROM tenant_members
         WHERE id = ? AND tenant_id = ?`).get(memberId, tenantId);
-      if (!member || member.status !== 'active' || !JSON.parse(member.roles_json).includes('master')) {
+      if (!member || member.status !== 'active' ||
+        !this.roles.permissionsFor(tenantId, JSON.parse(member.roles_json)).has('acceptAssignments')) {
         return { kind: 'invalid', code: 'not_a_master' };
       }
       masterName = member.display_name;

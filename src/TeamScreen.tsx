@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
-import type { AuthProvider, MessengerProvider, TeamMember, TeamRole } from './types';
+import { RolesPanel } from './RolesPanel';
+import type { AuthProvider, CenterRole, MessengerProvider, TeamMember, TeamRole } from './types';
 
 const providerTitles: Record<MessengerProvider, string> = { telegram: 'Telegram', max: 'MAX' };
 const linkedAt = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -53,17 +54,11 @@ function MessengerAccess({ member, providers, onChanged }: { member: TeamMember;
   </section>;
 }
 
-const roleOptions: Array<{ value: TeamRole; label: string; note: string }> = [
-  { value: 'owner', label: 'Владелец', note: 'Команда, настройки и аналитика' },
-  { value: 'admin', label: 'Администратор', note: 'Клиенты, записи и заказы' },
-  { value: 'intake', label: 'Приёмщик', note: 'Осмотр и черновик сметы' },
-  { value: 'master', label: 'Мастер', note: 'Назначенные работы' }
-];
-
-const roleLabel = (role: TeamRole) => roleOptions.find((item) => item.value === role)?.label ?? role;
-
 export function TeamScreen({ onBack }: { onBack: () => void }) {
   const [members, setMembers] = useState<TeamMember[]>([]);
+  const [tab, setTab] = useState<'members' | 'roles'>('members');
+  const [centerRoles, setCenterRoles] = useState<CenterRole[]>([]);
+  const [permissionTitles, setPermissionTitles] = useState<Record<string, string>>({});
   const [mode, setMode] = useState<'list' | 'create' | 'edit'>('list');
   const [selectedId, setSelectedId] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -94,6 +89,20 @@ export function TeamScreen({ onBack }: { onBack: () => void }) {
     load(controller.signal);
     return () => controller.abort();
   }, []);
+
+  // Archived roles are kept so that members who still hold one show its name.
+  const loadRoles = (signal?: AbortSignal) => api.listRoles({ includeArchived: true }, signal).then((result) => {
+    setCenterRoles(result.items);
+    setPermissionTitles(Object.fromEntries(result.permissions.map((permission) => [permission.key, permission.title])));
+  }).catch(() => {});
+  useEffect(() => {
+    const controller = new AbortController();
+    loadRoles(controller.signal);
+    return () => controller.abort();
+  }, []);
+  const roleLabel = (role: TeamRole) => centerRoles.find((item) => item.key === role)?.name ?? role;
+  const roleNote = (role: CenterRole) => role.locked ? 'Полный доступ и команда'
+    : role.permissions.map((key) => permissionTitles[key] ?? key).slice(0, 3).join(', ') + (role.permissions.length > 3 ? ` и ещё ${role.permissions.length - 3}` : '');
 
   const toggleRole = (role: TeamRole) => {
     setError('');
@@ -140,7 +149,14 @@ export function TeamScreen({ onBack }: { onBack: () => void }) {
       <p>{mode === 'list' ? 'Доступы действуют только внутри текущего центра.' : 'Один сотрудник может совмещать несколько ролей.'}</p>
     </div>
 
-    {mode === 'list' && <>
+    {mode === 'list' && <div className="workspace-section-tabs" role="tablist" aria-label="Команда">
+      <button role="tab" data-testid="team-tab-members" aria-selected={tab === 'members'} className={tab === 'members' ? 'selected' : ''} onClick={() => setTab('members')}>Сотрудники</button>
+      <button role="tab" data-testid="team-tab-roles" aria-selected={tab === 'roles'} className={tab === 'roles' ? 'selected' : ''} onClick={() => setTab('roles')}>Роли и права</button>
+    </div>}
+
+    {mode === 'list' && tab === 'roles' && <RolesPanel onChanged={() => { loadRoles(); load(); }}/>}
+
+    {mode === 'list' && tab === 'members' && <>
       <div className="team-summary"><div><strong>{activeCount}</strong><span>активных</span></div><div><strong>{members.filter((member) => member.roles.includes('owner') && member.status === 'active').length}</strong><span>владельцев</span></div><button data-testid="add-team-member" onClick={openCreate}>+ Добавить</button></div>
       {loading && <div className="workspace-state"><span className="spinner"/> Загружаем команду</div>}
       {!loading && error && !members.length && <div className="workspace-state error-state"><strong>Не удалось загрузить команду</strong><span>{error}</span><button onClick={() => { setLoading(true); setError(''); load(); }}>Повторить</button></div>}
@@ -154,7 +170,7 @@ export function TeamScreen({ onBack }: { onBack: () => void }) {
     {mode === 'create' && <div className="team-form">
       {!accessToken && <>
         <label>Имя сотрудника<input aria-label="Имя сотрудника" value={displayName} maxLength={80} placeholder="Например, Мария Орлова" onChange={(event) => setDisplayName(event.target.value)}/></label>
-        <RolePicker roles={roles} onToggle={toggleRole}/>
+        <RolePicker options={centerRoles.filter((role) => !role.archived)} roles={roles} onToggle={toggleRole} note={roleNote}/>
         {error && <p className="form-error">{error}</p>}
         <button className="primary-button" data-testid="create-team-member" disabled={saving || displayName.trim().length < 2 || !roles.length} onClick={create}>{saving ? 'Добавляем…' : 'Добавить сотрудника'}</button>
       </>}
@@ -167,7 +183,7 @@ export function TeamScreen({ onBack }: { onBack: () => void }) {
 
     {mode === 'edit' && selected && <div className="team-form">
       <div className="member-status-line"><span>Статус доступа</span><strong className={selected.status}>{selected.status === 'active' ? 'Активен' : 'Заблокирован'}</strong></div>
-      <RolePicker roles={roles} onToggle={toggleRole}/>
+      <RolePicker options={centerRoles.filter((role) => !role.archived || roles.includes(role.key))} roles={roles} onToggle={toggleRole} note={roleNote}/>
       {error && <p className="form-error">{error}</p>}
       <button className="primary-button" data-testid="save-team-member" disabled={saving || !roles.length} onClick={() => update({ roles })}>{saving ? 'Сохраняем…' : 'Сохранить роли'}</button>
       <MessengerAccess member={selected} providers={providers} onChanged={() => load()}/>
@@ -176,6 +192,6 @@ export function TeamScreen({ onBack }: { onBack: () => void }) {
   </section>;
 }
 
-function RolePicker({ roles, onToggle }: { roles: TeamRole[]; onToggle: (role: TeamRole) => void }) {
-  return <fieldset className="team-role-picker"><legend>Роли и доступы</legend>{roleOptions.map((role) => <button type="button" key={role.value} aria-pressed={roles.includes(role.value)} className={roles.includes(role.value) ? 'selected' : ''} onClick={() => onToggle(role.value)}><i>{roles.includes(role.value) ? '✓' : '+'}</i><span><strong>{role.label}</strong><small>{role.note}</small></span></button>)}</fieldset>;
+function RolePicker({ options, roles, onToggle, note }: { options: CenterRole[]; roles: TeamRole[]; onToggle: (role: TeamRole) => void; note: (role: CenterRole) => string }) {
+  return <fieldset className="team-role-picker"><legend>Роли и доступы</legend>{options.map((role) => <button type="button" key={role.key} data-testid={`member-role-${role.key}`} aria-pressed={roles.includes(role.key)} className={roles.includes(role.key) ? 'selected' : ''} onClick={() => onToggle(role.key)}><i>{roles.includes(role.key) ? '✓' : '+'}</i><span><strong>{role.name}</strong><small>{note(role)}</small></span></button>)}</fieldset>;
 }
