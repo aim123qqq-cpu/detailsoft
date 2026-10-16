@@ -84,6 +84,9 @@ docs/DEPLOY.md                    рабочая установка: env, пер
 server/setup.mjs                  первичная настройка центра и владельца (scripts/setup-owner.mjs)
 server/backup.mjs                 онлайн-копии SQLite и восстановление
 tests/e2e/chrome.mjs              путь к Chrome для E2E (CHROME_PATH или стандартный для ОС)
+android/                          Android-оболочка (Java, WebView, без зависимостей): адрес сервера, мост share/print/clipboard, камера
+src/platform.ts                   randomId() без secure context и доступ к мосту Android
+tests/android/smoke.mjs           Playwright _android: сценарий в настоящем WebView (не входит в pnpm test)
 migrations/                       схема 001–018
 src/session.tsx                   контекст сессии (роли/права) и экран «недоступно для роли»
 server/auth-repository.mjs        приглашения в бота, вход через мессенджер, сессии
@@ -250,7 +253,7 @@ pnpm test:e2e     # только E2E
 
 Последняя подтверждённая база (16 октября 2026, после четырёх комплексов):
 
-- `pnpm test`-эквивалент: **131/131 passed** (было 68; последними добавлены `health` (1, `/api/ready`), `setup-owner` (2), до этого `role-access` (5), `backup` (4), тест `view=upcoming|overdue`, E2E `role-workspaces`). E2E с несколькими ролями открывает каждую роль в своём контексте Chrome и закрывает его перед следующей. Добавлены: `customer-profile` (8), `booking-quote-revision` (6), `order-documents` (6), `messenger-auth` (6), `messenger-adapters` (4), `share-order` (3, импортирует `src/shareOrder.ts` напрямую — Node 24 снимает типы сам), 4 новых E2E; в `session.test.mjs` обновлена форма `actor` (`memberId`, `authMethod`);
+- `pnpm test`-эквивалент: **132/132 passed** (было 68; последними добавлены `platform` (1, `randomId` без `crypto.randomUUID` — по `http://192.168…` его нет, и создание записи с телефона падало), `health` (1, `/api/ready`), `setup-owner` (2), до этого `role-access` (5), `backup` (4), тест `view=upcoming|overdue`, E2E `role-workspaces`). E2E с несколькими ролями открывает каждую роль в своём контексте Chrome и закрывает его перед следующей. Добавлены: `customer-profile` (8), `booking-quote-revision` (6), `order-documents` (6), `messenger-auth` (6), `messenger-adapters` (4), `share-order` (3, импортирует `src/shareOrder.ts` напрямую — Node 24 снимает типы сам), 4 новых E2E; в `session.test.mjs` обновлена форма `actor` (`memberId`, `authMethod`);
 - `pnpm build` (`tsc --noEmit && vite build`): успешно;
 - 7 реальных Chromium mobile E2E: основной lifecycle, история/передача автомобиля, ручной автомобиль/конструктор каталога, карточка клиента, изменение состава записи, акты и подпись, вход через мессенджер (`tests/e2e/messenger-login.test.mjs`).
 - Запуск с ограничением времени: `node --test --test-timeout=180000 "tests/**/*.test.mjs"`.

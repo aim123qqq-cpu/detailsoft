@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, authSession } from './api';
 import { CatalogScreen } from './CatalogScreen';
 import { CenterSettingsScreen } from './CenterSettingsScreen';
+import { androidApp } from './platform';
 import { TeamScreen } from './TeamScreen';
 import type { SessionContext } from './types';
 
@@ -130,6 +131,11 @@ export function ProfileScreen({ onSignIn }: { onSignIn: () => void }) {
             }}>{signingOut ? 'Выходим…' : 'Выйти'}</button>
           : <button data-testid="sign-in-messenger" onClick={onSignIn}>Войти через мессенджер</button>}
       </section>
+
+      {androidApp() && <section className="profile-signin" data-testid="profile-server" aria-label="Сервер">
+        <div><span>Сервер</span><strong>{androidApp()!.serverUrl()}</strong></div>
+        <button onClick={() => androidApp()!.changeServer()}>Сменить</button>
+      </section>}
 
       <p className="profile-version">DetailFlow · локальная рабочая версия</p>
     </section>

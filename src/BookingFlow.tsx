@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from './api';
+import { randomId } from './platform';
 import type { Booking, BookingAvailability, BookingQuote, Customer, QuoteSelection, ServiceCatalog, ServiceOffering, Vehicle } from './types';
 
 const channelCodes: Record<string, string> = {
@@ -212,7 +213,7 @@ export function ScheduleStep({
   const [availability, setAvailability] = useState<BookingAvailability | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const idempotencyKey = useRef(crypto.randomUUID());
+  const idempotencyKey = useRef(randomId());
 
   useEffect(() => {
     const controller = new AbortController();

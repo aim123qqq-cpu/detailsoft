@@ -1,0 +1,35 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Address offered on first launch; set at build time: gradlew assembleDebug -PdetailflowServer=http://192.168.1.10:4173
+def defaultServer = (project.findProperty('detailflowServer') ?: '').toString()
+
+android {
+    namespace 'ru.detailflow.app'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'ru.detailflow.app'
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName '0.1.0'
+        buildConfigField 'String', 'DEFAULT_SERVER', "\"${defaultServer}\""
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+}

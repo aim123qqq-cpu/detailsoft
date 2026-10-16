@@ -8,4 +8,9 @@ graphify-out/
 .env
 .env.*
 !.env.example
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.apk
 
