@@ -36,7 +36,9 @@ test('session describes the authenticated employee, tenant and effective capabil
 
   assert.deepEqual(session.actor, {
     displayName: 'Анна',
-    roles: ['admin', 'intake', 'master']
+    roles: ['admin', 'intake', 'master'],
+    memberId: null,
+    authMethod: 'demo'
   });
   assert.deepEqual(session.tenant, {
     id: 'tenant_demo',

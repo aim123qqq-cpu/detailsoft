@@ -1,14 +1,63 @@
-import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, CenterSettings, Customer, EstimateLineInput, EstimateVersion, IntakeFinding, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, TeamMember, TeamRole, Vehicle, VehicleProfile, WorkOrder } from './types';
+import type { AuthProvider, CatalogOperation, LoginRequest, LoginStatus, MessengerProvider } from './types';
+import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, CenterSettings, Customer, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, OrderDocument, OrderDocumentContent, OrderDocumentType, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, TeamMember, TeamRole, Vehicle, VehicleProfile, WorkOrder } from './types';
 
-const sessionHeaders = { authorization: 'Bearer demo-session-token' };
+const SESSION_KEY = 'detailflow.session';
+const DEMO_CHOICE_KEY = 'detailflow.demo';
+/** Demo tokens stay available in local builds unless VITE_DEMO_AUTH=false. */
+export const demoAuthEnabled = import.meta.env.VITE_DEMO_AUTH !== 'false';
+
+export const authSession = {
+  token(): string | null {
+    try { return localStorage.getItem(SESSION_KEY); } catch { return null; }
+  },
+  save(token: string) {
+    try {
+      localStorage.setItem(SESSION_KEY, token);
+      sessionStorage.removeItem(DEMO_CHOICE_KEY);
+    } catch { /* private mode: session lives until reload */ }
+  },
+  clear() {
+    try {
+      localStorage.removeItem(SESSION_KEY);
+      sessionStorage.removeItem(DEMO_CHOICE_KEY);
+    } catch { /* nothing stored */ }
+  },
+  /** "Continue in demo mode" is remembered for this browser tab only. */
+  demoChosen() {
+    try { return sessionStorage.getItem(DEMO_CHOICE_KEY) === '1'; } catch { return false; }
+  },
+  chooseDemo() {
+    try { sessionStorage.setItem(DEMO_CHOICE_KEY, '1'); } catch { /* choice lasts until reload */ }
+  }
+};
+
+function currentToken() {
+  return authSession.token() ?? (demoAuthEnabled ? 'demo-session-token' : null);
+}
+
+/** Keeps the API error code and details so screens can react to specific conflicts. */
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly details: Record<string, unknown>;
+
+  constructor(message: string, status: number, code: string, details: Record<string, unknown> = {}) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
+    const token = currentToken();
     response = await fetch(path, {
       ...init,
       headers: {
-        ...sessionHeaders,
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
         ...(init?.body ? { 'content-type': 'application/json' } : {}),
         ...init?.headers
       }
@@ -21,16 +70,52 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       : 'Не удалось связаться с сервером. Данные формы сохранены — повторите запрос.');
   }
   const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error?.message ?? 'Не удалось выполнить запрос');
+  if (response.status === 401 && !path.startsWith('/api/auth/login-requests')) {
+    // An expired or revoked session must lead to the sign-in screen, never silently to demo access.
+    if (authSession.token()) authSession.clear();
+    window.dispatchEvent(new CustomEvent('detailflow:unauthorized'));
+  }
+  if (!response.ok) throw new ApiRequestError(
+    payload.error?.message ?? 'Не удалось выполнить запрос', response.status, payload.error?.code ?? 'request_failed', payload.error?.details ?? {}
+  );
   return payload;
 }
 
 export const api = {
+  getAuthProviders(signal?: AbortSignal) {
+    return request<{ items: AuthProvider[]; demo: boolean }>('/api/auth/providers', { signal });
+  },
+  createLoginRequest(provider: MessengerProvider) {
+    return request<LoginRequest>('/api/auth/login-requests', { method: 'POST', body: JSON.stringify({ provider }) });
+  },
+  getLoginStatus(loginId: string, pollSecret: string, signal?: AbortSignal) {
+    return request<LoginStatus>(`/api/auth/login-requests/${encodeURIComponent(loginId)}`, { signal, headers: { 'x-login-secret': pollSecret } });
+  },
+  openSession(loginId: string, pollSecret: string, tenantId?: string) {
+    return request<{ token: string; expiresAt: string; tenant: { id: string; name: string } }>(`/api/auth/login-requests/${encodeURIComponent(loginId)}/session`, {
+      method: 'POST', headers: { 'x-login-secret': pollSecret }, body: JSON.stringify(tenantId ? { tenantId } : {})
+    });
+  },
+  logout() {
+    return request<{ revoked: boolean }>('/api/auth/logout', { method: 'POST', body: JSON.stringify({}) });
+  },
+  createMessengerInvite(memberId: string, provider: MessengerProvider) {
+    return request<{ code: string; provider: MessengerProvider; expiresAt: string; botName: string | null; deepLink: string | null }>(
+      `/api/tenants/current/team/${encodeURIComponent(memberId)}/messenger-invites`, { method: 'POST', body: JSON.stringify({ provider }) }
+    );
+  },
+  removeMessengerLink(memberId: string, linkId: string) {
+    return request<{ removed: boolean }>(`/api/tenants/current/team/${encodeURIComponent(memberId)}/messenger-links/${encodeURIComponent(linkId)}`, { method: 'DELETE' });
+  },
   getSession(signal?: AbortSignal) {
     return request<SessionContext>('/api/session', { signal });
   },
   listBookings(signal?: AbortSignal) {
-    return request<{ items: BookingListItem[] }>('/api/bookings?limit=20', { signal });
+    return request<{ items: BookingListItem[] }>('/api/bookings?view=upcoming&limit=50', { signal });
+  },
+  /** Past confirmed bookings with no order: arrival or no-show still has to be recorded. */
+  listOverdueBookings(signal?: AbortSignal) {
+    return request<{ items: BookingListItem[] }>('/api/bookings?view=overdue&limit=50', { signal });
   },
   listBookingCalendar(from: string, to: string, signal?: AbortSignal) {
     return request<{ items: BookingListItem[] }>(`/api/bookings?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=50`, { signal });
@@ -55,8 +140,21 @@ export const api = {
   getOrder(orderId: string, signal?: AbortSignal) {
     return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}`, { signal });
   },
-  searchCustomers(phone: string, signal?: AbortSignal) {
-    return request<{ items: Customer[] }>(`/api/customers?phone=${encodeURIComponent(phone)}`, { signal });
+  searchCustomers(phone: string, signal?: AbortSignal, includeArchived = false) {
+    return request<{ items: Customer[] }>(`/api/customers?phone=${encodeURIComponent(phone)}${includeArchived ? '&includeArchived=true' : ''}`, { signal });
+  },
+  getCustomerProfile(customerId: string, signal?: AbortSignal) {
+    return request<CustomerProfile>(`/api/customers/${encodeURIComponent(customerId)}/profile`, { signal });
+  },
+  updateCustomer(customerId: string, input: { name?: string; phone?: string; confirmDuplicate?: boolean }) {
+    return request<CustomerProfile>(`/api/customers/${encodeURIComponent(customerId)}`, {
+      method: 'PATCH', body: JSON.stringify(input)
+    });
+  },
+  setCustomerArchived(customerId: string, archived: boolean) {
+    return request<CustomerProfile>(`/api/customers/${encodeURIComponent(customerId)}/${archived ? 'archive' : 'reactivate'}`, {
+      method: 'POST', body: JSON.stringify({})
+    });
   },
   searchVehicles(plate: string, signal?: AbortSignal) {
     return request<{ items: Array<Vehicle & { customer: Customer | null }> }>(`/api/vehicles?plate=${encodeURIComponent(plate)}`, { signal });
@@ -139,6 +237,14 @@ export const api = {
       method: 'PATCH', body: JSON.stringify(input)
     });
   },
+  listCatalogOperations(signal?: AbortSignal) {
+    return request<{ items: CatalogOperation[] }>('/api/tenants/current/catalog/operations', { signal });
+  },
+  updateCatalogOperation(operationId: string, input: { name?: string; active?: boolean }) {
+    return request<CatalogOperation>(`/api/tenants/current/catalog/operations/${encodeURIComponent(operationId)}`, {
+      method: 'PATCH', body: JSON.stringify(input)
+    });
+  },
   createCatalogOperation(name: string) {
     return request<{ id: string; name: string; active: boolean }>('/api/tenants/current/catalog/operations', {
       method: 'POST', body: JSON.stringify({ name })
@@ -169,7 +275,15 @@ export const api = {
   getBookingAvailability(date: string, durationMinutes: number, signal?: AbortSignal) {
     return request<BookingAvailability>(`/api/bookings/availability?date=${encodeURIComponent(date)}&durationMinutes=${durationMinutes}`, { signal });
   },
-  updateBooking(bookingId: string, input: { startAt: string } | { status: 'CANCELLED' }) {
+  getBooking(bookingId: string, signal?: AbortSignal) {
+    return request<Booking>(`/api/bookings/${encodeURIComponent(bookingId)}`, { signal });
+  },
+  reviseBookingQuote(bookingId: string, input: { selections: QuoteSelection[]; expectedQuoteVersion: number; reason?: string }) {
+    return request<Booking>(`/api/bookings/${encodeURIComponent(bookingId)}/quote`, {
+      method: 'PUT', body: JSON.stringify(input)
+    });
+  },
+  updateBooking(bookingId: string, input: { startAt: string } | { status: 'CANCELLED' | 'NO_SHOW' }) {
     return request<Booking>(`/api/bookings/${encodeURIComponent(bookingId)}`, {
       method: 'PATCH', body: JSON.stringify(input)
     });
@@ -221,9 +335,12 @@ export const api = {
       method: 'POST', body: JSON.stringify(input)
     });
   },
-  assignMaster(orderId: string, masterName: string) {
+  listMasters(signal?: AbortSignal) {
+    return request<{ items: Array<{ id: string; displayName: string; activeOrders: number }> }>('/api/tenants/current/masters', { signal });
+  },
+  assignMaster(orderId: string, memberId: string) {
     return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/assignment`, {
-      method: 'PUT', body: JSON.stringify({ masterName })
+      method: 'PUT', body: JSON.stringify({ memberId })
     });
   },
   startWork(orderId: string) {
@@ -258,6 +375,17 @@ export const api = {
     checks: Array<{ code: string; label: string; passed: boolean }>;
   }) {
     return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/qc`, {
+      method: 'POST', body: JSON.stringify(input)
+    });
+  },
+  previewOrderDocument(orderId: string, type: OrderDocumentType, signal?: AbortSignal) {
+    return request<{ type: OrderDocumentType; content: OrderDocumentContent }>(`/api/orders/${encodeURIComponent(orderId)}/documents/preview?type=${type}`, { signal });
+  },
+  getOrderDocument(orderId: string, documentId: string, signal?: AbortSignal) {
+    return request<OrderDocument>(`/api/orders/${encodeURIComponent(orderId)}/documents/${encodeURIComponent(documentId)}`, { signal });
+  },
+  issueOrderDocument(orderId: string, input: { type: OrderDocumentType; signerName?: string; signatureDataUrl?: string }) {
+    return request<OrderDocument>(`/api/orders/${encodeURIComponent(orderId)}/documents`, {
       method: 'POST', body: JSON.stringify(input)
     });
   },

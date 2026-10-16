@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
+import { visitsLabel } from './format';
 import type { Customer, VehicleProfile } from './types';
 
 const statusLabels = { active: 'В работе', inactive: 'Неактивен', sold: 'Продан' } as const;
@@ -16,7 +17,12 @@ function formatPhone(value: string) {
   return `+7 ${normalized.slice(1, 4)} ${normalized.slice(4, 7)}-${normalized.slice(7, 9)}-${normalized.slice(9, 11)}`.replace(/[- ]+$/, '');
 }
 
-export function VehicleProfileScreen({ vehicleId, onBack }: { vehicleId: string; onBack: () => void }) {
+export function VehicleProfileScreen({ vehicleId, onBack, onOpenCustomer, backLabel = 'К результатам поиска' }: {
+  vehicleId: string;
+  onBack: () => void;
+  onOpenCustomer?: (customerId: string) => void;
+  backLabel?: string;
+}) {
   const [profile, setProfile] = useState<VehicleProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -125,7 +131,7 @@ export function VehicleProfileScreen({ vehicleId, onBack }: { vehicleId: string;
   const { vehicle } = profile;
   return (
     <section className="screen vehicle-profile-screen" data-testid="vehicle-profile">
-      <button className="details-back" onClick={onBack}>← К результатам поиска</button>
+      <button className="details-back" onClick={onBack}>← {backLabel}</button>
       <div className="vehicle-profile-hero">
         <div className="vehicle-profile-mark">⌁</div>
         <div><span>Карточка автомобиля</span><h2>{vehicle.make} {vehicle.model} {vehicle.generation}</h2><p>{vehicle.color} · {vehicle.tenantClass ?? 'Класс не задан'}</p></div>
@@ -152,7 +158,10 @@ export function VehicleProfileScreen({ vehicleId, onBack }: { vehicleId: string;
 
       <article className="vehicle-owner-card">
         <div className="vehicle-section-heading"><span>Текущий владелец</span><i>активная связь</i></div>
-        {profile.currentOwner ? <div className="vehicle-owner-row"><b>{profile.currentOwner.name.slice(0, 2).toUpperCase()}</b><span><strong>{profile.currentOwner.name}</strong><small>{profile.currentOwner.phoneDisplay}</small></span></div> : <p>Владелец не указан</p>}
+        {profile.currentOwner ? onOpenCustomer
+          ? <button className="vehicle-owner-row owner-link" data-testid="vehicle-owner-profile" onClick={() => onOpenCustomer(profile.currentOwner!.id)}><b>{profile.currentOwner.name.slice(0, 2).toUpperCase()}</b><span><strong>{profile.currentOwner.name}</strong><small>{profile.currentOwner.phoneDisplay} · карточка клиента ›</small></span></button>
+          : <div className="vehicle-owner-row"><b>{profile.currentOwner.name.slice(0, 2).toUpperCase()}</b><span><strong>{profile.currentOwner.name}</strong><small>{profile.currentOwner.phoneDisplay}</small></span></div>
+          : <p>Владелец не указан</p>}
         <div className="vehicle-owner-actions">
           <button data-testid="open-transfer" onClick={() => { setTransferOpen((value) => !value); setSuccess(''); }}>{transferOpen ? 'Отменить перенос' : 'Сменить владельца'}</button>
           <button disabled={busy} onClick={() => changeStatus(vehicle.status === 'active' ? 'sold' : 'active')}>{vehicle.status === 'active' ? 'Отметить проданным' : 'Вернуть в работу'}</button>
@@ -165,7 +174,7 @@ export function VehicleProfileScreen({ vehicleId, onBack }: { vehicleId: string;
         <p>Связь с текущим владельцем закроется, но история визитов останется без изменений.</p>
         <label>Телефон клиента<input data-testid="transfer-phone" value={phone} inputMode="tel" placeholder="+7 999 000-00-00" onChange={(event) => setPhone(formatPhone(event.target.value))}/></label>
         <div className="transfer-candidates">
-          {candidates.map((item) => <button key={item.id} data-testid={`transfer-customer-${item.id}`} className={candidate?.id === item.id ? 'selected' : ''} onClick={() => setCandidate(item)}><b>{item.name}</b><small>{item.phoneDisplay} · {item.visitCount} визитов</small><i>{candidate?.id === item.id ? '✓' : '›'}</i></button>)}
+          {candidates.map((item) => <button key={item.id} data-testid={`transfer-customer-${item.id}`} className={candidate?.id === item.id ? 'selected' : ''} onClick={() => setCandidate(item)}><b>{item.name}</b><small>{item.phoneDisplay} · {visitsLabel(item.visitCount)}</small><i>{candidate?.id === item.id ? '✓' : '›'}</i></button>)}
           {phone.replace(/\D/g, '').length >= 4 && candidates.length === 0 && <small>Подходящий клиент не найден. Автоматически создавать или объединять записи не будем.</small>}
         </div>
         {candidate && <div className="transfer-confirm">
@@ -177,7 +186,7 @@ export function VehicleProfileScreen({ vehicleId, onBack }: { vehicleId: string;
       <div className="vehicle-history-section">
         <div className="vehicle-section-heading"><span>История владельцев</span><i>{profile.ownership.length}</i></div>
         <div className="vehicle-timeline">
-          {profile.ownership.map((item) => <div key={item.linkId} className={item.active ? 'active' : ''}><i/><span><strong>{item.customer.name}</strong><small>{item.active ? `с ${formatDate(item.validFrom)} · сейчас` : `${formatDate(item.validFrom)} — ${formatDate(item.validTo!)}`}</small></span><b>{item.active ? 'Владелец' : 'Архив'}</b></div>)}
+          {profile.ownership.map((item) => <div key={item.linkId} className={item.active ? 'active' : ''}><i/><span><strong>{onOpenCustomer ? <button className="timeline-customer-link" onClick={() => onOpenCustomer(item.customer.id)}>{item.customer.name}</button> : item.customer.name}</strong><small>{item.active ? `с ${formatDate(item.validFrom)} · сейчас` : `${formatDate(item.validFrom)} — ${formatDate(item.validTo!)}`}</small></span><b>{item.active ? 'Владелец' : 'Архив'}</b></div>)}
         </div>
       </div>
 

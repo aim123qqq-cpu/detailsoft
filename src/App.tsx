@@ -1,14 +1,36 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api } from './api';
+import { api, authSession, demoAuthEnabled } from './api';
+import { LoginScreen } from './LoginScreen';
+import { visitsLabel } from './format';
+import { NoAccess, SessionInfo } from './session';
 import { ScheduleStep, ServicesStep } from './BookingFlow';
 import { OrderFlow } from './OrderFlow';
 import { BookingsWorkspace, OrdersWorkspace } from './WorkspaceScreens';
 import { AnalyticsScreen } from './AnalyticsScreen';
 import { ProfileScreen } from './ProfileScreen';
 import { VehicleProfileScreen } from './VehicleProfileScreen';
-import type { Booking, BookingQuote, CatalogVariant, Customer, Lead, QuoteSelection, Vehicle } from './types';
+import { CustomerProfileScreen } from './CustomerProfileScreen';
+import type { Booking, BookingQuote, CatalogVariant, Customer, Lead, OrderTarget, QuoteSelection, SessionContext, Vehicle } from './types';
 
 type Workspace = 'bookings' | 'new' | 'orders' | 'analytics' | 'profile';
+type ProfileOverlay = { kind: 'customer' | 'vehicle'; id: string } | ({ kind: 'order' } & OrderTarget);
+
+function OrderWorkspaceLoader({ target, onPhaseChange, onBack }: { target: OrderTarget; onPhaseChange: (title: string) => void; onBack: () => void }) {
+  const [booking, setBooking] = useState<Booking | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    const controller = new AbortController();
+    api.getBooking(target.id, controller.signal)
+      .then(setBooking)
+      .catch((requestError: Error) => { if (requestError.name !== 'AbortError') setError(requestError.message); });
+    return () => controller.abort();
+  }, [target.id]);
+  if (!booking) return <section className="screen">
+    <button className="details-back" onClick={onBack}>← Назад</button>
+    {error ? <div className="form-error" role="alert">{error}</div> : <div className="workspace-state"><span className="spinner"/> Открываем заказ</div>}
+  </section>;
+  return <OrderFlow booking={booking} customer={target.customer} vehicle={target.vehicle} orderId={target.orderId} onPhaseChange={onPhaseChange}/>;
+}
 
 type IconName = 'arrow' | 'search' | 'phone' | 'car' | 'user' | 'calendar' | 'clipboard' | 'plus' | 'check' | 'spark' | 'chart';
 
@@ -62,17 +84,17 @@ function VehicleCard({ vehicle, onSelect }: { vehicle: Vehicle; onSelect: () => 
   );
 }
 
-function Header({ step, workspace, onBack, orderTitle }: { step: number; workspace: Workspace; onBack: () => void; orderTitle?: string }) {
+function Header({ step, workspace, onBack, orderTitle, overlayTitle, overlayEyebrow }: { step: number; workspace: Workspace; onBack: () => void; orderTitle?: string; overlayTitle?: string; overlayEyebrow?: string }) {
   const workspaceTitle = workspace === 'bookings' ? 'Записи' : workspace === 'analytics' ? 'Статистика' : workspace === 'profile' ? 'Профиль' : 'Заказы';
   return (
     <header className="app-header">
       <button className="icon-button" onClick={onBack} aria-label="Назад"><Icon name="arrow"/></button>
       <div>
-        <span className="eyebrow">{workspace === 'bookings' ? 'Расписание' : workspace === 'orders' ? 'Производство' : workspace === 'analytics' ? 'Управление' : workspace === 'profile' ? 'Аккаунт' : step === 5 ? 'Рабочий заказ' : 'Новая запись'}</span>
-        <h1>{workspace !== 'new' ? workspaceTitle : step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : step === 3 ? 'Услуги' : step === 4 ? 'Дата и время' : orderTitle ?? 'Рабочий заказ'}</h1>
+        <span className="eyebrow">{overlayTitle ? overlayEyebrow ?? 'Клиенты и автомобили' : workspace === 'bookings' ? 'Расписание' : workspace === 'orders' ? 'Производство' : workspace === 'analytics' ? 'Управление' : workspace === 'profile' ? 'Аккаунт' : step === 5 ? 'Рабочий заказ' : 'Новая запись'}</span>
+        <h1>{overlayTitle ?? (workspace !== 'new' ? workspaceTitle : step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : step === 3 ? 'Услуги' : step === 4 ? 'Дата и время' : orderTitle ?? 'Рабочий заказ')}</h1>
       </div>
       <span aria-hidden="true"/>
-      {workspace === 'new' && <div className="progress" aria-label={step === 5 ? 'Рабочий заказ' : `Шаг ${step} из 4`}>
+      {workspace === 'new' && !overlayTitle && <div className="progress" aria-label={step === 5 ? 'Рабочий заказ' : `Шаг ${step} из 4`}>
         {[1, 2, 3, 4].map((item) => <span key={item} className={item <= step ? 'active' : ''}/>) }
       </div>}
     </header>
@@ -113,10 +135,60 @@ export function App() {
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
   const [newCustomerName, setNewCustomerName] = useState('');
   const [profileVehicleId, setProfileVehicleId] = useState<string | null>(null);
+  const [overlays, setOverlays] = useState<ProfileOverlay[]>([]);
+  const overlay = overlays.at(-1) ?? null;
+  // 'checking' until the server says whether sign-in is required; a stored session skips the check.
+  const [authGate, setAuthGate] = useState<'checking' | 'login' | 'app'>(() => authSession.token() || authSession.demoChosen() ? 'app' : 'checking');
+  const [demoAllowed, setDemoAllowed] = useState(demoAuthEnabled);
+  const [session, setSession] = useState<SessionContext | null>(null);
+
+  // Roles shape the UI: a master starts on Orders, intake on Bookings. The server still checks every request.
+  useEffect(() => {
+    if (authGate !== 'app') return;
+    const controller = new AbortController();
+    api.getSession(controller.signal).then((loaded) => {
+      setSession(loaded);
+      if (!loaded.capabilities.manageBookings) setWorkspace((current) => current === 'new' ? (loaded.capabilities.manageIntake ? 'bookings' : 'orders') : current);
+    }).catch(() => { /* a 401 is handled globally; other errors keep the default layout */ });
+    return () => controller.abort();
+  }, [authGate]);
+
+  useEffect(() => {
+    const requireSignIn = () => setAuthGate('login');
+    window.addEventListener('detailflow:unauthorized', requireSignIn);
+    return () => window.removeEventListener('detailflow:unauthorized', requireSignIn);
+  }, []);
+
+  useEffect(() => {
+    if (authGate !== 'checking') return;
+    const controller = new AbortController();
+    api.getAuthProviders(controller.signal)
+      .then((result) => {
+        const allowed = result.demo && demoAuthEnabled;
+        setDemoAllowed(allowed);
+        // A configured bot means real accounts exist: open with the sign-in screen, demo stays optional.
+        setAuthGate(result.items.length > 0 || !allowed ? 'login' : 'app');
+      })
+      .catch((requestError: Error) => { if (requestError.name !== 'AbortError') setAuthGate(demoAuthEnabled ? 'app' : 'login'); });
+    return () => controller.abort();
+  }, [authGate]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'auto' });
-  }, [step, workspace]);
+  }, [step, workspace, overlays.length]);
+
+  const openCustomerProfile = (customerId: string) => setOverlays((stack) => [...stack, { kind: 'customer', id: customerId }]);
+  const openVehicleOverlay = (vehicleId: string) => setOverlays((stack) => [...stack, { kind: 'vehicle', id: vehicleId }]);
+  const openOrderWorkspace = (target: OrderTarget) => {
+    setOrderHeader('Рабочий заказ');
+    setOverlays((stack) => [...stack, { kind: 'order', ...target }]);
+  };
+  // Lists under an overlay are refreshed on return: intake, work or handover may have changed them.
+  const [workspaceRefresh, setWorkspaceRefresh] = useState(0);
+  const closeOverlay = () => {
+    setOverlays((stack) => stack.slice(0, -1));
+    setWorkspaceRefresh((value) => value + 1);
+  };
 
   useEffect(() => {
     const handleOnline = () => setOnline(true);
@@ -130,7 +202,8 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (workspace !== 'new') return;
+    // A booking started from a customer card jumps straight to step 3 with a preselected customer.
+    if (workspace !== 'new' || step !== 1) return;
     setCustomers([]);
     setPlateVehicles([]);
     setSelectedCustomer(null);
@@ -142,9 +215,10 @@ export function App() {
       setError('');
       try {
         if (mode === 'phone') {
-          const result = await api.searchCustomers(query, controller.signal);
+          // Archived matches are shown too, so a returning customer is reactivated instead of duplicated.
+          const result = await api.searchCustomers(query, controller.signal, true);
           setCustomers(result.items);
-          if (result.items.length === 1) setSelectedCustomer(result.items[0]);
+          if (result.items.length === 1 && !result.items[0].archived) setSelectedCustomer(result.items[0]);
           setShowCreateCustomer(result.items.length === 0);
         } else {
           const result = await api.searchVehicles(query, controller.signal);
@@ -178,9 +252,11 @@ export function App() {
     setShowCreateCustomer(false);
     setNewCustomerName('');
     setProfileVehicleId(null);
+    setOverlays([]);
   };
 
   const startLeadBooking = (lead: Lead) => {
+    setOverlays([]);
     setWorkspace('new');
     setStep(1);
     setMode('phone');
@@ -199,6 +275,7 @@ export function App() {
   };
 
   const selectWorkspace = (nextWorkspace: Workspace) => {
+    setOverlays([]);
     if (nextWorkspace === 'new') startNewBooking();
     else setWorkspace(nextWorkspace);
   };
@@ -209,6 +286,11 @@ export function App() {
     setServiceSelections([]);
     setBookingQuote(null);
     setStep(3);
+  };
+
+  const startBookingFor = (customer: Customer, vehicle: Vehicle) => {
+    startNewBooking();
+    chooseVehicle(vehicle, customer);
   };
 
   const createCustomer = async () => {
@@ -227,18 +309,55 @@ export function App() {
     }
   };
 
+  const newBookingAllowed = !session || session.capabilities.manageBookings;
+  const bookingsAllowed = !session || session.capabilities.manageBookings || session.capabilities.manageIntake;
+  const analyticsAllowed = !session || session.capabilities.viewAnalytics;
+
+  if (authGate === 'checking') return (
+    <div className="app-shell login-shell"><main id="main-content"><div className="workspace-state" data-testid="auth-checking"><span className="spinner"/> Проверяем вход</div></main></div>
+  );
+
+  if (authGate === 'login') return (
+    <div className="app-shell login-shell">
+      <main id="main-content" tabIndex={-1}>
+        <LoginScreen
+          onSignedIn={() => window.location.reload()}
+          onCancel={demoAllowed && !authSession.token() ? () => { authSession.chooseDemo(); setAuthGate('app'); } : undefined}
+        />
+      </main>
+    </div>
+  );
+
   return (
+    <SessionInfo.Provider value={session}>
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Перейти к содержимому</a>
       {!online && <div className="connectivity-banner" data-testid="offline-banner" role="status" aria-live="polite"><strong>Нет подключения</strong><span>Можно продолжить ввод — данные формы не пропадут</span></div>}
-      <Header step={step} workspace={workspace} orderTitle={orderHeader} onBack={() => workspace !== 'new' ? startNewBooking() : profileVehicleId ? setProfileVehicleId(null) : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
+      <Header step={step} workspace={workspace} orderTitle={orderHeader} overlayTitle={overlay ? overlay.kind === 'customer' ? 'Карточка клиента' : overlay.kind === 'vehicle' ? 'Карточка автомобиля' : orderHeader : undefined}
+        overlayEyebrow={overlay?.kind === 'order' ? 'Рабочий заказ' : undefined} onBack={() => overlay ? closeOverlay() : workspace !== 'new' ? startNewBooking() : profileVehicleId ? setProfileVehicleId(null) : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
       <main id="main-content" tabIndex={-1}>
-        {workspace === 'bookings' && <BookingsWorkspace onNew={startNewBooking} onLeadConvert={startLeadBooking}/>}
-        {workspace === 'orders' && <OrdersWorkspace/>}
-        {workspace === 'analytics' && <AnalyticsScreen/>}
-        {workspace === 'profile' && <ProfileScreen/>}
-        {workspace === 'new' && step === 1 && profileVehicleId && <VehicleProfileScreen vehicleId={profileVehicleId} onBack={() => setProfileVehicleId(null)}/>}
-        {workspace === 'new' && step === 1 && !profileVehicleId && (
+        {overlay?.kind === 'customer' && <CustomerProfileScreen
+          key={overlay.id}
+          customerId={overlay.id}
+          backLabel="Назад"
+          onBack={closeOverlay}
+          onOpenVehicle={openVehicleOverlay}
+          onOpenCustomer={openCustomerProfile}
+          onBook={startBookingFor}
+        />}
+        {overlay?.kind === 'vehicle' && <VehicleProfileScreen key={overlay.id} vehicleId={overlay.id} backLabel="Назад" onBack={closeOverlay} onOpenCustomer={openCustomerProfile}/>}
+        {overlay?.kind === 'order' && <OrderWorkspaceLoader key={`${overlay.id}-${overlay.orderId ?? 'new'}`} target={overlay} onPhaseChange={setOrderHeader} onBack={closeOverlay}/>}
+        {/* Workspaces stay mounted under a profile so lists and opened details keep their state. */}
+        <div className="workspace-layer" hidden={Boolean(overlay)}>
+        {workspace === 'bookings' && (bookingsAllowed
+          ? <BookingsWorkspace onNew={startNewBooking} onLeadConvert={startLeadBooking} onOpenCustomer={openCustomerProfile} onOpenOrder={openOrderWorkspace} refreshToken={workspaceRefresh}/>
+          : <NoAccess section="Раздел «Записи»"/>)}
+        {workspace === 'orders' && <OrdersWorkspace onOpenCustomer={openCustomerProfile} onOpenOrder={openOrderWorkspace} refreshToken={workspaceRefresh}/>}
+        {workspace === 'analytics' && (analyticsAllowed ? <AnalyticsScreen/> : <NoAccess section="Раздел «Статистика»"/>)}
+        {workspace === 'new' && !newBookingAllowed && <NoAccess section="Раздел «Новая запись»"/>}
+        {workspace === 'profile' && <ProfileScreen onSignIn={() => setAuthGate('login')}/>}
+        {workspace === 'new' && newBookingAllowed && step === 1 && profileVehicleId && <VehicleProfileScreen vehicleId={profileVehicleId} onBack={() => setProfileVehicleId(null)} onOpenCustomer={openCustomerProfile}/>}
+        {workspace === 'new' && newBookingAllowed && step === 1 && !profileVehicleId && (
           <section className="screen" aria-label="Поиск клиента и автомобиля">
             {activeLead && <div className="lead-conversion-banner"><span>Обращение · {leadChannelLabels[activeLead.channel]}</span><strong>{activeLead.contactName}</strong><small>Выберите клиента и автомобиль — обращение закроется после создания записи.</small></div>}
             <div className="context-line"><span className="live-dot"/> DetailFlow Studio <span>·</span> Сегодня, 14:30</div>
@@ -273,11 +392,21 @@ export function App() {
               </div>
             </div>
 
-            {mode === 'phone' && customers.map((customer) => (
+            {mode === 'phone' && customers.map((customer) => customer.archived ? (
+              <div className="customer-result archived" key={customer.id} data-testid="customer-result-archived">
+                <div className="customer-head">
+                  <span className="avatar">{customer.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase()}</span>
+                  <span><strong>{customer.name}</strong><small>{customer.phoneDisplay} · клиент в архиве</small></span>
+                  <span className="match-badge archived">архив</span>
+                </div>
+                <p className="archived-result-note">Не создавайте дубль: откройте карточку и верните клиента из архива.</p>
+                <button className="vehicle-profile-link" data-testid={`open-customer-profile-${customer.id}`} onClick={() => openCustomerProfile(customer.id)}><Icon name="user" size={17}/> Открыть карточку клиента</button>
+              </div>
+            ) : (
               <div className="customer-result" key={customer.id} data-testid="customer-result">
                 <div className="customer-head">
                   <span className="avatar">АМ</span>
-                  <span><strong>{customer.name}</strong><small>{customer.phoneDisplay} · {customer.visitCount} визитов</small></span>
+                  <span><strong>{customer.name}</strong><small>{customer.phoneDisplay} · {customer.visitCount ? visitsLabel(customer.visitCount) : 'новый клиент'}</small></span>
                   <span className="match-badge"><Icon name="check" size={13}/> найден</span>
                 </div>
                 <div className="result-title"><span>Автомобили клиента</span><small>{customer.vehicles.length}</small></div>
@@ -285,6 +414,7 @@ export function App() {
                   {customer.vehicles.map((vehicle) => <VehicleCard key={vehicle.id} vehicle={vehicle} onSelect={() => chooseVehicle(vehicle, customer)}/>) }
                 </div>
                 <button className="add-row" onClick={() => { setSelectedCustomer(customer); setStep(2); }}><span><Icon name="plus"/></span> Добавить автомобиль</button>
+                <button className="vehicle-profile-link" data-testid={`open-customer-profile-${customer.id}`} onClick={() => openCustomerProfile(customer.id)}><Icon name="user" size={17}/> Карточка клиента</button>
               </div>
             ))}
 
@@ -300,7 +430,7 @@ export function App() {
 
             {mode === 'plate' && plateVehicles.map((vehicle) => (
               <div className="customer-result" key={vehicle.id}>
-                {vehicle.customer && <div className="found-owner"><Icon name="user"/> {vehicle.customer.name} <span>{vehicle.customer.phoneDisplay}</span></div>}
+                {vehicle.customer && <button className="found-owner" data-testid={`open-owner-profile-${vehicle.id}`} onClick={() => openCustomerProfile(vehicle.customer!.id)} aria-label={`Карточка клиента ${vehicle.customer.name}`}><Icon name="user"/> {vehicle.customer.name} <span>{vehicle.customer.phoneDisplay} ›</span></button>}
                 <VehicleCard vehicle={vehicle} onSelect={() => chooseVehicle(vehicle, vehicle.customer)}/>
                 <button className="vehicle-profile-link" data-testid={`open-vehicle-profile-${vehicle.id}`} onClick={() => setProfileVehicleId(vehicle.id)}><Icon name="clipboard" size={17}/> История и владелец</button>
               </div>
@@ -308,9 +438,9 @@ export function App() {
           </section>
         )}
 
-        {workspace === 'new' && step === 2 && selectedCustomer && <AddVehicle customer={selectedCustomer} onCancel={() => setStep(1)} onCreated={(vehicle) => chooseVehicle(vehicle, selectedCustomer)}/>}
+        {workspace === 'new' && newBookingAllowed && step === 2 && selectedCustomer && <AddVehicle customer={selectedCustomer} onCancel={() => setStep(1)} onCreated={(vehicle) => chooseVehicle(vehicle, selectedCustomer)}/>}
 
-        {workspace === 'new' && step === 3 && selectedVehicle && (
+        {workspace === 'new' && newBookingAllowed && step === 3 && selectedVehicle && (
           <ServicesStep
             vehicle={selectedVehicle}
             initialSelections={serviceSelections}
@@ -322,7 +452,7 @@ export function App() {
             }}
           />
         )}
-        {workspace === 'new' && step === 4 && selectedVehicle && selectedCustomer && bookingQuote && (
+        {workspace === 'new' && newBookingAllowed && step === 4 && selectedVehicle && selectedCustomer && bookingQuote && (
           <ScheduleStep
             customer={selectedCustomer}
             vehicle={selectedVehicle}
@@ -334,12 +464,14 @@ export function App() {
             onStartIntake={(booking) => { setActiveBooking(booking); setStep(5); }}
           />
         )}
-        {workspace === 'new' && step === 5 && activeBooking && selectedVehicle && selectedCustomer && (
+        {workspace === 'new' && newBookingAllowed && step === 5 && activeBooking && selectedVehicle && selectedCustomer && (
           <OrderFlow booking={activeBooking} customer={selectedCustomer} vehicle={selectedVehicle} onPhaseChange={setOrderHeader}/>
         )}
+        </div>
       </main>
       <BottomNav active={workspace} onSelect={selectWorkspace}/>
     </div>
+    </SessionInfo.Provider>
   );
 }
 

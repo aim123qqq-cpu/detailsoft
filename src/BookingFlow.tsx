@@ -28,7 +28,9 @@ function localDateKey(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-function VehicleSummary({ vehicle, onChange }: { vehicle: Vehicle; onChange: () => void }) {
+export type ServiceVehicle = Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color'> & { tenantClass?: string | null };
+
+function VehicleSummary({ vehicle, onChange, changeLabel = 'Изменить' }: { vehicle: ServiceVehicle; onChange: () => void; changeLabel?: string }) {
   return (
     <div className="booking-vehicle">
       <span className="booking-vehicle-icon">⌁</span>
@@ -37,7 +39,7 @@ function VehicleSummary({ vehicle, onChange }: { vehicle: Vehicle; onChange: () 
         <strong>{vehicle.make} {vehicle.model} {vehicle.generation}</strong>
         <em>{vehicle.color} · {vehicle.tenantClass ?? 'класс уточняется'}</em>
       </span>
-      <button onClick={onChange}>Изменить</button>
+      <button onClick={onChange}>{changeLabel}</button>
     </div>
   );
 }
@@ -84,12 +86,20 @@ export function ServicesStep({
   vehicle,
   initialSelections,
   onBack,
-  onContinue
+  onContinue,
+  title = 'Выберите услуги',
+  backLabel,
+  continueLabel = 'Выбрать время →',
+  continueTestId = 'choose-time'
 }: {
-  vehicle: Vehicle;
+  vehicle: ServiceVehicle;
   initialSelections: QuoteSelection[];
   onBack: () => void;
   onContinue: (selections: QuoteSelection[], quote: BookingQuote) => void;
+  title?: string;
+  backLabel?: string;
+  continueLabel?: string;
+  continueTestId?: string;
 }) {
   const [catalog, setCatalog] = useState<ServiceCatalog | null>(null);
   const [selections, setSelections] = useState<QuoteSelection[]>(initialSelections);
@@ -134,10 +144,10 @@ export function ServicesStep({
 
   return (
     <section className="screen services-catalog-screen" data-testid="services-screen">
-      <VehicleSummary vehicle={vehicle} onChange={onBack}/>
+      <VehicleSummary vehicle={vehicle} onChange={onBack} changeLabel={backLabel}/>
       <div className="catalog-intro">
         <span>Класс центра: {catalog?.vehicleClass ?? vehicle.tenantClass}</span>
-        <h2>Выберите услуги</h2>
+        <h2>{title}</h2>
         <p>Можно выбрать несколько услуг или выгодный комплекс.</p>
       </div>
       {loading && <div className="catalog-loading"><span className="spinner"/> Загружаем каталог центра</div>}
@@ -164,8 +174,8 @@ export function ServicesStep({
       <div className="quote-dock">
         <span><small>Предварительно</small><strong>{quote ? formatMoney(quote.totalAmountMinor) : 'Выберите услуги'}</strong></span>
         {quote && <em>{formatDuration(quote.totalDurationMinutes)}</em>}
-        <button data-testid="choose-time" disabled={!quote || quoteLoading} onClick={() => quote && onContinue(selections, quote)}>
-          {quoteLoading ? <span className="spinner light"/> : 'Выбрать время →'}
+        <button data-testid={continueTestId} disabled={!quote || quoteLoading} onClick={() => quote && onContinue(selections, quote)}>
+          {quoteLoading ? <span className="spinner light"/> : continueLabel}
         </button>
       </div>
     </section>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from './api';
+import { api, authSession } from './api';
 import { CatalogScreen } from './CatalogScreen';
 import { CenterSettingsScreen } from './CenterSettingsScreen';
 import { TeamScreen } from './TeamScreen';
@@ -31,7 +31,14 @@ function timezoneLabel(timezone: string) {
   return timezone === 'Europe/Moscow' ? 'Москва · UTC+3' : timezone;
 }
 
-export function ProfileScreen() {
+const authMethodLabels: Record<SessionContext['actor']['authMethod'], string> = {
+  demo: 'Демо-доступ локальной версии',
+  messenger: 'Вход через мессенджер',
+  access_token: 'Код доступа сотрудника'
+};
+
+export function ProfileScreen({ onSignIn }: { onSignIn: () => void }) {
+  const [signingOut, setSigningOut] = useState(false);
   const [session, setSession] = useState<SessionContext | null>(null);
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
@@ -111,6 +118,18 @@ export function ProfileScreen() {
       {session.capabilities.manageTeam && <button className="profile-catalog-entry profile-team-entry" data-testid="team-entry" onClick={() => setShowTeam(true)}>
         <span><i>👥</i><b>Команда</b><small>Сотрудники, роли и блокировка доступа</small></span><strong>Открыть →</strong>
       </button>}
+
+      <section className="profile-signin" data-testid="profile-signin" aria-label="Вход в систему">
+        <div><span>Вход в систему</span><strong>{authMethodLabels[session.actor.authMethod]}</strong></div>
+        {session.actor.authMethod === 'messenger'
+          ? <button data-testid="sign-out" disabled={signingOut} onClick={async () => {
+              setSigningOut(true);
+              try { await api.logout(); } catch { /* the session is dropped locally anyway */ }
+              authSession.clear();
+              window.location.reload();
+            }}>{signingOut ? 'Выходим…' : 'Выйти'}</button>
+          : <button data-testid="sign-in-messenger" onClick={onSignIn}>Войти через мессенджер</button>}
+      </section>
 
       <p className="profile-version">DetailFlow · локальная рабочая версия</p>
     </section>

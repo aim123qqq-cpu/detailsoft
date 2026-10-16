@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
 import { openDatabase } from './db.mjs';
 import { DetailFlowRepository } from './repository.mjs';
+import { AuthRepository, MESSENGER_PROVIDERS } from './auth-repository.mjs';
+import { createBotDialog } from './messenger/bot-dialog.mjs';
 
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -26,7 +28,23 @@ async function readJson(request, maxBytes = 64 * 1024) {
     chunks.push(chunk);
   }
   if (!chunks.length) return {};
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    throw new Error('invalid_json');
+  }
+}
+
+// Small in-memory limiter for public sign-in endpoints (per client address).
+function createRateLimiter(limit, windowMs) {
+  const hits = new Map();
+  return (key) => {
+    const now = Date.now();
+    const recent = (hits.get(key) ?? []).filter((time) => now - time < windowMs);
+    recent.push(now);
+    hits.set(key, recent);
+    return recent.length <= limit;
+  };
 }
 
 export function createDetailFlowServer({
@@ -37,10 +55,21 @@ export function createDetailFlowServer({
   authTokens = new Map([
     ['demo-session-token', { tenantId: 'tenant_demo', displayName: 'Анна', roles: ['owner', 'admin', 'intake', 'master', 'qc'] }],
     ['other-session-token', { tenantId: 'tenant_other', displayName: 'Администратор', roles: ['admin', 'intake', 'master', 'qc'] }]
-  ])
+  ]),
+  messengers = []
 } = {}) {
   const db = openDatabase(databasePath, { seed });
   const repository = new DetailFlowRepository(db);
+  const auth = new AuthRepository(db);
+  const adapters = new Map(messengers.map((adapter) => [adapter.provider, adapter]));
+  const readyProviders = new Set();
+  const botDialog = createBotDialog({ auth, adapters });
+  const allowLoginRequest = createRateLimiter(20, 60_000);
+  for (const adapter of adapters.values()) {
+    adapter.start(botDialog)
+      .then(() => readyProviders.add(adapter.provider))
+      .catch((error) => console.error(`${adapter.provider} bot is unavailable:`, error.message));
+  }
   const qualityControlEnabled = features?.qualityControl === true;
   if (!qualityControlEnabled) repository.releaseDeprecatedQualityControlOrders();
 
@@ -49,15 +78,59 @@ export function createDetailFlowServer({
       const url = new URL(request.url, 'http://localhost');
       if (url.pathname === '/api/health') return sendJson(response, 200, { status: 'ok' });
 
+      // Public sign-in endpoints: the browser has no session yet.
+      if (url.pathname === '/api/auth/providers' && request.method === 'GET') {
+        return sendJson(response, 200, {
+          items: [...readyProviders].map((provider) => ({
+            provider, title: adapters.get(provider).title, botName: adapters.get(provider).botName
+          })),
+          demo: authTokens.has('demo-session-token')
+        });
+      }
+      if (url.pathname === '/api/auth/login-requests' && request.method === 'POST') {
+        if (!allowLoginRequest(request.socket.remoteAddress ?? 'unknown')) return sendJson(response, 429, {
+          error: { code: 'too_many_requests', message: 'Слишком много попыток входа. Подождите минуту' }
+        });
+        const provider = (await readJson(request)).provider;
+        if (!MESSENGER_PROVIDERS.includes(provider) || !readyProviders.has(provider)) return sendJson(response, 422, {
+          error: { code: 'provider_unavailable', message: 'Вход через этот мессенджер не настроен' }
+        });
+        const login = auth.createLoginRequest(provider);
+        const adapter = adapters.get(provider);
+        return sendJson(response, 201, {
+          id: login.id, provider, shortCode: login.shortCode, pollSecret: login.pollSecret, expiresAt: login.expiresAt,
+          botName: adapter.botName, deepLink: adapter.deepLink(`login_${login.startToken}`)
+        });
+      }
+      const loginRequest = url.pathname.match(/^\/api\/auth\/login-requests\/([^/]+)(\/session)?$/);
+      if (loginRequest) {
+        const pollSecret = request.headers['x-login-secret'];
+        if (request.method === 'GET' && !loginRequest[2]) {
+          const status = auth.getLoginStatus(loginRequest[1], pollSecret);
+          return status ? sendJson(response, 200, status) : sendJson(response, 404, { error: { code: 'login_not_found', message: 'Запрос входа не найден' } });
+        }
+        if (request.method === 'POST' && loginRequest[2]) {
+          const input = await readJson(request);
+          const result = auth.createSessionFromLogin(loginRequest[1], pollSecret, typeof input.tenantId === 'string' ? input.tenantId : null);
+          if (result.kind === 'created') return sendJson(response, 201, result.session);
+          if (result.kind === 'choose_tenant') return sendJson(response, 409, {
+            error: { code: 'choose_tenant', message: 'Выберите центр', details: { memberships: result.memberships } }
+          });
+          if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+          return sendJson(response, 404, { error: { code: 'login_not_found', message: 'Запрос входа не найден' } });
+        }
+      }
+
       if (url.pathname.startsWith('/api/')) {
         const authorization = request.headers.authorization;
         const token = typeof authorization === 'string' && authorization.startsWith('Bearer ')
           ? authorization.slice('Bearer '.length)
           : '';
-        const session = authTokens.get(token) ?? repository.authenticateTeamToken(token);
+        const session = authTokens.get(token) ?? auth.authenticateSession(token) ?? repository.authenticateTeamToken(token);
         const tenantId = typeof session === 'string' ? session : session?.tenantId;
         const roles = typeof session === 'string' ? ['admin', 'intake', 'master', 'qc'] : session?.roles ?? [];
         const hasRole = (...allowed) => allowed.some((role) => roles.includes(role));
+        const actorName = typeof session === 'string' ? 'Сотрудник' : session?.displayName ?? 'Сотрудник';
         const capabilities = {
           manageCustomers: hasRole('admin'),
           manageBookings: hasRole('admin'),
@@ -76,6 +149,22 @@ export function createDetailFlowServer({
           return sendJson(response, 401, { error: { code: 'unauthorized', message: 'Требуется авторизация' } });
         }
 
+        // Read access by role. Phones, plates and leads are personal data for the front desk only;
+        // orders and a single booking (no phone) stay readable for every role so masters can work.
+        const isGet = request.method === 'GET';
+        const readAllowed =
+          isGet && ['/api/customers', '/api/vehicles', '/api/vehicle-catalog/variants'].includes(url.pathname) ? capabilities.manageCustomers
+          : isGet && /^\/api\/customers\/[^/]+\/vehicles$/.test(url.pathname) ? capabilities.manageCustomers
+          : isGet && url.pathname === '/api/leads' ? capabilities.manageBookings
+          : isGet && url.pathname === '/api/bookings' ? capabilities.manageBookings || capabilities.manageIntake
+          : isGet && ['/api/bookings/availability', '/api/tenants/current/services'].includes(url.pathname) ? capabilities.manageBookings
+          : request.method === 'POST' && url.pathname === '/api/bookings/quote-preview' ? capabilities.manageBookings
+          : true;
+        if (!readAllowed) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Раздел недоступен для вашей роли' } });
+
+        if (request.method === 'POST' && url.pathname === '/api/auth/logout') {
+          return sendJson(response, 200, { revoked: auth.revokeSession(token) });
+        }
         if (request.method === 'GET' && url.pathname === '/api/session') {
           const tenant = repository.getTenant(tenantId);
           if (!tenant) return sendJson(response, 404, {
@@ -84,7 +173,9 @@ export function createDetailFlowServer({
           return sendJson(response, 200, {
             actor: {
               displayName: typeof session === 'string' ? 'Сотрудник' : session.displayName ?? 'Сотрудник',
-              roles
+              roles,
+              memberId: session?.memberId ?? null,
+              authMethod: authTokens.has(token) ? 'demo' : token.startsWith('dfs_') ? 'messenger' : 'access_token'
             },
             tenant,
             preferences: { locale: 'ru-RU', currency: 'RUB' },
@@ -94,7 +185,9 @@ export function createDetailFlowServer({
         }
 
         if (request.method === 'GET' && url.pathname === '/api/customers') {
-          return sendJson(response, 200, { items: repository.searchCustomers(tenantId, url.searchParams.get('phone') ?? '') });
+          return sendJson(response, 200, { items: repository.searchCustomers(
+            tenantId, url.searchParams.get('phone') ?? '', url.searchParams.get('includeArchived') === 'true'
+          ) });
         }
         if (request.method === 'GET' && url.pathname === '/api/leads') {
           return sendJson(response, 200, { items: repository.listLeads(tenantId, url.searchParams.get('limit') ?? 50) });
@@ -133,6 +226,50 @@ export function createDetailFlowServer({
           if (result.kind === 'created') return sendJson(response, 201, result.customer);
           if (result.kind === 'tenant_not_found') return sendJson(response, 404, { error: { code: 'tenant_not_found', message: 'Центр не найден' } });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите имя и корректный телефон' } });
+        }
+        const customerProfile = url.pathname.match(/^\/api\/customers\/([^/]+)\/profile$/);
+        if (request.method === 'GET' && customerProfile) {
+          if (!capabilities.manageCustomers) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для просмотра карточки клиента' }
+          });
+          const profile = repository.getCustomerProfile(tenantId, customerProfile[1]);
+          return profile
+            ? sendJson(response, 200, profile)
+            : sendJson(response, 404, { error: { code: 'customer_not_found', message: 'Клиент не найден' } });
+        }
+        const customerPatch = url.pathname.match(/^\/api\/customers\/([^/]+)$/);
+        if (request.method === 'PATCH' && customerPatch) {
+          if (!capabilities.manageCustomers) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для изменения клиента' }
+          });
+          const result = repository.updateCustomer(tenantId, customerPatch[1], await readJson(request), actorName);
+          if (result.kind === 'updated') return sendJson(response, 200, result.profile);
+          if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'customer_not_found', message: 'Клиент не найден' } });
+          if (result.kind === 'archived') return sendJson(response, 409, {
+            error: { code: 'customer_archived', message: 'Клиент в архиве. Верните его, чтобы изменить контакты' }
+          });
+          if (result.kind === 'duplicate') return sendJson(response, 409, {
+            error: { code: 'possible_duplicate', message: 'Этот телефон уже указан у другого клиента', details: { matches: result.matches } }
+          });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите имя от 2 до 120 символов и корректный телефон' } });
+        }
+        const customerArchive = url.pathname.match(/^\/api\/customers\/([^/]+)\/(archive|reactivate)$/);
+        if (request.method === 'POST' && customerArchive) {
+          if (!capabilities.manageCustomers) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для архивации клиента' }
+          });
+          const result = customerArchive[2] === 'archive'
+            ? repository.archiveCustomer(tenantId, customerArchive[1], actorName)
+            : repository.reactivateCustomer(tenantId, customerArchive[1], actorName);
+          if (result.kind === 'updated') return sendJson(response, 200, result.profile);
+          if (result.kind === 'active_work') return sendJson(response, 409, {
+            error: {
+              code: 'customer_has_active_work',
+              message: 'У клиента есть активные записи, заказы или обращения. Завершите или отмените их перед архивацией',
+              details: result.details
+            }
+          });
+          return sendJson(response, 404, { error: { code: 'customer_not_found', message: 'Клиент не найден' } });
         }
         const customerVehicles = url.pathname.match(/^\/api\/customers\/([^/]+)\/vehicles$/);
         if (request.method === 'GET' && customerVehicles) {
@@ -260,7 +397,26 @@ export function createDetailFlowServer({
           if (result.kind === 'not_found') return sendJson(response, 404, {
             error: { code: 'catalog_item_not_found', message: 'Позиция каталога не найдена' }
           });
+          if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте данные и цены каталога' } });
+        }
+        if (request.method === 'GET' && url.pathname === '/api/tenants/current/catalog/operations') {
+          if (!capabilities.manageCatalog) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Каталог доступен владельцу или администратору' }
+          });
+          return sendJson(response, 200, { items: repository.listOperationLibrary(tenantId, url.searchParams.get('q') ?? '') });
+        }
+        const catalogOperation = url.pathname.match(/^\/api\/tenants\/current\/catalog\/operations\/([^/]+)$/);
+        if (request.method === 'PATCH' && catalogOperation) {
+          if (!capabilities.manageCatalog) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для изменения каталога' }
+          });
+          const result = repository.updateCatalogOperation(tenantId, catalogOperation[1], await readJson(request));
+          if (result.kind === 'updated') return sendJson(response, 200, result.operation);
+          if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'operation_not_found', message: 'Операция не найдена' } });
+          if (result.kind === 'duplicate') return sendJson(response, 409, { error: { code: 'operation_exists', message: 'Операция с таким названием уже существует' } });
+          if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message, details: result.details } });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите название от 2 до 120 символов или статус' } });
         }
         if (request.method === 'GET' && url.pathname === '/api/tenants/current/settings') {
           if (!capabilities.manageSettings) return sendJson(response, 403, {
@@ -286,7 +442,42 @@ export function createDetailFlowServer({
           if (!capabilities.manageTeam) return sendJson(response, 403, {
             error: { code: 'forbidden', message: 'Команда доступна только владельцу центра' }
           });
-          return sendJson(response, 200, { items: repository.listTeamMembers(tenantId) });
+          const links = auth.listMessengerLinks(tenantId);
+          return sendJson(response, 200, { items: repository.listTeamMembers(tenantId).map((member) => ({
+            ...member, messengerLinks: links.filter((link) => link.memberId === member.id)
+          })) });
+        }
+        if (request.method === 'GET' && url.pathname === '/api/tenants/current/masters') {
+          if (!capabilities.assignMasters) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Список мастеров доступен тому, кто назначает работы' }
+          });
+          return sendJson(response, 200, { items: repository.listMasters(tenantId) });
+        }
+        const teamInvite = url.pathname.match(/^\/api\/tenants\/current\/team\/([^/]+)\/messenger-invites$/);
+        if (request.method === 'POST' && teamInvite) {
+          if (!capabilities.manageTeam) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Приглашать сотрудников может только владелец центра' }
+          });
+          const provider = (await readJson(request)).provider;
+          const result = auth.createInvite(tenantId, teamInvite[1], provider);
+          if (result.kind === 'created') {
+            const adapter = readyProviders.has(provider) ? adapters.get(provider) : null;
+            return sendJson(response, 201, {
+              ...result.invite, botName: adapter?.botName ?? null, deepLink: adapter ? adapter.deepLink(result.invite.code) : null
+            });
+          }
+          if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'member_not_found', message: 'Сотрудник не найден' } });
+          if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Выберите Telegram или MAX' } });
+        }
+        const teamLink = url.pathname.match(/^\/api\/tenants\/current\/team\/([^/]+)\/messenger-links\/([^/]+)$/);
+        if (request.method === 'DELETE' && teamLink) {
+          if (!capabilities.manageTeam) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Отвязывать мессенджер может только владелец центра' }
+          });
+          return auth.removeMessengerLink(tenantId, teamLink[1], teamLink[2])
+            ? sendJson(response, 200, { removed: true })
+            : sendJson(response, 404, { error: { code: 'link_not_found', message: 'Привязка не найдена' } });
         }
         if (request.method === 'POST' && url.pathname === '/api/tenants/current/team') {
           if (!capabilities.manageTeam) return sendJson(response, 403, {
@@ -339,7 +530,8 @@ export function createDetailFlowServer({
             tenantId,
             url.searchParams.get('limit') ?? 20,
             url.searchParams.has('from') ? url.searchParams.get('from') : null,
-            url.searchParams.has('to') ? url.searchParams.get('to') : null
+            url.searchParams.has('to') ? url.searchParams.get('to') : null,
+            url.searchParams.has('view') ? url.searchParams.get('view') : null
           );
           if (result.kind === 'listed') return sendJson(response, 200, { items: result.items });
           return sendJson(response, 422, {
@@ -365,6 +557,19 @@ export function createDetailFlowServer({
             error: { code: `${result.resource}_not_found`, message: 'Клиент, автомобиль или услуга не найдены' }
           });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте дату, канал и услуги' } });
+        }
+        const bookingQuote = url.pathname.match(/^\/api\/bookings\/([^/]+)\/quote$/);
+        if (request.method === 'PUT' && bookingQuote) {
+          if (!capabilities.manageBookings) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для изменения записи' }
+          });
+          const result = repository.reviseBookingQuote(tenantId, bookingQuote[1], await readJson(request), actorName);
+          if (result.kind === 'updated') return sendJson(response, 200, result.booking);
+          if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+          if (result.kind === 'not_found') return sendJson(response, 404, {
+            error: { code: `${result.resource}_not_found`, message: result.resource === 'booking' ? 'Запись не найдена' : 'Не удалось рассчитать выбранные услуги' }
+          });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Выберите услуги и укажите текущую версию расчёта' } });
         }
         const bookingGet = url.pathname.match(/^\/api\/bookings\/([^/]+)$/);
         if (request.method === 'PATCH' && bookingGet) {
@@ -494,6 +699,9 @@ export function createDetailFlowServer({
           if (result.kind === 'updated') return sendJson(response, 200, result.order);
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'order_not_found', message: 'Заказ не найден' } });
           if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+          if (result.code === 'not_a_master') return sendJson(response, 422, {
+            error: { code: 'not_a_master', message: 'Выберите активного сотрудника с ролью «Мастер»' }
+          });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите мастера' } });
         }
         const workStart = url.pathname.match(/^\/api\/orders\/([^/]+)\/work\/start$/);
@@ -551,6 +759,41 @@ export function createDetailFlowServer({
           if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Подтвердите осмотр, комплектность и данные выдачи' } });
         }
+        const orderDocuments = url.pathname.match(/^\/api\/orders\/([^/]+)\/documents(?:\/([^/]+))?$/);
+        if (orderDocuments) {
+          const [, documentOrderId, documentPath] = orderDocuments;
+          const canReadDocuments = capabilities.manageIntake || capabilities.closeOrders;
+          const documentNotFound = { error: { code: 'order_not_found', message: 'Заказ не найден' } };
+          if (request.method === 'GET' && documentPath === 'preview') {
+            if (!canReadDocuments) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Недостаточно прав для документов заказа' } });
+            const type = url.searchParams.get('type');
+            if (!['intake_act', 'handover_act'].includes(type)) return sendJson(response, 422, { error: { code: 'validation_error', message: 'Неизвестный тип документа' } });
+            const result = repository.buildOrderDocumentContent(tenantId, documentOrderId, type);
+            if (result.kind === 'built') return sendJson(response, 200, { type, content: result.content });
+            if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+            return sendJson(response, 404, documentNotFound);
+          }
+          if (request.method === 'GET' && !documentPath) {
+            if (!canReadDocuments) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Недостаточно прав для документов заказа' } });
+            const items = repository.listOrderDocuments(tenantId, documentOrderId);
+            return items ? sendJson(response, 200, { items }) : sendJson(response, 404, documentNotFound);
+          }
+          if (request.method === 'GET' && documentPath) {
+            if (!canReadDocuments) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Недостаточно прав для документов заказа' } });
+            const document = repository.getOrderDocument(tenantId, documentOrderId, documentPath);
+            return document ? sendJson(response, 200, document) : sendJson(response, 404, { error: { code: 'document_not_found', message: 'Документ не найден' } });
+          }
+          if (request.method === 'POST' && !documentPath) {
+            const input = await readJson(request, 512 * 1024);
+            const allowed = input?.type === 'handover_act' ? capabilities.closeOrders : input?.type === 'intake_act' ? capabilities.manageIntake : canReadDocuments;
+            if (!allowed) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Недостаточно прав для этого документа' } });
+            const result = repository.issueOrderDocument(tenantId, documentOrderId, input, actorName);
+            if (result.kind === 'created') return sendJson(response, 201, result.document);
+            if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+            if (result.kind === 'not_found') return sendJson(response, 404, documentNotFound);
+            return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте тип документа, ФИО и подпись (PNG до 200 КБ)' } });
+          }
+        }
         const orderGet = url.pathname.match(/^\/api\/orders\/([^/]+)$/);
         if (request.method === 'GET' && orderGet) {
           const order = repository.getOrder(tenantId, orderGet[1]);
@@ -578,11 +821,17 @@ export function createDetailFlowServer({
       if (error instanceof Error && error.message === 'request_body_too_large') {
         return sendJson(response, 413, { error: { code: 'request_body_too_large', message: 'Слишком большой запрос' } });
       }
+      if (error instanceof Error && error.message === 'invalid_json') {
+        return sendJson(response, 400, { error: { code: 'invalid_json', message: 'Тело запроса должно быть корректным JSON' } });
+      }
       console.error(error);
       sendJson(response, 500, { error: { code: 'internal_error', message: 'Внутренняя ошибка' } });
     }
   });
 
-  server.on('close', () => db.close());
+  server.on('close', () => {
+    for (const adapter of adapters.values()) adapter.stop();
+    db.close();
+  });
   return server;
 }

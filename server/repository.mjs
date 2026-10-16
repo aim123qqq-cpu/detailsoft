@@ -301,18 +301,22 @@ export class DetailFlowRepository {
     return { kind: 'updated', lead: this.getLead(tenantId, leadId) };
   }
 
-  searchCustomers(tenantId, phone) {
+  searchCustomers(tenantId, phone, includeArchived = false) {
     const normalized = normalizePhone(phone);
     if (normalized.length < 4) return [];
-    const customers = this.db.prepare(`SELECT id, name, phone_display, visit_count
-      FROM customers
-      WHERE tenant_id = ? AND archived_at IS NULL AND instr(phone_normalized, ?) > 0
-      ORDER BY visit_count DESC, name LIMIT 10`).all(tenantId, normalized);
+    // Visits are closed orders, the same figure as in the customer profile. The legacy
+    // customers.visit_count column was only seeded and is never maintained, so it is not used.
+    const customers = this.db.prepare(`SELECT c.id, c.name, c.phone_display, c.archived_at,
+        (SELECT COUNT(*) FROM orders o WHERE o.tenant_id = c.tenant_id AND o.customer_id = c.id AND o.status = 'CLOSED') visits
+      FROM customers c
+      WHERE c.tenant_id = ? AND (? = 1 OR c.archived_at IS NULL) AND instr(c.phone_normalized, ?) > 0
+      ORDER BY c.archived_at IS NOT NULL, visits DESC, c.name LIMIT 10`).all(tenantId, includeArchived ? 1 : 0, normalized);
     return customers.map((customer) => ({
       id: customer.id,
       name: customer.name,
       phoneDisplay: customer.phone_display,
-      visitCount: customer.visit_count,
+      visitCount: customer.visits,
+      archived: customer.archived_at !== null,
       vehicles: this.listCustomerVehicles(tenantId, customer.id, false)
     }));
   }
@@ -329,8 +333,246 @@ export class DetailFlowRepository {
       (id, tenant_id, name, phone_display, phone_normalized)
       VALUES (?, ?, ?, ?, ?)`).run(id, tenantId, name, phoneDisplay, phoneNormalized);
     return { kind: 'created', customer: {
-      id, name, phoneDisplay, visitCount: 0, vehicles: []
+      id, name, phoneDisplay, visitCount: 0, archived: false, vehicles: []
     } };
+  }
+
+  getCustomerProfile(tenantId, customerId) {
+    const row = this.db.prepare(`SELECT id, name, phone_display, phone_normalized, created_at, archived_at
+      FROM customers WHERE id = ? AND tenant_id = ?`).get(customerId, tenantId);
+    if (!row) return null;
+
+    const vehicles = this.db.prepare(`SELECT v.*, cv.valid_from owned_from, cv.relation_type,
+        COALESCE(o.tenant_class, (
+          SELECT r.tenant_class FROM tenant_vehicle_class_rules r
+          WHERE r.tenant_id = v.tenant_id
+            AND (r.variant_id = v.catalog_variant_id OR (r.variant_id IS NULL AND r.class_match = v.system_vehicle_class))
+          ORDER BY r.priority DESC LIMIT 1
+        )) tenant_class
+      FROM customer_vehicles cv
+      JOIN vehicles v ON v.id = cv.vehicle_id AND v.tenant_id = cv.tenant_id
+      LEFT JOIN vehicle_pricing_overrides o ON o.vehicle_id = v.id AND o.tenant_id = v.tenant_id
+      WHERE cv.tenant_id = ? AND cv.customer_id = ? AND cv.valid_to IS NULL
+      ORDER BY CASE v.status WHEN 'active' THEN 0 ELSE 1 END, cv.valid_from, v.created_at`).all(tenantId, customerId)
+      .map((vehicle) => ({ ...mapVehicle(vehicle), relationType: vehicle.relation_type, ownedFrom: apiTimestamp(vehicle.owned_from) }));
+
+    const formerVehicles = this.db.prepare(`SELECT cv.id link_id, cv.relation_type, cv.valid_from, cv.valid_to, v.*,
+        current_owner.id current_owner_id, current_owner.name current_owner_name
+      FROM customer_vehicles cv
+      JOIN vehicles v ON v.id = cv.vehicle_id AND v.tenant_id = cv.tenant_id
+      LEFT JOIN customer_vehicles current_link
+        ON current_link.tenant_id = cv.tenant_id AND current_link.vehicle_id = cv.vehicle_id
+       AND current_link.relation_type = 'owner' AND current_link.valid_to IS NULL
+      LEFT JOIN customers current_owner
+        ON current_owner.id = current_link.customer_id AND current_owner.tenant_id = current_link.tenant_id
+      WHERE cv.tenant_id = ? AND cv.customer_id = ? AND cv.valid_to IS NOT NULL
+      ORDER BY cv.valid_to DESC, cv.rowid DESC`).all(tenantId, customerId).map((link) => ({
+        linkId: link.link_id,
+        relationType: link.relation_type,
+        validFrom: apiTimestamp(link.valid_from),
+        validTo: apiTimestamp(link.valid_to),
+        vehicle: mapVehicle(link),
+        currentOwner: link.current_owner_id ? { id: link.current_owner_id, name: link.current_owner_name } : null
+      }));
+
+    const vehicleSummary = (item) => ({
+      id: item.vehicle_id, make: item.make, model: item.model, generation: item.generation, plate: item.plate_display, color: item.color
+    });
+    const bookings = this.db.prepare(`SELECT b.id, b.status, b.start_at, b.estimated_duration_minutes,
+        b.preliminary_amount_minor, w.order_id,
+        v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color
+      FROM bookings b
+      JOIN vehicles v ON v.id = b.vehicle_id AND v.tenant_id = b.tenant_id
+      LEFT JOIN order_workflows w ON w.booking_id = b.id AND w.tenant_id = b.tenant_id
+      WHERE b.tenant_id = ? AND b.customer_id = ?
+      ORDER BY datetime(b.start_at) DESC, b.rowid DESC LIMIT 20`).all(tenantId, customerId).map((item) => ({
+        id: item.id,
+        status: item.status,
+        startAt: item.start_at,
+        estimatedDurationMinutes: item.estimated_duration_minutes,
+        preliminaryAmountMinor: item.preliminary_amount_minor,
+        orderId: item.order_id ?? null,
+        vehicle: vehicleSummary(item)
+      }));
+    const orders = this.db.prepare(`SELECT o.id, o.status, o.created_at, e.total_amount_minor, h.handed_over_at,
+        v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color
+      FROM orders o
+      JOIN vehicles v ON v.id = o.vehicle_id AND v.tenant_id = o.tenant_id
+      LEFT JOIN order_workflows w ON w.order_id = o.id AND w.tenant_id = o.tenant_id
+      LEFT JOIN estimate_versions e ON e.id = w.current_estimate_version_id AND e.tenant_id = o.tenant_id
+      LEFT JOIN order_handovers h ON h.order_id = o.id AND h.tenant_id = o.tenant_id
+      WHERE o.tenant_id = ? AND o.customer_id = ?
+      ORDER BY o.created_at DESC, o.rowid DESC LIMIT 20`).all(tenantId, customerId).map((item) => ({
+        id: item.id,
+        status: item.status,
+        createdAt: apiTimestamp(item.created_at),
+        closedAt: apiTimestamp(item.handed_over_at),
+        totalAmountMinor: item.total_amount_minor ?? null,
+        vehicle: vehicleSummary(item)
+      }));
+
+    const stats = this.db.prepare(`SELECT
+        (SELECT COUNT(*) FROM bookings WHERE tenant_id = ?1 AND customer_id = ?2) bookings,
+        (SELECT COUNT(*) FROM bookings b WHERE b.tenant_id = ?1 AND b.customer_id = ?2 AND b.status = 'CONFIRMED'
+          AND NOT EXISTS (SELECT 1 FROM order_workflows w WHERE w.booking_id = b.id AND w.tenant_id = b.tenant_id)) open_bookings,
+        (SELECT COUNT(*) FROM orders WHERE tenant_id = ?1 AND customer_id = ?2) orders,
+        (SELECT COUNT(*) FROM orders WHERE tenant_id = ?1 AND customer_id = ?2 AND status <> 'CLOSED') active_orders,
+        (SELECT COUNT(*) FROM orders WHERE tenant_id = ?1 AND customer_id = ?2 AND status = 'CLOSED') closed_orders,
+        (SELECT MAX(created_at) FROM orders WHERE tenant_id = ?1 AND customer_id = ?2) last_visit_at`).get(tenantId, customerId);
+
+    const phoneDuplicates = this.db.prepare(`SELECT id, name, phone_display, archived_at FROM customers
+      WHERE tenant_id = ? AND phone_normalized = ? AND id <> ?
+      ORDER BY archived_at IS NOT NULL, name`).all(tenantId, row.phone_normalized, customerId).map((item) => ({
+        id: item.id, name: item.name, phoneDisplay: item.phone_display, archived: item.archived_at !== null
+      }));
+    const audit = this.db.prepare(`SELECT id, event_type, details_json, actor_name, created_at
+      FROM customer_audit_events WHERE tenant_id = ? AND customer_id = ?
+      ORDER BY created_at DESC, rowid DESC`).all(tenantId, customerId).map((event) => ({
+        id: event.id,
+        type: event.event_type,
+        details: JSON.parse(event.details_json),
+        actorName: event.actor_name,
+        createdAt: apiTimestamp(event.created_at)
+      }));
+
+    return {
+      customer: {
+        id: row.id,
+        name: row.name,
+        phoneDisplay: row.phone_display,
+        archived: row.archived_at !== null,
+        archivedAt: apiTimestamp(row.archived_at),
+        createdAt: apiTimestamp(row.created_at)
+      },
+      stats: {
+        bookings: stats.bookings,
+        openBookings: stats.open_bookings,
+        orders: stats.orders,
+        activeOrders: stats.active_orders,
+        closedOrders: stats.closed_orders,
+        lastVisitAt: apiTimestamp(stats.last_visit_at)
+      },
+      vehicles,
+      formerVehicles,
+      bookings,
+      orders,
+      phoneDuplicates,
+      audit
+    };
+  }
+
+  insertCustomerAudit(tenantId, customerId, eventType, details, actorName) {
+    this.db.prepare(`INSERT INTO customer_audit_events
+      (id, tenant_id, customer_id, event_type, details_json, actor_name)
+      VALUES (?, ?, ?, ?, ?, ?)`).run(
+        `ca_${randomUUID()}`, tenantId, customerId, eventType, JSON.stringify(details), actorName ?? null
+      );
+  }
+
+  updateCustomer(tenantId, customerId, input, actorName = null) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return { kind: 'invalid' };
+    if (Object.keys(input).some((key) => !['name', 'phone', 'confirmDuplicate'].includes(key))) return { kind: 'invalid' };
+    const hasName = Object.hasOwn(input, 'name');
+    const hasPhone = Object.hasOwn(input, 'phone');
+    if (!hasName && !hasPhone) return { kind: 'invalid' };
+    if (Object.hasOwn(input, 'confirmDuplicate') && typeof input.confirmDuplicate !== 'boolean') return { kind: 'invalid' };
+    if ((hasName && typeof input.name !== 'string') || (hasPhone && typeof input.phone !== 'string')) return { kind: 'invalid' };
+    const name = hasName ? input.name.trim() : null;
+    const phoneDisplay = hasPhone ? input.phone.trim() : null;
+    const phoneNormalized = hasPhone ? normalizePhone(phoneDisplay) : null;
+    if (hasName && (name.length < 2 || name.length > 120)) return { kind: 'invalid' };
+    if (hasPhone && (phoneNormalized.length < 7 || phoneNormalized.length > 15 || phoneDisplay.length > 40)) return { kind: 'invalid' };
+
+    const customer = this.db.prepare(`SELECT id, name, phone_display, phone_normalized, archived_at
+      FROM customers WHERE id = ? AND tenant_id = ?`).get(customerId, tenantId);
+    if (!customer) return { kind: 'not_found' };
+    if (customer.archived_at !== null) return { kind: 'archived' };
+
+    const changes = {};
+    if (hasName && name !== customer.name) changes.name = { from: customer.name, to: name };
+    if (hasPhone && phoneDisplay !== customer.phone_display) changes.phone = { from: customer.phone_display, to: phoneDisplay };
+    // Possible duplicates are checked only when the normalized number really changes,
+    // and they are never merged: the user has to acknowledge them explicitly.
+    const duplicates = hasPhone && phoneNormalized !== customer.phone_normalized
+      ? this.db.prepare(`SELECT id, name, phone_display, archived_at FROM customers
+          WHERE tenant_id = ? AND phone_normalized = ? AND id <> ?
+          ORDER BY archived_at IS NOT NULL, name`).all(tenantId, phoneNormalized, customerId).map((item) => ({
+            id: item.id, name: item.name, phoneDisplay: item.phone_display, archived: item.archived_at !== null
+          }))
+      : [];
+    if (duplicates.length && input.confirmDuplicate !== true) return { kind: 'duplicate', matches: duplicates };
+    if (!Object.keys(changes).length) return { kind: 'updated', profile: this.getCustomerProfile(tenantId, customerId) };
+
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`UPDATE customers SET name = ?, phone_display = ?, phone_normalized = ?
+        WHERE id = ? AND tenant_id = ?`).run(
+          changes.name ? name : customer.name,
+          changes.phone ? phoneDisplay : customer.phone_display,
+          changes.phone ? phoneNormalized : customer.phone_normalized,
+          customerId, tenantId
+        );
+      this.insertCustomerAudit(tenantId, customerId, 'CUSTOMER_UPDATED', {
+        changes,
+        ...(duplicates.length ? { duplicateAcknowledged: duplicates.map((item) => item.id) } : {})
+      }, actorName);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'updated', profile: this.getCustomerProfile(tenantId, customerId) };
+  }
+
+  getCustomerActiveWork(tenantId, customerId) {
+    const row = this.db.prepare(`SELECT
+        (SELECT COUNT(*) FROM bookings b WHERE b.tenant_id = ?1 AND b.customer_id = ?2 AND b.status = 'CONFIRMED'
+          AND NOT EXISTS (SELECT 1 FROM order_workflows w WHERE w.booking_id = b.id AND w.tenant_id = b.tenant_id)) confirmed_bookings,
+        (SELECT COUNT(*) FROM orders WHERE tenant_id = ?1 AND customer_id = ?2 AND status <> 'CLOSED') open_orders,
+        (SELECT COUNT(*) FROM leads WHERE tenant_id = ?1 AND customer_id = ?2 AND status IN ('NEW', 'CONTACTED')) active_leads`)
+      .get(tenantId, customerId);
+    return { confirmedBookings: row.confirmed_bookings, openOrders: row.open_orders, activeLeads: row.active_leads };
+  }
+
+  archiveCustomer(tenantId, customerId, actorName = null) {
+    const customer = this.db.prepare('SELECT id, archived_at FROM customers WHERE id = ? AND tenant_id = ?').get(customerId, tenantId);
+    if (!customer) return { kind: 'not_found' };
+    if (customer.archived_at !== null) return { kind: 'updated', profile: this.getCustomerProfile(tenantId, customerId) };
+    const activeWork = this.getCustomerActiveWork(tenantId, customerId);
+    if (activeWork.confirmedBookings || activeWork.openOrders || activeWork.activeLeads) {
+      return { kind: 'active_work', details: activeWork };
+    }
+    // Archiving only hides the customer from new work. Vehicle links, bookings and
+    // orders stay untouched so history and temporal ownership remain intact.
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`UPDATE customers SET archived_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND tenant_id = ? AND archived_at IS NULL`).run(customerId, tenantId);
+      this.insertCustomerAudit(tenantId, customerId, 'CUSTOMER_ARCHIVED', {}, actorName);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'updated', profile: this.getCustomerProfile(tenantId, customerId) };
+  }
+
+  reactivateCustomer(tenantId, customerId, actorName = null) {
+    const customer = this.db.prepare('SELECT id, archived_at FROM customers WHERE id = ? AND tenant_id = ?').get(customerId, tenantId);
+    if (!customer) return { kind: 'not_found' };
+    if (customer.archived_at === null) return { kind: 'updated', profile: this.getCustomerProfile(tenantId, customerId) };
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`UPDATE customers SET archived_at = NULL WHERE id = ? AND tenant_id = ?`).run(customerId, tenantId);
+      this.insertCustomerAudit(tenantId, customerId, 'CUSTOMER_REACTIVATED', {
+        archivedAt: apiTimestamp(customer.archived_at)
+      }, actorName);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'updated', profile: this.getCustomerProfile(tenantId, customerId) };
   }
 
   listCustomerVehicles(tenantId, customerId, includeArchived) {
@@ -738,12 +980,70 @@ export class DetailFlowRepository {
     return { vehicleClasses, operationLibrary, items: [...packages, ...services] };
   }
 
+  // SQLite lower() only folds ASCII, so names are compared with the same normalizer as search.
+  findOperationByName(tenantId, name, excludeId = null) {
+    const target = normalizeSearch(name);
+    return this.db.prepare('SELECT id, name FROM service_operations WHERE tenant_id = ?').all(tenantId)
+      .find((operation) => operation.id !== excludeId && normalizeSearch(operation.name) === target) ?? null;
+  }
+
+  listOperationLibrary(tenantId, query = '') {
+    const usage = (sql) => this.db.prepare(sql).all(tenantId).reduce((map, row) => {
+      const list = map.get(row.operation_id) ?? [];
+      list.push({ id: row.id, name: row.name, active: row.active === 1 });
+      map.set(row.operation_id, list);
+      return map;
+    }, new Map());
+    const services = usage(`SELECT relation.operation_id, s.id, s.name, s.active FROM tenant_service_operations relation
+      JOIN tenant_services s ON s.id = relation.service_id WHERE s.tenant_id = ? ORDER BY s.name`);
+    const packages = usage(`SELECT relation.operation_id, p.id, p.name, p.active FROM service_package_operations relation
+      JOIN service_packages p ON p.id = relation.package_id WHERE p.tenant_id = ? ORDER BY p.name`);
+    const terms = normalizeSearch(query).split(' ').filter(Boolean);
+    return this.db.prepare('SELECT id, name, active FROM service_operations WHERE tenant_id = ?').all(tenantId)
+      .filter((operation) => terms.every((term) => normalizeSearch(operation.name).includes(term)))
+      .map((operation) => {
+        const usedBy = { services: services.get(operation.id) ?? [], packages: packages.get(operation.id) ?? [] };
+        return {
+          id: operation.id,
+          name: operation.name,
+          active: operation.active === 1,
+          usage: { ...usedBy, activeCount: [...usedBy.services, ...usedBy.packages].filter((item) => item.active).length }
+        };
+      })
+      .sort((left, right) => Number(right.active) - Number(left.active) || left.name.localeCompare(right.name, 'ru'));
+  }
+
+  /** Rename affects only future quotes (bookings and estimates store snapshots); archiving is refused while active items use it. */
+  updateCatalogOperation(tenantId, operationId, input) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return { kind: 'invalid' };
+    const keys = Object.keys(input);
+    if (!keys.length || keys.some((key) => !['name', 'active'].includes(key))) return { kind: 'invalid' };
+    const name = Object.hasOwn(input, 'name') ? (typeof input.name === 'string' ? input.name.trim() : null) : undefined;
+    if (name === null || (name !== undefined && (name.length < 2 || name.length > 120))) return { kind: 'invalid' };
+    if (Object.hasOwn(input, 'active') && typeof input.active !== 'boolean') return { kind: 'invalid' };
+    const operation = this.db.prepare('SELECT id, name, active FROM service_operations WHERE id = ? AND tenant_id = ?').get(operationId, tenantId);
+    if (!operation) return { kind: 'not_found' };
+    if (name !== undefined && this.findOperationByName(tenantId, name, operationId)) return { kind: 'duplicate' };
+    if (input.active === false && operation.active === 1) {
+      const current = this.listOperationLibrary(tenantId).find((item) => item.id === operationId);
+      const activeServices = current.usage.services.filter((item) => item.active);
+      const activePackages = current.usage.packages.filter((item) => item.active);
+      if (activeServices.length || activePackages.length) return {
+        kind: 'conflict', code: 'operation_in_use',
+        message: 'Операция входит в активные услуги или пакеты. Уберите её оттуда или переведите их в архив',
+        details: { services: activeServices, packages: activePackages }
+      };
+    }
+    this.db.prepare('UPDATE service_operations SET name = ?, active = ? WHERE id = ? AND tenant_id = ?').run(
+      name ?? operation.name, input.active === undefined ? operation.active : Number(input.active), operationId, tenantId
+    );
+    return { kind: 'updated', operation: this.listOperationLibrary(tenantId).find((item) => item.id === operationId) };
+  }
+
   createCatalogOperation(tenantId, input) {
     const name = String(input?.name ?? '').trim();
     if (name.length < 2 || name.length > 120) return { kind: 'invalid' };
-    const duplicate = this.db.prepare(`SELECT id FROM service_operations
-      WHERE tenant_id = ? AND lower(name) = lower(?)`).get(tenantId, name);
-    if (duplicate) return { kind: 'duplicate' };
+    if (this.findOperationByName(tenantId, name)) return { kind: 'duplicate' };
     const operation = { id: `op_${randomUUID()}`, name, active: true };
     this.db.prepare(`INSERT INTO service_operations (id, tenant_id, name, active)
       VALUES (?, ?, ?, 1)`).run(operation.id, tenantId, name);
@@ -844,6 +1144,18 @@ export class DetailFlowRepository {
     const table = type === 'service' ? 'tenant_services' : 'service_packages';
     const item = this.db.prepare(`SELECT id FROM ${table} WHERE id = ? AND tenant_id = ?`).get(itemId, tenantId);
     if (!item) return { kind: 'not_found' };
+    if (active) {
+      // An item cannot return to sale while it still contains an archived operation.
+      const composition = operationIds ?? this.db.prepare(type === 'service'
+        ? 'SELECT operation_id id FROM tenant_service_operations WHERE service_id = ?'
+        : 'SELECT operation_id id FROM service_package_operations WHERE package_id = ?').all(itemId).map((row) => row.id);
+      const archived = composition.length ? this.db.prepare(`SELECT name FROM service_operations
+        WHERE tenant_id = ? AND active = 0 AND id IN (${composition.map(() => '?').join(',')})`).all(tenantId, ...composition) : [];
+      if (archived.length) return {
+        kind: 'conflict', code: 'operation_archived',
+        message: `В составе есть архивные операции: ${archived.map((row) => row.name).join(', ')}. Восстановите их или уберите из состава`
+      };
+    }
     if (operationIds) {
       const placeholders = operationIds.map(() => '?').join(',');
       const operationCount = this.db.prepare(`SELECT COUNT(*) count FROM service_operations
@@ -1165,9 +1477,10 @@ export class DetailFlowRepository {
     return { kind: 'available', date, durationMinutes, closed: false, slots };
   }
 
-  listBookings(tenantId, limit = 20, from = null, to = null) {
+  listBookings(tenantId, limit = 20, from = null, to = null, view = null) {
     const requestedLimit = Number(limit);
     const boundedLimit = Number.isInteger(requestedLimit) ? Math.min(50, Math.max(1, requestedLimit)) : 20;
+    if (view !== null) return this.listBookingsView(tenantId, view, boundedLimit);
     const hasRange = from !== null || to !== null;
     const fromTimestamp = hasRange ? calendarDateTimestamp(from) : null;
     const toTimestamp = hasRange ? calendarDateTimestamp(to) : null;
@@ -1217,8 +1530,47 @@ export class DetailFlowRepository {
     return { kind: 'listed', items };
   }
 
+  /**
+   * upcoming — from the start of today in the center's timezone, soonest first;
+   * overdue — past CONFIRMED bookings with no order yet (arrival or no-show not recorded).
+   */
+  listBookingsView(tenantId, view, limit) {
+    if (!['upcoming', 'overdue'].includes(view)) return { kind: 'invalid' };
+    const timezone = this.getTenant(tenantId)?.timezone ?? 'Europe/Moscow';
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const startOfToday = localDateTime(today, '00:00', timezone);
+    const filter = view === 'upcoming'
+      ? 'AND datetime(b.start_at) >= datetime(?)'
+      : `AND b.status = 'CONFIRMED' AND w.order_id IS NULL AND datetime(b.start_at) < datetime(?)`;
+    const order = view === 'upcoming' ? 'datetime(b.start_at) ASC, b.rowid ASC' : 'datetime(b.start_at) DESC, b.rowid DESC';
+    const boundary = view === 'upcoming' ? startOfToday : new Date().toISOString();
+    const items = this.db.prepare(`SELECT b.id, b.channel, b.start_at, b.estimated_duration_minutes,
+        b.status, b.preliminary_amount_minor,
+        c.id customer_id, c.name customer_name, c.phone_display customer_phone,
+        v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color,
+        w.order_id
+      FROM bookings b
+      JOIN customers c ON c.id = b.customer_id AND c.tenant_id = b.tenant_id
+      JOIN vehicles v ON v.id = b.vehicle_id AND v.tenant_id = b.tenant_id
+      LEFT JOIN order_workflows w ON w.booking_id = b.id AND w.tenant_id = b.tenant_id
+      WHERE b.tenant_id = ? ${filter}
+      ORDER BY ${order}
+      LIMIT ?`).all(tenantId, boundary, limit).map((row) => ({
+        id: row.id,
+        channel: row.channel,
+        startAt: row.start_at,
+        estimatedDurationMinutes: row.estimated_duration_minutes,
+        status: row.status,
+        preliminaryAmountMinor: row.preliminary_amount_minor,
+        orderId: row.order_id ?? null,
+        customer: { id: row.customer_id, name: row.customer_name, phoneDisplay: row.customer_phone },
+        vehicle: { id: row.vehicle_id, make: row.make, model: row.model, generation: row.generation, plate: row.plate_display, color: row.color }
+      }));
+    return { kind: 'listed', items };
+  }
+
   updateBooking(tenantId, bookingId, input) {
-    const booking = this.db.prepare(`SELECT id, status, estimated_duration_minutes
+    const booking = this.db.prepare(`SELECT id, status, start_at, estimated_duration_minutes
       FROM bookings WHERE id = ? AND tenant_id = ?`).get(bookingId, tenantId);
     if (!booking) return { kind: 'not_found' };
     const order = this.db.prepare(`SELECT order_id FROM order_workflows
@@ -1233,9 +1585,14 @@ export class DetailFlowRepository {
     if (hasStartAt === hasStatus) return { kind: 'invalid' };
 
     if (hasStatus) {
-      if (input.status !== 'CANCELLED') return { kind: 'invalid' };
-      this.db.prepare(`UPDATE bookings SET status = 'CANCELLED'
-        WHERE id = ? AND tenant_id = ?`).run(bookingId, tenantId);
+      if (!['CANCELLED', 'NO_SHOW'].includes(input.status)) return { kind: 'invalid' };
+      // A no-show is a fact, not a plan: it can be recorded only once the booked time has come.
+      if (input.status === 'NO_SHOW' && Date.parse(booking.start_at) > Date.now()) return {
+        kind: 'conflict', code: 'booking_not_started', message: 'Отметить неявку можно после времени начала записи'
+      };
+      // Only CONFIRMED bookings occupy capacity, so both statuses free the slot.
+      this.db.prepare(`UPDATE bookings SET status = ?
+        WHERE id = ? AND tenant_id = ?`).run(input.status, bookingId, tenantId);
       return { kind: 'updated', booking: this.getBooking(tenantId, bookingId) };
     }
 
@@ -1250,13 +1607,15 @@ export class DetailFlowRepository {
 
   getBooking(tenantId, bookingId) {
     const row = this.db.prepare(`SELECT b.id, b.customer_id, b.vehicle_id, b.channel, b.start_at,
-        b.estimated_duration_minutes, b.status, b.preliminary_amount_minor, b.resource_id,
+        b.estimated_duration_minutes, b.status, b.preliminary_amount_minor, b.resource_id, b.created_at,
         t.timezone, lead.lead_id
       FROM bookings b
       JOIN tenants t ON t.id = b.tenant_id
       LEFT JOIN lead_bookings lead ON lead.booking_id = b.id AND lead.tenant_id = b.tenant_id
       WHERE b.id = ? AND b.tenant_id = ?`).get(bookingId, tenantId);
     if (!row) return null;
+    const quoteVersions = this.getBookingQuoteVersions(tenantId, row);
+    const current = quoteVersions.at(-1);
     return {
       id: row.id,
       leadId: row.lead_id ?? null,
@@ -1269,10 +1628,40 @@ export class DetailFlowRepository {
       status: row.status,
       preliminaryAmountMinor: row.preliminary_amount_minor,
       resourceId: row.resource_id,
+      quoteVersion: current.version,
+      lines: current.lines,
+      quoteVersions
+    };
+  }
+
+  // Version 1 is the original booking_quote_lines snapshot until the first revision
+  // materialises it in booking_quote_versions; later versions are append-only.
+  getBookingQuoteVersions(tenantId, bookingRow) {
+    const stored = this.db.prepare(`SELECT version, vehicle_class, total_amount_minor, total_duration_minutes,
+        lines_json, reason, actor_name, created_at
+      FROM booking_quote_versions WHERE tenant_id = ? AND booking_id = ? ORDER BY version`).all(tenantId, bookingRow.id);
+    if (stored.length) return stored.map((version) => ({
+      version: version.version,
+      vehicleClass: version.vehicle_class,
+      totalAmountMinor: version.total_amount_minor,
+      totalDurationMinutes: version.total_duration_minutes,
+      reason: version.reason,
+      actorName: version.actor_name,
+      createdAt: apiTimestamp(version.created_at),
+      lines: JSON.parse(version.lines_json)
+    }));
+    return [{
+      version: 1,
+      vehicleClass: null,
+      totalAmountMinor: bookingRow.preliminary_amount_minor,
+      totalDurationMinutes: bookingRow.estimated_duration_minutes,
+      reason: null,
+      actorName: null,
+      createdAt: apiTimestamp(bookingRow.created_at),
       lines: this.db.prepare(`SELECT item_type type, item_id id, name, amount_minor amountMinor,
           duration_minutes durationMinutes, operations_json operationsJson,
           excluded_operations_json excludedOperationsJson
-        FROM booking_quote_lines WHERE booking_id = ? ORDER BY rowid`).all(bookingId).map((line) => ({
+        FROM booking_quote_lines WHERE booking_id = ? ORDER BY rowid`).all(bookingRow.id).map((line) => ({
           type: line.type,
           id: line.id,
           name: line.name,
@@ -1281,7 +1670,78 @@ export class DetailFlowRepository {
           operations: JSON.parse(line.operationsJson),
           excludedOperations: JSON.parse(line.excludedOperationsJson)
         }))
+    }];
+  }
+
+  reviseBookingQuote(tenantId, bookingId, input, actorName = null) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return { kind: 'invalid' };
+    if (Object.keys(input).some((key) => !['selections', 'expectedQuoteVersion', 'reason'].includes(key))) return { kind: 'invalid' };
+    if (!Number.isInteger(input.expectedQuoteVersion) || input.expectedQuoteVersion < 1) return { kind: 'invalid' };
+    if (input.reason !== undefined && input.reason !== null && typeof input.reason !== 'string') return { kind: 'invalid' };
+    const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
+    if (reason.length > 200) return { kind: 'invalid' };
+
+    const booking = this.db.prepare(`SELECT b.id, b.vehicle_id, b.start_at, b.status, v.status vehicle_status
+      FROM bookings b JOIN vehicles v ON v.id = b.vehicle_id AND v.tenant_id = b.tenant_id
+      WHERE b.id = ? AND b.tenant_id = ?`).get(bookingId, tenantId);
+    if (!booking) return { kind: 'not_found', resource: 'booking' };
+    if (this.db.prepare('SELECT 1 FROM order_workflows WHERE booking_id = ? AND tenant_id = ?').get(bookingId, tenantId)) {
+      return { kind: 'conflict', code: 'booking_has_order', message: 'По записи уже создан заказ: состав меняется через смету' };
+    }
+    if (booking.status !== 'CONFIRMED') {
+      return { kind: 'conflict', code: 'invalid_booking_state', message: 'Изменить можно только подтверждённую запись' };
+    }
+    const current = this.getBooking(tenantId, bookingId);
+    if (current.quoteVersion !== input.expectedQuoteVersion) return {
+      kind: 'conflict', code: 'stale_quote_version', message: 'Состав записи уже изменён. Обновите запись и повторите'
     };
+    if (booking.vehicle_status !== 'active') return {
+      kind: 'conflict', code: 'vehicle_inactive', message: 'Автомобиль не активен: состав записи изменить нельзя'
+    };
+
+    const quoteResult = this.previewBookingQuote(tenantId, { vehicleId: booking.vehicle_id, selections: input.selections });
+    if (quoteResult.kind !== 'quoted') return quoteResult;
+    const quote = quoteResult.quote;
+    const compositionKey = (lines) => lines.map((line) => `${line.type}:${line.id}`).sort().join('|');
+    if (compositionKey(quote.lines) === compositionKey(current.lines)) return {
+      kind: 'conflict', code: 'quote_unchanged', message: 'Состав записи не изменился'
+    };
+    if (!this.isBookingSlotAvailable(tenantId, booking.start_at, quote.totalDurationMinutes, bookingId)) return {
+      kind: 'conflict', code: 'slot_unavailable', message: 'Новый состав не помещается в выбранное время. Перенесите запись или сократите состав'
+    };
+
+    const insertVersion = this.db.prepare(`INSERT INTO booking_quote_versions
+      (id, tenant_id, booking_id, version, vehicle_class, total_amount_minor, total_duration_minutes,
+       lines_json, reason, actor_name, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`);
+    this.db.exec('BEGIN');
+    try {
+      if (current.quoteVersions.length === 1 && !this.db.prepare(`SELECT 1 FROM booking_quote_versions
+        WHERE tenant_id = ? AND booking_id = ?`).get(tenantId, bookingId)) {
+        const original = current.quoteVersions[0];
+        const originalCreatedAt = this.db.prepare('SELECT created_at FROM bookings WHERE id = ?').get(bookingId).created_at;
+        insertVersion.run(
+          `bqv_${randomUUID()}`, tenantId, bookingId, 1, null, original.totalAmountMinor, original.totalDurationMinutes,
+          JSON.stringify(original.lines), null, null, originalCreatedAt
+        );
+      }
+      insertVersion.run(
+        `bqv_${randomUUID()}`, tenantId, bookingId, current.quoteVersion + 1, quote.vehicleClass,
+        quote.totalAmountMinor, quote.totalDurationMinutes,
+        JSON.stringify(quote.lines.map((line) => ({
+          type: line.type, id: line.id, name: line.name, amountMinor: line.amountMinor, durationMinutes: line.durationMinutes,
+          operations: line.operations, excludedOperations: line.excludedOperations, excluded: line.excluded, pricingMode: line.pricingMode
+        }))),
+        reason || null, actorName, null
+      );
+      this.db.prepare(`UPDATE bookings SET preliminary_amount_minor = ?, estimated_duration_minutes = ?
+        WHERE id = ? AND tenant_id = ?`).run(quote.totalAmountMinor, quote.totalDurationMinutes, bookingId, tenantId);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'updated', booking: this.getBooking(tenantId, bookingId) };
   }
 
   createOrderFromBooking(tenantId, input) {
@@ -1524,9 +1984,29 @@ export class DetailFlowRepository {
     };
   }
 
+  /** Active team members with the master role and their current workload (approved or in-progress orders). */
+  listMasters(tenantId) {
+    return this.db.prepare(`SELECT m.id, m.display_name, m.roles_json,
+        (SELECT COUNT(*) FROM order_assignment_members a JOIN orders o ON o.id = a.order_id AND o.tenant_id = a.tenant_id
+          WHERE a.tenant_id = m.tenant_id AND a.member_id = m.id AND o.status IN ('APPROVED', 'IN_PROGRESS')) active_orders
+      FROM tenant_members m WHERE m.tenant_id = ? AND m.status = 'active'
+      ORDER BY active_orders, m.display_name`).all(tenantId)
+      .filter((row) => JSON.parse(row.roles_json).includes('master'))
+      .map((row) => ({ id: row.id, displayName: row.display_name, activeOrders: row.active_orders }));
+  }
+
   assignOrderMaster(tenantId, orderId, input) {
-    const masterName = String(input?.masterName ?? '').trim();
-    if (masterName.length < 2 || masterName.length > 120) return { kind: 'invalid' };
+    // Preferred: a real team member (memberId). Legacy clients may still send a free-text masterName.
+    const memberId = typeof input?.memberId === 'string' && input.memberId ? input.memberId : null;
+    let masterName = String(input?.masterName ?? '').trim();
+    if (memberId) {
+      const member = this.db.prepare(`SELECT display_name, roles_json, status FROM tenant_members
+        WHERE id = ? AND tenant_id = ?`).get(memberId, tenantId);
+      if (!member || member.status !== 'active' || !JSON.parse(member.roles_json).includes('master')) {
+        return { kind: 'invalid', code: 'not_a_master' };
+      }
+      masterName = member.display_name;
+    } else if (masterName.length < 2 || masterName.length > 120) return { kind: 'invalid' };
     const order = this.db.prepare(`SELECT id, status FROM orders WHERE id = ? AND tenant_id = ?`)
       .get(orderId, tenantId);
     if (!order) return { kind: 'not_found' };
@@ -1539,7 +2019,10 @@ export class DetailFlowRepository {
         VALUES (?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(order_id) DO UPDATE SET master_name = excluded.master_name, assigned_at = CURRENT_TIMESTAMP`)
         .run(orderId, tenantId, masterName);
-      this.insertOrderAudit(tenantId, orderId, 'MASTER_ASSIGNED', { masterName });
+      this.db.prepare('DELETE FROM order_assignment_members WHERE order_id = ? AND tenant_id = ?').run(orderId, tenantId);
+      if (memberId) this.db.prepare(`INSERT INTO order_assignment_members (order_id, tenant_id, member_id)
+        VALUES (?, ?, ?)`).run(orderId, tenantId, memberId);
+      this.insertOrderAudit(tenantId, orderId, 'MASTER_ASSIGNED', { masterName, memberId });
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
@@ -1757,19 +2240,155 @@ export class DetailFlowRepository {
     return { kind: 'updated', order: this.getOrder(tenantId, orderId) };
   }
 
+  // Builds the frozen content of an order document from the current order state.
+  // It is stored verbatim at issue time, so later edits never change an issued act.
+  buildOrderDocumentContent(tenantId, orderId, type) {
+    const order = this.getOrder(tenantId, orderId);
+    if (!order) return { kind: 'not_found' };
+    const parties = this.db.prepare(`SELECT t.name tenant_name, c.name customer_name, c.phone_display,
+        v.make, v.model, v.generation, v.plate_display, v.color
+      FROM orders o
+      JOIN tenants t ON t.id = o.tenant_id
+      JOIN customers c ON c.id = o.customer_id AND c.tenant_id = o.tenant_id
+      JOIN vehicles v ON v.id = o.vehicle_id AND v.tenant_id = o.tenant_id
+      WHERE o.id = ? AND o.tenant_id = ?`).get(orderId, tenantId);
+    const base = {
+      center: { name: parties.tenant_name },
+      order: { id: order.id, number: order.id.replace(/^order_/, '').slice(0, 8), createdAt: order.createdAt },
+      customer: { name: parties.customer_name, phoneDisplay: parties.phone_display },
+      vehicle: { make: parties.make, model: parties.model, generation: parties.generation, plate: parties.plate_display, color: parties.color }
+    };
+    const photoCount = (phase) => order.photos.filter((photo) => photo.phase === phase).length;
+    if (type === 'intake_act') {
+      if (!order.intake) return { kind: 'conflict', code: 'document_not_available', message: 'Сначала сохраните приёмку автомобиля' };
+      return { kind: 'built', content: {
+        title: 'Акт приёмки автомобиля',
+        ...base,
+        intake: {
+          conditionSummary: order.intake.conditionSummary,
+          completedAt: order.intake.completedAt,
+          findings: order.intake.findings.map(({ zone, severity, note }) => ({ zone, severity, note })),
+          recommendations: order.intake.recommendations.map(({ title, reason, priority }) => ({ title, reason, priority })),
+          photoCount: photoCount('intake')
+        },
+        statement: 'Автомобиль передан в центр для выполнения работ в состоянии, описанном в этом акте. Перечисленные повреждения и замечания зафиксированы до начала работ.'
+      } };
+    }
+    if (order.status !== 'CLOSED') return { kind: 'conflict', code: 'document_not_available', message: 'Акт выдачи формируется после закрытия заказа' };
+    const approval = order.approval?.decision === 'APPROVED' ? order.approval : null;
+    const estimate = order.estimateVersions.find((item) => item.id === (approval?.estimateVersionId ?? order.currentEstimateVersionId)) ?? null;
+    const works = order.work?.operations.length
+      ? order.work.operations.map((operation) => ({ name: operation.name, amountMinor: operation.amountMinor, status: operation.status }))
+      : (estimate?.lines ?? []).map((line) => ({ name: line.name, amountMinor: line.amountMinor, status: 'DONE' }));
+    return { kind: 'built', content: {
+      title: 'Акт выдачи автомобиля (заказ-наряд)',
+      ...base,
+      estimate: estimate ? {
+        version: estimate.version,
+        totalAmountMinor: estimate.totalAmountMinor,
+        approvedAt: approval?.decidedAt ?? null,
+        approvalMethod: approval?.method ?? null,
+        approvedBy: approval?.responsible ?? null
+      } : null,
+      works,
+      // Historical orders closed before handovers were recorded have no handover row.
+      handover: order.handover
+        ? { responsible: order.handover.responsible, note: order.handover.note, handedOverAt: order.handover.handedOverAt }
+        : null,
+      photos: { intake: photoCount('intake'), result: photoCount('result') },
+      statement: 'Работы выполнены по согласованной смете. Клиент осмотрел автомобиль и принял его. Сумма указана по согласованной смете и не подтверждает расчёты.'
+    } };
+  }
+
+  listOrderDocuments(tenantId, orderId) {
+    if (!this.db.prepare('SELECT 1 FROM orders WHERE id = ? AND tenant_id = ?').get(orderId, tenantId)) return null;
+    const intakeCompletedAt = this.db.prepare('SELECT completed_at FROM order_intakes WHERE order_id = ?').get(orderId)?.completed_at ?? null;
+    const seenTypes = new Set();
+    return this.db.prepare(`SELECT id, document_type, number, signer_name, signature_data_url IS NOT NULL signed, actor_name, created_at
+      FROM order_documents WHERE tenant_id = ? AND order_id = ?
+      ORDER BY created_at DESC, rowid DESC`).all(tenantId, orderId).map((row) => {
+        const current = !seenTypes.has(row.document_type);
+        seenTypes.add(row.document_type);
+        return {
+          id: row.id,
+          type: row.document_type,
+          number: row.number,
+          signed: row.signed === 1,
+          signerName: row.signer_name,
+          signedAt: row.signed === 1 ? apiTimestamp(row.created_at) : null,
+          actorName: row.actor_name,
+          createdAt: apiTimestamp(row.created_at),
+          current,
+          // A re-saved intake after the act was issued makes the act describe an older inspection.
+          outdated: row.document_type === 'intake_act' && intakeCompletedAt !== null && intakeCompletedAt > row.created_at
+        };
+      });
+  }
+
+  getOrderDocument(tenantId, orderId, documentId) {
+    const summary = this.listOrderDocuments(tenantId, orderId)?.find((item) => item.id === documentId);
+    if (!summary) return null;
+    const row = this.db.prepare(`SELECT content_json, signature_data_url FROM order_documents
+      WHERE id = ? AND tenant_id = ? AND order_id = ?`).get(documentId, tenantId, orderId);
+    return { ...summary, content: JSON.parse(row.content_json), signatureDataUrl: row.signature_data_url };
+  }
+
+  issueOrderDocument(tenantId, orderId, input, actorName = null) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return { kind: 'invalid' };
+    if (Object.keys(input).some((key) => !['type', 'signerName', 'signatureDataUrl'].includes(key))) return { kind: 'invalid' };
+    if (!['intake_act', 'handover_act'].includes(input.type)) return { kind: 'invalid' };
+    const hasSignature = input.signatureDataUrl !== undefined && input.signatureDataUrl !== null;
+    const hasSigner = input.signerName !== undefined && input.signerName !== null;
+    if (hasSignature !== hasSigner) return { kind: 'invalid' };
+    let signerName = null;
+    let signatureDataUrl = null;
+    if (hasSignature) {
+      if (typeof input.signatureDataUrl !== 'string' || typeof input.signerName !== 'string') return { kind: 'invalid' };
+      signerName = input.signerName.trim();
+      const match = input.signatureDataUrl.match(/^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/);
+      const bytes = match ? Buffer.from(match[1], 'base64') : null;
+      const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+      if (signerName.length < 2 || signerName.length > 120 || !bytes || bytes.length < 8 || bytes.length > 200 * 1024 ||
+        pngSignature.some((byte, index) => bytes[index] !== byte)) return { kind: 'invalid' };
+      signatureDataUrl = input.signatureDataUrl;
+    }
+
+    const built = this.buildOrderDocumentContent(tenantId, orderId, input.type);
+    if (built.kind !== 'built') return built;
+    const id = `doc_${randomUUID()}`;
+    this.db.exec('BEGIN');
+    try {
+      const sequence = this.db.prepare(`SELECT COALESCE(MAX(sequence), 0) + 1 next FROM order_documents
+        WHERE tenant_id = ? AND document_type = ?`).get(tenantId, input.type).next;
+      const number = `${input.type === 'intake_act' ? 'АП' : 'АВ'}-${String(sequence).padStart(6, '0')}`;
+      this.db.prepare(`INSERT INTO order_documents
+        (id, tenant_id, order_id, document_type, sequence, number, content_json, signer_name, signature_data_url, actor_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+          id, tenantId, orderId, input.type, sequence, number, JSON.stringify(built.content), signerName, signatureDataUrl, actorName
+        );
+      this.insertOrderAudit(tenantId, orderId, 'DOCUMENT_ISSUED', { documentId: id, type: input.type, number, signed: hasSignature });
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'created', document: this.getOrderDocument(tenantId, orderId, id) };
+  }
+
   listOrders(tenantId, limit = 20) {
     const requestedLimit = Number(limit);
     const boundedLimit = Number.isInteger(requestedLimit) ? Math.min(50, Math.max(1, requestedLimit)) : 20;
     return this.db.prepare(`SELECT o.id, o.status, o.created_at,
         c.id customer_id, c.name customer_name, c.phone_display customer_phone,
         v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color,
-        e.total_amount_minor, a.master_name
+        e.total_amount_minor, a.master_name, am.member_id master_member_id
       FROM orders o
       JOIN customers c ON c.id = o.customer_id AND c.tenant_id = o.tenant_id
       JOIN vehicles v ON v.id = o.vehicle_id AND v.tenant_id = o.tenant_id
       LEFT JOIN order_workflows w ON w.order_id = o.id AND w.tenant_id = o.tenant_id
       LEFT JOIN estimate_versions e ON e.id = w.current_estimate_version_id AND e.tenant_id = o.tenant_id
       LEFT JOIN order_assignments a ON a.order_id = o.id AND a.tenant_id = o.tenant_id
+      LEFT JOIN order_assignment_members am ON am.order_id = o.id AND am.tenant_id = o.tenant_id
       WHERE o.tenant_id = ?
       ORDER BY o.created_at DESC, o.rowid DESC
       LIMIT ?`).all(tenantId, boundedLimit).map((row) => ({
@@ -1778,6 +2397,7 @@ export class DetailFlowRepository {
         createdAt: apiTimestamp(row.created_at),
         totalAmountMinor: row.total_amount_minor ?? null,
         masterName: row.master_name ?? null,
+        masterMemberId: row.master_member_id ?? null,
         customer: {
           id: row.customer_id,
           name: row.customer_name,
@@ -1891,8 +2511,9 @@ export class DetailFlowRepository {
     const intake = this.db.prepare(`SELECT condition_summary, completed_at FROM order_intakes WHERE order_id = ?`).get(orderId);
     const approval = this.db.prepare(`SELECT estimate_version_id, decision, method, source, responsible, decided_at
       FROM estimate_approvals WHERE order_id = ? ORDER BY decided_at DESC, rowid DESC LIMIT 1`).get(orderId);
-    const assignment = this.db.prepare(`SELECT master_name, assigned_at FROM order_assignments
-      WHERE order_id = ? AND tenant_id = ?`).get(orderId, tenantId);
+    const assignment = this.db.prepare(`SELECT a.master_name, a.assigned_at, am.member_id FROM order_assignments a
+      LEFT JOIN order_assignment_members am ON am.order_id = a.order_id AND am.tenant_id = a.tenant_id
+      WHERE a.order_id = ? AND a.tenant_id = ?`).get(orderId, tenantId);
     const workRun = this.db.prepare(`SELECT status, pause_note, started_at, updated_at, completed_at
       FROM order_work_runs WHERE order_id = ? AND tenant_id = ?`).get(orderId, tenantId);
     const handover = this.db.prepare(`SELECT responsible, note, handed_over_at FROM order_handovers
@@ -1940,6 +2561,7 @@ export class DetailFlowRepository {
       } : null,
       assignment: assignment ? {
         masterName: assignment.master_name,
+        memberId: assignment.member_id ?? null,
         assignedAt: apiTimestamp(assignment.assigned_at)
       } : null,
       work: workRun ? {
@@ -1981,7 +2603,8 @@ export class DetailFlowRepository {
           eventType: event.event_type,
           metadata: JSON.parse(event.metadata_json),
           occurredAt: apiTimestamp(event.occurred_at)
-        }))
+        })),
+      documents: this.listOrderDocuments(tenantId, orderId)
     };
   }
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from './api';
+import { OperationLibrary } from './OperationLibrary';
 import type { ManagedCatalog, ManagedCatalogItem } from './types';
 
 type Operation = ManagedCatalog['operationLibrary'][number];
@@ -16,7 +17,7 @@ function itemPrice(item: ManagedCatalogItem, tenantClass: string) {
 export function CatalogScreen({ onBack }: { onBack: () => void }) {
   const [catalog, setCatalog] = useState<ManagedCatalog | null>(null);
   const [tenantClass, setTenantClass] = useState('');
-  const [kind, setKind] = useState<'service' | 'package'>('service');
+  const [kind, setKind] = useState<'service' | 'package' | 'operations'>('service');
   const [showArchived, setShowArchived] = useState(false);
   const [editing, setEditing] = useState<ManagedCatalogItem | null>(null);
   const [creating, setCreating] = useState<'service' | 'package' | null>(null);
@@ -44,11 +45,13 @@ export function CatalogScreen({ onBack }: { onBack: () => void }) {
     {error && <div className="workspace-state error-state"><strong>Не удалось загрузить каталог</strong><span>{error}</span><button onClick={() => setRevision((value) => value + 1)}>Повторить</button></div>}
     {!catalog && !error && <div className="workspace-state"><span className="spinner"/> Загружаем каталог</div>}
     {catalog && <>
-      <div className="catalog-class-picker" aria-label="Класс автомобиля"><span>Цены для класса</span><div>{catalog.vehicleClasses.map((value) => <button key={value} className={tenantClass === value ? 'selected' : ''} onClick={() => setTenantClass(value)}>{value}</button>)}</div></div>
-      <div className="catalog-toolbar"><div className="workspace-section-tabs catalog-kind-tabs" role="tablist" aria-label="Тип позиции"><button role="tab" aria-selected={kind === 'service'} className={kind === 'service' ? 'selected' : ''} onClick={() => setKind('service')}>Услуги</button><button role="tab" aria-selected={kind === 'package'} className={kind === 'package' ? 'selected' : ''} onClick={() => setKind('package')}>Пакеты</button></div><button className="catalog-create-button" data-testid="create-catalog-item" onClick={() => setCreating(kind)}>+ Создать</button></div>
+      {kind !== 'operations' && <div className="catalog-class-picker" aria-label="Класс автомобиля"><span>Цены для класса</span><div>{catalog.vehicleClasses.map((value) => <button key={value} className={tenantClass === value ? 'selected' : ''} onClick={() => setTenantClass(value)}>{value}</button>)}</div></div>}
+      <div className="catalog-toolbar"><div className="workspace-section-tabs catalog-kind-tabs" role="tablist" aria-label="Тип позиции"><button role="tab" aria-selected={kind === 'service'} className={kind === 'service' ? 'selected' : ''} onClick={() => setKind('service')}>Услуги</button><button role="tab" aria-selected={kind === 'package'} className={kind === 'package' ? 'selected' : ''} onClick={() => setKind('package')}>Пакеты</button><button role="tab" data-testid="catalog-operations-tab" aria-selected={kind === 'operations'} className={kind === 'operations' ? 'selected' : ''} onClick={() => setKind('operations')}>Операции</button></div>{kind !== 'operations' && <button className="catalog-create-button" data-testid="create-catalog-item" onClick={() => setCreating(kind as 'service' | 'package')}>+ Создать</button>}</div>
+      {kind === 'operations' ? <OperationLibrary onChanged={() => setRevision((value) => value + 1)}/> : <>
       <label className="catalog-archive-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)}/><span>Показывать архивные</span></label>
       <div className="catalog-managed-list">{items.map((item) => { const price = itemPrice(item, tenantClass); return <article key={item.id} className={`catalog-managed-card ${item.active ? '' : 'archived'}`} data-testid={`catalog-card-${item.id}`}><div><span>{item.category}</span><i>{item.active ? 'Активна' : 'Архив'}</i></div><h3>{item.name}</h3><p>{item.description}</p><div className="catalog-managed-summary"><span><small>{item.operations.length} {item.type === 'service' ? 'операции' : 'в пакете'}</small><strong>{price ? money.format(price.amountMinor / 100) : 'Нет цены'}</strong></span><span><small>Длительность</small><strong>{price ? `${price.durationMinutes} мин` : '—'}</strong></span></div><button onClick={() => setEditing(item)}>Редактировать</button></article>; })}</div>
       {items.length === 0 && <div className="workspace-state"><strong>Позиции не найдены</strong><span>Создайте первую позицию или включите архивные</span></div>}
+      </>}
     </>}
   </section>;
 }

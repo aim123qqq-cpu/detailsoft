@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import { api } from './api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSessionInfo } from './session';
+import { ApiRequestError, api } from './api';
+import { ServicesStep } from './BookingFlow';
+import { OrderDocumentsPanel } from './OrderDocuments';
+import { ShareOrderButton } from './ShareOrderButton';
 import { productFeatures } from './features';
-import type { BookingAvailability, BookingListItem, BookingStatus, Lead, LeadStatus, OrderListItem, WorkOrder } from './types';
+import type { Booking, BookingAvailability, BookingListItem, BookingQuote, BookingStatus, Lead, LeadStatus, OrderListItem, OrderTarget, QuoteSelection, WorkOrder } from './types';
 
 const money = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
 const bookingDate = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
@@ -94,9 +98,30 @@ function useCalendarItems(enabled: boolean, from: string, to: string) {
   return { items, loading, error, retry: () => setRevision((value) => value + 1) };
 }
 
-export function BookingsWorkspace({ onNew, onLeadConvert }: { onNew: () => void; onLeadConvert: (lead: Lead) => void }) {
+const noLeads = async () => ({ items: [] as Lead[] });
+
+function orderTarget(bookingId: string, orderId: string | null, item: Pick<BookingListItem, 'customer' | 'vehicle'>): OrderTarget {
+  return {
+    id: bookingId,
+    orderId,
+    customer: { id: item.customer.id, name: item.customer.name, phoneDisplay: item.customer.phoneDisplay, visitCount: 0, vehicles: [] },
+    vehicle: { ...item.vehicle, status: 'active', active: true }
+  };
+}
+
+export function BookingsWorkspace({ onNew, onLeadConvert, onOpenCustomer, onOpenOrder, refreshToken }: {
+  onNew: () => void;
+  onLeadConvert: (lead: Lead) => void;
+  onOpenCustomer: (customerId: string) => void;
+  onOpenOrder: (target: OrderTarget) => void;
+  refreshToken: number;
+}) {
+  const session = useSessionInfo();
+  // Intake staff see the schedule to start intakes; leads and booking changes stay with the front desk.
+  const canManage = !session || session.capabilities.manageBookings;
   const bookings = useWorkspaceItems(api.listBookings);
-  const leads = useWorkspaceItems(api.listLeads);
+  const overdue = useWorkspaceItems(api.listOverdueBookings);
+  const leads = useWorkspaceItems(canManage ? api.listLeads : noLeads);
   const [tab, setTab] = useState<'bookings' | 'leads'>('bookings');
   const [calendarMode, setCalendarMode] = useState<'day' | 'week' | 'list'>('list');
   const [calendarDate, setCalendarDate] = useState(localDateKey(new Date()));
@@ -110,30 +135,45 @@ export function BookingsWorkspace({ onNew, onLeadConvert }: { onNew: () => void;
     if (selected) window.scrollTo({ top: 0, behavior: 'auto' });
   }, [selected?.id]);
 
+  // Returning from the order workspace: reload lists and pick up the opened booking's new state.
+  useEffect(() => {
+    if (!refreshToken) return;
+    bookings.retry(); overdue.retry(); calendar.retry(); leads.retry();
+  }, [refreshToken]);
+  useEffect(() => {
+    if (!selected) return;
+    const updated = [...bookings.items, ...overdue.items].find((booking) => booking.id === selected.id);
+    if (updated && (updated.status !== selected.status || updated.orderId !== selected.orderId)) setSelected(updated);
+  }, [bookings.items, overdue.items]);
+
   if (selected) {
-    return <BookingDetails item={selected} onBack={() => { setSelected(null); bookings.retry(); calendar.retry(); }} onChanged={setSelected}/>;
+    return <BookingDetails item={selected} onBack={() => { setSelected(null); bookings.retry(); overdue.retry(); calendar.retry(); }} onChanged={setSelected} onOpenCustomer={onOpenCustomer} onOpenOrder={onOpenOrder} refreshToken={refreshToken} canManage={canManage}/>;
   }
 
   return (
     <section className="screen workspace-screen" data-testid="bookings-workspace">
       <div className="workspace-hero">
         <span>Расписание центра</span>
-        <div><strong>{bookings.items.length}</strong><small>записей</small><strong>{leads.items.filter((item) => item.status === 'NEW').length}</strong><small>новых</small></div>
+        <div><strong>{bookings.items.length}</strong><small>записей</small>{canManage && <><strong>{leads.items.filter((item) => item.status === 'NEW').length}</strong><small>новых</small></>}</div>
       </div>
-      <div className="workspace-section-tabs" role="tablist" aria-label="Записи и обращения">
+      {canManage && <div className="workspace-section-tabs" role="tablist" aria-label="Записи и обращения">
         <button role="tab" aria-selected={tab === 'bookings'} className={tab === 'bookings' ? 'selected' : ''} onClick={() => setTab('bookings')}>Расписание <span>{bookings.items.length}</span></button>
         <button role="tab" aria-selected={tab === 'leads'} className={tab === 'leads' ? 'selected' : ''} onClick={() => setTab('leads')}>Обращения <span>{leads.items.filter((item) => item.status === 'NEW' || item.status === 'CONTACTED').length}</span></button>
-      </div>
-      {tab === 'leads' ? <LeadsPanel data={leads} onConvert={onLeadConvert}/> : <>
+      </div>}
+      {tab === 'leads' ? <LeadsPanel data={leads} onConvert={onLeadConvert} onOpenCustomer={onOpenCustomer}/> : <>
       <div className="calendar-view-switch" role="tablist" aria-label="Режим календаря">
         <button role="tab" aria-selected={calendarMode === 'day'} className={calendarMode === 'day' ? 'selected' : ''} onClick={() => setCalendarMode('day')}>День</button>
         <button role="tab" aria-selected={calendarMode === 'week'} className={calendarMode === 'week' ? 'selected' : ''} onClick={() => setCalendarMode('week')}>Неделя</button>
         <button role="tab" aria-selected={calendarMode === 'list'} className={calendarMode === 'list' ? 'selected' : ''} onClick={() => setCalendarMode('list')}>Список</button>
       </div>
       {calendarMode === 'list' ? <>
-        <div className="workspace-toolbar"><div><h2>Ближайшие визиты</h2><p>Клиент, автомобиль и состав записи</p></div><button onClick={onNew}>+ Новая</button></div>
+        {overdue.items.length > 0 && <section className="overdue-bookings" data-testid="overdue-bookings">
+          <div className="workspace-toolbar"><div><h2>Требуют отметки · {overdue.items.length}</h2><p>Время визита прошло: начните приёмку или отметьте неявку</p></div></div>
+          <div className="workspace-list">{overdue.items.map((item) => <BookingCard key={item.id} item={item} onOpen={() => setSelected(item)}/>)}</div>
+        </section>}
+        <div className="workspace-toolbar"><div><h2>Ближайшие визиты</h2><p>С сегодняшнего дня, по времени</p></div>{canManage && <button onClick={onNew}>+ Новая</button>}</div>
         {bookings.loading ? <LoadingState/> : bookings.error ? <ErrorState message={bookings.error} onRetry={bookings.retry}/> : bookings.items.length === 0 ? (
-          <div className="workspace-state"><strong>Записей пока нет</strong><span>Создайте первую запись для клиента</span><button onClick={onNew}>Создать запись</button></div>
+          <div className="workspace-state"><strong>Записей пока нет</strong><span>{canManage ? 'Создайте первую запись для клиента' : 'Записи появятся, когда администратор их создаст'}</span>{canManage && <button onClick={onNew}>Создать запись</button>}</div>
         ) : <div className="workspace-list">{bookings.items.map((item) => <BookingCard key={item.id} item={item} onOpen={() => setSelected(item)}/>)}</div>}
       </> : <CalendarPanel mode={calendarMode} date={calendarDate} weekDays={weekDays} data={calendar} onDate={setCalendarDate} onNew={onNew} onOpen={setSelected}/>}</>}
     </section>
@@ -192,9 +232,10 @@ const leadChannelLabels: Record<Lead['channel'], string> = {
   telegram: 'Telegram', vk: 'VK', instagram: 'Instagram', call: 'Звонок', in_person: 'На месте'
 };
 
-function LeadsPanel({ data, onConvert }: {
+function LeadsPanel({ data, onConvert, onOpenCustomer }: {
   data: { items: Lead[]; loading: boolean; error: string; retry: () => void };
   onConvert: (lead: Lead) => void;
+  onOpenCustomer: (customerId: string) => void;
 }) {
   const [filter, setFilter] = useState<'active' | 'all'>('active');
   const [creating, setCreating] = useState(false);
@@ -237,7 +278,7 @@ function LeadsPanel({ data, onConvert }: {
       return <article className="lead-card" key={lead.id} data-testid={`lead-card-${lead.id}`}>
         <div className="lead-card-top"><span className={`status-pill ${status.className}`}>{status.label}</span><span>{leadChannelLabels[lead.channel]}</span></div>
         <h3>{lead.contactName}</h3><a href={`tel:${lead.phoneDisplay}`}>{lead.phoneDisplay}</a><p>{lead.note || 'Комментарий не добавлен'}</p>
-        {lead.customer && <small>Клиент найден: {lead.customer.name}</small>}
+        {lead.customer && <button className="lead-customer-link" data-testid={`lead-customer-${lead.id}`} onClick={() => onOpenCustomer(lead.customer!.id)}>Клиент найден: {lead.customer.name} · карточка ›</button>}
         {(lead.status === 'NEW' || lead.status === 'CONTACTED') && <div className="lead-actions">
           {lead.status === 'NEW' && <button disabled={saving} onClick={() => changeStatus(lead, 'CONTACTED')}>В работу</button>}
           <button className="primary" disabled={saving} onClick={() => onConvert(lead)}>В запись →</button>
@@ -256,7 +297,7 @@ function BookingCard({ item, onOpen }: { item: BookingListItem; onOpen: () => vo
     <button className="workspace-card booking-card" data-testid={`booking-card-${item.id}`} onClick={onOpen}>
       <div className="workspace-card-time"><strong>{bookingTime.format(date)}</strong><span>{bookingDate.format(date)}</span></div>
       <div className="workspace-card-body">
-        <div className="workspace-card-top"><span className={`status-pill ${status.className}`}>{status.label}</span><span>{item.orderId ? 'Есть заказ' : item.channel}</span></div>
+        <div className="workspace-card-top"><span className={`status-pill ${status.className}`}>{status.label}</span><span>{item.orderId ? 'Есть заказ' : leadChannelLabels[item.channel as Lead['channel']] ?? item.channel}</span></div>
         <h3>{item.customer.name}</h3>
         <p>{item.vehicle.make} {item.vehicle.model} {item.vehicle.generation}</p>
         <div className="workspace-card-meta"><span className="plate">{item.vehicle.plate}</span><span>{item.estimatedDurationMinutes} мин</span><strong>{money.format(item.preliminaryAmountMinor / 100)}</strong></div>
@@ -265,19 +306,72 @@ function BookingCard({ item, onOpen }: { item: BookingListItem; onOpen: () => vo
   );
 }
 
-function BookingDetails({ item, onBack, onChanged }: {
+function BookingDetails({ item, onBack, onChanged, onOpenCustomer, onOpenOrder, refreshToken, canManage }: {
   item: BookingListItem;
   onBack: () => void;
   onChanged: (item: BookingListItem) => void;
+  onOpenCustomer: (customerId: string) => void;
+  onOpenOrder: (target: OrderTarget) => void;
+  refreshToken: number;
+  canManage: boolean;
 }) {
-  const [mode, setMode] = useState<'details' | 'reschedule' | 'cancel'>('details');
+  const session = useSessionInfo();
+  const canOpenCustomer = !session || session.capabilities.manageCustomers;
+  const [mode, setMode] = useState<'details' | 'reschedule' | 'cancel' | 'noshow' | 'compose' | 'compose-review'>('details');
   const [date, setDate] = useState(item.startAt.slice(0, 10));
   const [availability, setAvailability] = useState<BookingAvailability | null>(null);
   const [selectedStartAt, setSelectedStartAt] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [booking, setBooking] = useState<Booking | null>(null);
+  const [bookingRevision, setBookingRevision] = useState(0);
+  const [draft, setDraft] = useState<null | { selections: QuoteSelection[]; quote: BookingQuote }>(null);
+  const [reason, setReason] = useState('');
+  const [notice, setNotice] = useState('');
+  const [slotConflict, setSlotConflict] = useState(false);
   const status = bookingStatuses[item.status];
   const locked = Boolean(item.orderId) || item.status !== 'CONFIRMED';
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api.getBooking(item.id, controller.signal)
+      .then(setBooking)
+      .catch((requestError: Error) => { if (requestError.name !== 'AbortError') setError(requestError.message); });
+    return () => controller.abort();
+  }, [item.id, bookingRevision, refreshToken]);
+
+  const saveComposition = async () => {
+    if (!booking || !draft) return;
+    setLoading(true); setError(''); setSlotConflict(false);
+    try {
+      const updated = await api.reviseBookingQuote(item.id, {
+        selections: draft.selections, expectedQuoteVersion: booking.quoteVersion, ...(reason.trim() ? { reason: reason.trim() } : {})
+      });
+      setBooking(updated);
+      onChanged({ ...item, preliminaryAmountMinor: updated.preliminaryAmountMinor, estimatedDurationMinutes: updated.estimatedDurationMinutes });
+      setDraft(null); setReason(''); setMode('details');
+      setNotice(`Состав обновлён: расчёт v${updated.quoteVersion}. Предыдущая версия сохранена.`);
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    } catch (requestError) {
+      const code = requestError instanceof ApiRequestError ? requestError.code : '';
+      if (code === 'slot_unavailable') setSlotConflict(true);
+      if (code === 'stale_quote_version') setBookingRevision((value) => value + 1);
+      setError((requestError as Error).message);
+    } finally { setLoading(false); }
+  };
+
+  const composeScreen = mode === 'compose' && booking ? (
+    <ServicesStep
+      vehicle={{ ...item.vehicle, tenantClass: booking.quoteVersions.at(-1)?.vehicleClass ?? null }}
+      initialSelections={draft?.selections ?? booking.lines.map((line) => ({ type: line.type, id: line.id }))}
+      title="Изменить состав записи"
+      backLabel="Отмена"
+      continueLabel="Проверить изменения →"
+      continueTestId="review-composition"
+      onBack={() => { setDraft(null); setMode('details'); }}
+      onContinue={(selections, quote) => { setDraft({ selections, quote }); setError(''); setSlotConflict(false); setMode('compose-review'); }}
+    />
+  ) : null;
 
   useEffect(() => {
     if (mode !== 'reschedule' || !date) return;
@@ -291,7 +385,7 @@ function BookingDetails({ item, onBack, onChanged }: {
     return () => controller.abort();
   }, [date, item.estimatedDurationMinutes, mode]);
 
-  const applyChange = async (input: { startAt: string } | { status: 'CANCELLED' }) => {
+  const applyChange = async (input: { startAt: string } | { status: 'CANCELLED' | 'NO_SHOW' }) => {
     setLoading(true);
     setError('');
     try {
@@ -306,6 +400,8 @@ function BookingDetails({ item, onBack, onChanged }: {
     }
   };
 
+  if (composeScreen) return composeScreen;
+
   return (
     <section className="screen booking-details-screen" data-testid="booking-details">
       <button className="details-back" onClick={onBack}>← Все записи</button>
@@ -314,6 +410,7 @@ function BookingDetails({ item, onBack, onChanged }: {
         <h2>{item.customer.name}</h2>
         <p>{item.customer.phoneDisplay}</p>
         <div className="details-vehicle"><span className="plate">{item.vehicle.plate}</span><strong>{item.vehicle.make} {item.vehicle.model} {item.vehicle.generation}</strong><small>{item.vehicle.color}</small></div>
+        {canOpenCustomer && <button className="details-customer-link" data-testid="booking-open-customer" onClick={() => onOpenCustomer(item.customer.id)}>Карточка клиента ›</button>}
       </div>
       <div className="details-grid">
         <div><span>Дата</span><strong>{bookingDateLong.format(new Date(item.startAt))}</strong></div>
@@ -322,11 +419,54 @@ function BookingDetails({ item, onBack, onChanged }: {
         <div><span>Предварительно</span><strong>{money.format(item.preliminaryAmountMinor / 100)}</strong></div>
       </div>
 
-      {item.orderId && <div className="booking-lock-note"><strong>По записи уже создан заказ</strong><span>Дата и статус зафиксированы в истории работ.</span></div>}
+      {mode === 'details' && !locked && <div className="booking-arrival" data-testid="booking-arrival">
+        <button className="primary-button" data-testid="start-booking-intake" onClick={() => onOpenOrder(orderTarget(item.id, null, item))}>Клиент приехал — начать приёмку</button>
+        {canManage && Date.parse(item.startAt) <= Date.now() && <button className="secondary-action" data-testid="mark-no-show" onClick={() => setMode('noshow')}>Клиент не приехал</button>}
+      </div>}
+      {mode === 'details' && item.orderId && <button className="primary-button booking-open-order" data-testid="open-booking-order" onClick={() => onOpenOrder(orderTarget(item.id, item.orderId, item))}>Открыть рабочий заказ →</button>}
+      {item.orderId && <div className="booking-lock-note"><strong>По записи уже создан заказ</strong><span>Дата, статус и состав зафиксированы; дальнейшие изменения идут через смету.</span></div>}
+      {notice && mode === 'details' && <div className="vehicle-success" role="status">✓ {notice}</div>}
+      {error && mode === 'details' && <p className="form-error" role="alert">{error}</p>}
 
-      {mode === 'details' && !locked && <div className="booking-actions">
+      {mode === 'compose-review' && booking && draft && <CompositionReview
+        booking={booking}
+        draft={draft.quote}
+        reason={reason}
+        onReason={setReason}
+        loading={loading}
+        error={error}
+        slotConflict={slotConflict}
+        onEdit={() => setMode('compose')}
+        onCancel={() => { setDraft(null); setError(''); setMode('details'); }}
+        onReschedule={() => { setError(''); setMode('reschedule'); }}
+        onSave={saveComposition}
+      />}
+
+      {mode === 'details' && booking && <section className="order-detail-section booking-composition" data-testid="booking-composition">
+        <div className="detail-section-heading"><span>Состав записи</span><strong>Расчёт v{booking.quoteVersion}</strong></div>
+        <div className="detail-rows">{booking.lines.map((line) => <div key={`${line.type}-${line.id}`}><span>{line.name}{line.amountMinor === 0 && line.excludedOperations.length > 0 ? ' · в пакете' : ''}</span><strong>{money.format(line.amountMinor / 100)}</strong></div>)}</div>
+        {!locked && canManage && <button className="secondary-action composition-edit" data-testid="edit-composition" onClick={() => { setNotice(''); setError(''); setMode('compose'); }}>Изменить состав</button>}
+        {booking.quoteVersions.length > 1 && <details className="composition-history" data-testid="composition-history">
+          <summary>История расчёта · {booking.quoteVersions.length} {booking.quoteVersions.length < 5 ? 'версии' : 'версий'}</summary>
+          <ol>{[...booking.quoteVersions].reverse().map((version) => <li key={version.version}>
+            <div><b>v{version.version}{version.version === booking.quoteVersion ? ' · текущая' : ''}</b><strong>{money.format(version.totalAmountMinor / 100)} · {version.totalDurationMinutes} мин</strong></div>
+            <span>{version.lines.map((line) => line.name).join(', ')}</span>
+            <small>{bookingDateLong.format(new Date(version.createdAt))}{version.actorName ? ` · ${version.actorName}` : ''}{version.vehicleClass ? ` · класс ${version.vehicleClass}` : ''}</small>
+            {version.reason && <em>{version.reason}</em>}
+          </li>)}</ol>
+        </details>}
+      </section>}
+
+      {mode === 'details' && !locked && canManage && <div className="booking-actions">
         <button className="secondary-action" onClick={() => setMode('reschedule')}>Перенести запись</button>
         <button className="danger-action" onClick={() => setMode('cancel')}>Отменить запись</button>
+      </div>}
+
+      {mode === 'noshow' && <div className="booking-edit-panel cancel-panel" data-testid="no-show-panel">
+        <strong>Отметить, что клиент не приехал?</strong>
+        <p>Запись получит статус «Не приехал» и освободит место в расписании. Отметка останется в истории клиента.</p>
+        {error && <p className="form-error">{error}</p>}
+        <div><button className="secondary-action" onClick={() => setMode('details')}>Оставить</button><button className="danger-action filled" data-testid="confirm-no-show" disabled={loading} onClick={() => applyChange({ status: 'NO_SHOW' })}>{loading ? 'Сохраняем…' : 'Да, не приехал'}</button></div>
       </div>}
 
       {mode === 'reschedule' && <div className="booking-edit-panel">
@@ -353,6 +493,55 @@ function BookingDetails({ item, onBack, onChanged }: {
   );
 }
 
+function CompositionReview({ booking, draft, reason, onReason, loading, error, slotConflict, onEdit, onCancel, onReschedule, onSave }: {
+  booking: Booking;
+  draft: BookingQuote;
+  reason: string;
+  onReason: (value: string) => void;
+  loading: boolean;
+  error: string;
+  slotConflict: boolean;
+  onEdit: () => void;
+  onCancel: () => void;
+  onReschedule: () => void;
+  onSave: () => void;
+}) {
+  const key = (line: { type: string; id: string }) => `${line.type}:${line.id}`;
+  const currentKeys = new Set(booking.lines.map(key));
+  const draftKeys = new Set(draft.lines.map(key));
+  const added = draft.lines.filter((line) => !currentKeys.has(key(line)));
+  const removed = booking.lines.filter((line) => !draftKeys.has(key(line)));
+  const kept = draft.lines.filter((line) => currentKeys.has(key(line)));
+  const amountDelta = draft.totalAmountMinor - booking.preliminaryAmountMinor;
+  const durationDelta = draft.totalDurationMinutes - booking.estimatedDurationMinutes;
+  const signed = (value: number, text: string) => `${value > 0 ? '+' : value < 0 ? '−' : '±'}${text}`;
+  const unchanged = added.length === 0 && removed.length === 0;
+
+  return <div className="booking-edit-panel composition-review" data-testid="composition-review">
+    <div className="panel-heading"><div><strong>Новая версия расчёта v{booking.quoteVersion + 1}</strong><span>Сервер пересчитал цены по текущему каталогу</span></div><button onClick={onCancel} aria-label="Закрыть изменение состава">×</button></div>
+    <div className="composition-diff">
+      {added.map((line) => <div key={`add-${key(line)}`} className="added"><i>+</i><span>{line.name}</span><strong>{money.format(line.amountMinor / 100)}</strong></div>)}
+      {removed.map((line) => <div key={`remove-${key(line)}`} className="removed"><i>−</i><span>{line.name}</span><strong>{money.format(line.amountMinor / 100)}</strong></div>)}
+      {kept.map((line) => <div key={`keep-${key(line)}`}><i>·</i><span>{line.name}</span><strong>{money.format(line.amountMinor / 100)}</strong></div>)}
+    </div>
+    <div className="composition-totals">
+      <div><span>Было · v{booking.quoteVersion}</span><strong>{money.format(booking.preliminaryAmountMinor / 100)}</strong><small>{booking.estimatedDurationMinutes} мин</small></div>
+      <div className="next"><span>Станет</span><strong>{money.format(draft.totalAmountMinor / 100)}</strong><small>{draft.totalDurationMinutes} мин</small></div>
+    </div>
+    <p className="composition-delta" data-testid="composition-delta">{signed(amountDelta, money.format(Math.abs(amountDelta) / 100))} · {signed(durationDelta, `${Math.abs(durationDelta)} мин`)}. Время начала не меняется: сервер проверит, что новая длительность помещается в слот.</p>
+    {draft.warnings.map((warning) => <div className="quote-warning" key={`${warning.code}-${warning.itemId}`}>ⓘ {warning.message}</div>)}
+    <label htmlFor="composition-reason">Причина изменения <small>необязательно</small></label>
+    <input id="composition-reason" data-testid="composition-reason" value={reason} maxLength={200} onChange={(event) => onReason(event.target.value)} placeholder="Например, клиент добавил уход за салоном"/>
+    {unchanged && <p className="form-error">Состав не изменился. Выберите другие услуги.</p>}
+    {error && <p className="form-error" role="alert">{error}</p>}
+    {slotConflict && <button className="secondary-action composition-reschedule" onClick={onReschedule}>Перенести запись на другое время</button>}
+    <div className="composition-actions">
+      <button className="secondary-action" onClick={onEdit}>Изменить выбор</button>
+      <button className="primary-button" data-testid="save-composition" disabled={loading || unchanged} onClick={onSave}>{loading ? 'Сохраняем…' : `Сохранить v${booking.quoteVersion + 1}`}</button>
+    </div>
+  </div>;
+}
+
 const orderStatuses: Record<WorkOrder['status'], { label: string; group: 'active' | 'ready' | 'closed' }> = {
   INTAKE: { label: 'Приёмка', group: 'active' },
   ESTIMATE_DRAFT: { label: 'Смета', group: 'active' },
@@ -363,14 +552,31 @@ const orderStatuses: Record<WorkOrder['status'], { label: string; group: 'active
   CLOSED: { label: 'Закрыт', group: 'closed' }
 };
 
-type OrderFilter = 'all' | 'active' | 'ready' | 'closed';
+type OrderFilter = 'mine' | 'all' | 'active' | 'ready' | 'closed';
 
-export function OrdersWorkspace() {
+export function OrdersWorkspace({ onOpenCustomer, onOpenOrder, refreshToken }: {
+  onOpenCustomer: (customerId: string) => void;
+  onOpenOrder: (target: OrderTarget) => void;
+  refreshToken: number;
+}) {
+  const session = useSessionInfo();
   const { items, loading, error, retry } = useWorkspaceItems(api.listOrders);
   const [filter, setFilter] = useState<OrderFilter>('all');
   const [selected, setSelected] = useState<OrderListItem | null>(null);
-  const filtered = filter === 'all' ? items : items.filter((item) => orderStatuses[item.status].group === filter);
+  const isMaster = Boolean(session?.actor.roles.includes('master'));
+  // A master without front-desk rights starts on their own queue.
+  const defaultApplied = useRef(false);
+  useEffect(() => {
+    if (!session || defaultApplied.current) return;
+    defaultApplied.current = true;
+    if (isMaster && !session.capabilities.manageBookings) setFilter('mine');
+  }, [session, isMaster]);
+  const isMine = (item: OrderListItem) => session?.actor.memberId
+    ? item.masterMemberId === session.actor.memberId
+    : item.masterName === session?.actor.displayName;
+  const filtered = filter === 'all' ? items : filter === 'mine' ? items.filter(isMine) : items.filter((item) => orderStatuses[item.status].group === filter);
   const filters: Array<{ id: OrderFilter; label: string }> = [
+    ...(isMaster ? [{ id: 'mine' as const, label: `Мои ${items.filter(isMine).length}` }] : []),
     { id: 'all', label: 'Все' }, { id: 'active', label: 'В работе' }, { id: 'ready', label: 'К выдаче' }, { id: 'closed', label: 'Закрытые' }
   ];
 
@@ -378,7 +584,11 @@ export function OrdersWorkspace() {
     if (selected) window.scrollTo({ top: 0, behavior: 'auto' });
   }, [selected?.id]);
 
-  if (selected) return <OrderDetails item={selected} onBack={() => { setSelected(null); retry(); }}/>;
+  useEffect(() => {
+    if (refreshToken) retry();
+  }, [refreshToken]);
+
+  if (selected) return <OrderDetails item={selected} onBack={() => { setSelected(null); retry(); }} onOpenCustomer={onOpenCustomer} onOpenOrder={onOpenOrder} refreshToken={refreshToken}/>;
 
   return (
     <section className="screen workspace-screen" data-testid="orders-workspace">
@@ -386,7 +596,9 @@ export function OrdersWorkspace() {
       <div className="workspace-toolbar"><div><h2>Заказы</h2><p>Текущий этап и ответственный</p></div></div>
       <div className="workspace-filters" aria-label="Фильтр заказов">{filters.map((item) => <button key={item.id} className={filter === item.id ? 'selected' : ''} onClick={() => setFilter(item.id)}>{item.label}</button>)}</div>
       {loading ? <LoadingState/> : error ? <ErrorState message={error} onRetry={retry}/> : filtered.length === 0 ? (
-        <div className="workspace-state"><strong>В этой группе пусто</strong><span>Заказы появятся после начала приёмки</span></div>
+        <div className="workspace-state">{filter === 'mine'
+          ? <><strong>Вам пока не назначено заказов</strong><span>Они появятся здесь, когда администратор назначит вас мастером</span></>
+          : <><strong>В этой группе пусто</strong><span>Заказы появятся после начала приёмки</span></>}</div>
       ) : <div className="workspace-list orders-list">{filtered.map((item) => <OrderCard key={item.id} item={item} onOpen={() => setSelected(item)}/>)}</div>}
     </section>
   );
@@ -420,7 +632,15 @@ function orderStageIndex(status: WorkOrder['status']) {
   return orderStages.length;
 }
 
-function OrderDetails({ item, onBack }: { item: OrderListItem; onBack: () => void }) {
+function OrderDetails({ item, onBack, onOpenCustomer, onOpenOrder, refreshToken }: {
+  item: OrderListItem;
+  onBack: () => void;
+  onOpenCustomer: (customerId: string) => void;
+  onOpenOrder: (target: OrderTarget) => void;
+  refreshToken: number;
+}) {
+  const session = useSessionInfo();
+  const canOpenCustomer = !session || session.capabilities.manageCustomers;
   const [order, setOrder] = useState<WorkOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -435,7 +655,7 @@ function OrderDetails({ item, onBack }: { item: OrderListItem; onBack: () => voi
       .catch((requestError: Error) => { if (requestError.name !== 'AbortError') setError(requestError.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [item.id, revision]);
+  }, [item.id, revision, refreshToken]);
 
   const status = orderStatuses[order?.status ?? item.status];
   const currentEstimate = order?.estimateVersions.find((estimate) => estimate.id === order.currentEstimateVersionId) ?? null;
@@ -452,7 +672,11 @@ function OrderDetails({ item, onBack }: { item: OrderListItem; onBack: () => voi
           <h2>{order.status === 'CLOSED' ? 'Заказ закрыт' : status.label}</h2>
           <p>{item.customer.name} · {item.customer.phoneDisplay}</p>
           <div className="details-vehicle"><span className="plate">{item.vehicle.plate}</span><strong>{item.vehicle.make} {item.vehicle.model} {item.vehicle.generation}</strong><small>{item.vehicle.color}</small></div>
+          {canOpenCustomer && <button className="details-customer-link" data-testid="order-open-customer" onClick={() => onOpenCustomer(item.customer.id)}>Карточка клиента ›</button>}
         </div>
+        {order.bookingId && <button className="primary-button order-open-workspace" data-testid="open-order-workspace" onClick={() => onOpenOrder(orderTarget(order.bookingId!, order.id, item))}>
+          {order.status === 'CLOSED' ? 'Открыть выдачу и документы →' : 'Продолжить работу с заказом →'}
+        </button>}
 
         <div className="order-timeline" aria-label="Этапы заказа" style={{ gridTemplateColumns: `repeat(${orderStages.length}, 1fr)` }}>
           {orderStages.map((stage, index) => <div key={stage} className={index < orderStageIndex(order.status) ? 'done' : index === orderStageIndex(order.status) ? 'current' : ''}><i>{index < orderStageIndex(order.status) || order.status === 'CLOSED' ? '✓' : index + 1}</i><span>{stage}</span></div>)}
@@ -464,6 +688,9 @@ function OrderDetails({ item, onBack }: { item: OrderListItem; onBack: () => voi
           <div><span>Операции</span><strong>{totalOperations ? `${doneOperations} из ${totalOperations}` : 'Нет операций'}</strong></div>
           <div><span>События</span><strong>{order.auditTrail.length} в журнале</strong></div>
         </div>
+
+        <ShareOrderButton order={order} vehicle={item.vehicle}/>
+        <OrderDocumentsPanel order={order} defaultSigner={item.customer.name} onChanged={() => setRevision((value) => value + 1)}/>
 
         {currentEstimate && <section className="order-detail-section">
           <div className="detail-section-heading"><span>Смета v{currentEstimate.version}</span><strong>{currentEstimate.lines.length} позиции</strong></div>

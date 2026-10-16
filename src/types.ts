@@ -17,7 +17,54 @@ export type Customer = {
   name: string;
   phoneDisplay: string;
   visitCount: number;
+  archived?: boolean;
   vehicles: Vehicle[];
+};
+
+export type CustomerMatch = { id: string; name: string; phoneDisplay: string; archived: boolean };
+
+type VehicleSummary = Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color'>;
+
+export type CustomerProfile = {
+  customer: { id: string; name: string; phoneDisplay: string; archived: boolean; archivedAt: string | null; createdAt: string };
+  stats: { bookings: number; openBookings: number; orders: number; activeOrders: number; closedOrders: number; lastVisitAt: string | null };
+  vehicles: Array<Vehicle & { relationType: string; ownedFrom: string }>;
+  formerVehicles: Array<{
+    linkId: string;
+    relationType: string;
+    validFrom: string;
+    validTo: string;
+    vehicle: Vehicle;
+    currentOwner: null | { id: string; name: string };
+  }>;
+  bookings: Array<{
+    id: string;
+    status: BookingStatus;
+    startAt: string;
+    estimatedDurationMinutes: number;
+    preliminaryAmountMinor: number;
+    orderId: string | null;
+    vehicle: VehicleSummary;
+  }>;
+  orders: Array<{
+    id: string;
+    status: WorkOrder['status'];
+    createdAt: string;
+    closedAt: string | null;
+    totalAmountMinor: number | null;
+    vehicle: VehicleSummary;
+  }>;
+  phoneDuplicates: CustomerMatch[];
+  audit: Array<{
+    id: string;
+    type: 'CUSTOMER_UPDATED' | 'CUSTOMER_ARCHIVED' | 'CUSTOMER_REACTIVATED';
+    details: {
+      changes?: { name?: { from: string; to: string }; phone?: { from: string; to: string } };
+      duplicateAcknowledged?: string[];
+    };
+    actorName: string | null;
+    createdAt: string;
+  }>;
 };
 
 export type VehicleProfile = {
@@ -74,7 +121,7 @@ export type CatalogVariant = {
 export type ApiError = { error: { code: string; message: string } };
 
 export type SessionContext = {
-  actor: { displayName: string; roles: string[] };
+  actor: { displayName: string; roles: string[]; memberId: string | null; authMethod: 'demo' | 'messenger' | 'access_token' };
   tenant: { id: string; name: string; timezone: string };
   preferences: { locale: string; currency: string };
   features: { qualityControl: boolean };
@@ -103,6 +150,28 @@ export type TeamMember = {
   status: 'active' | 'blocked';
   createdAt: string;
   updatedAt: string;
+  messengerLinks?: MessengerLink[];
+};
+
+export type MessengerProvider = 'telegram' | 'max';
+export type MessengerLink = { id: string; memberId: string; provider: MessengerProvider; externalName: string | null; linkedAt: string };
+export type AuthProvider = { provider: MessengerProvider; title: string; botName: string | null };
+export type LoginRequest = {
+  id: string;
+  provider: MessengerProvider;
+  shortCode: string;
+  pollSecret: string;
+  expiresAt: string;
+  botName: string | null;
+  deepLink: string | null;
+};
+export type LoginMembership = { tenant: { id: string; name: string }; member: { id: string; displayName: string; roles: string[] } };
+export type LoginStatus = {
+  id: string;
+  provider: MessengerProvider;
+  status: 'PENDING' | 'AWAITING_CONFIRMATION' | 'CONFIRMED' | 'DENIED' | 'CONSUMED' | 'EXPIRED';
+  expiresAt: string;
+  memberships: LoginMembership[];
 };
 
 export type CenterSettings = {
@@ -130,6 +199,14 @@ export type ManagedCatalogItem = {
   active: boolean;
   operations: Array<{ id: string; name: string; prices?: CatalogPrice[] }>;
   prices?: CatalogPrice[];
+};
+
+export type CatalogUsageItem = { id: string; name: string; active: boolean };
+export type CatalogOperation = {
+  id: string;
+  name: string;
+  active: boolean;
+  usage: { services: CatalogUsageItem[]; packages: CatalogUsageItem[]; activeCount: number };
 };
 
 export type ManagedCatalog = {
@@ -194,6 +271,19 @@ export type Booking = {
   status: BookingStatus;
   preliminaryAmountMinor: number;
   resourceId: string | null;
+  quoteVersion: number;
+  lines: QuoteLine[];
+  quoteVersions: BookingQuoteVersion[];
+};
+
+export type BookingQuoteVersion = {
+  version: number;
+  vehicleClass: string | null;
+  totalAmountMinor: number;
+  totalDurationMinutes: number;
+  reason: string | null;
+  actorName: string | null;
+  createdAt: string;
   lines: QuoteLine[];
 };
 
@@ -283,7 +373,7 @@ export type WorkOrder = {
     responsible: string;
     decidedAt: string;
   };
-  assignment: null | { masterName: string; assignedAt: string };
+  assignment: null | { masterName: string; memberId: string | null; assignedAt: string };
   work: null | {
     status: 'ACTIVE' | 'PAUSED' | 'COMPLETED';
     pauseNote: string | null;
@@ -314,7 +404,48 @@ export type WorkOrder = {
     handedOverAt: string;
   };
   auditTrail: Array<{ eventType: string; occurredAt: string; metadata: Record<string, unknown> }>;
+  documents: OrderDocumentSummary[];
 };
+
+export type OrderDocumentType = 'intake_act' | 'handover_act';
+
+export type OrderDocumentSummary = {
+  id: string;
+  type: OrderDocumentType;
+  number: string;
+  signed: boolean;
+  signerName: string | null;
+  signedAt: string | null;
+  actorName: string | null;
+  createdAt: string;
+  current: boolean;
+  outdated: boolean;
+};
+
+export type OrderDocumentContent = {
+  title: string;
+  center: { name: string };
+  order: { id: string; number: string; createdAt: string };
+  customer: { name: string; phoneDisplay: string };
+  vehicle: { make: string; model: string; generation: string | null; plate: string; color: string };
+  statement: string;
+  intake?: {
+    conditionSummary: string;
+    completedAt: string;
+    findings: Array<{ zone: string; severity: IntakeFinding['severity']; note: string }>;
+    recommendations: Array<{ title: string; reason: string; priority: OrderRecommendation['priority'] }>;
+    photoCount: number;
+  };
+  estimate?: null | { version: number; totalAmountMinor: number; approvedAt: string | null; approvalMethod: string | null; approvedBy: string | null };
+  works?: Array<{ name: string; amountMinor: number; status: string }>;
+  handover?: null | { responsible: string; note: string; handedOverAt: string };
+  photos?: { intake: number; result: number };
+};
+
+export type OrderDocument = OrderDocumentSummary & { content: OrderDocumentContent; signatureDataUrl: string | null };
+
+/** Opening the order workspace from Bookings or Orders: `id` is the booking; `orderId` is null for a new intake. */
+export type OrderTarget = { id: string; orderId: string | null; customer: Customer; vehicle: Vehicle };
 
 export type OrderListItem = {
   id: string;
@@ -322,6 +453,7 @@ export type OrderListItem = {
   createdAt: string;
   totalAmountMinor: number | null;
   masterName: string | null;
+  masterMemberId: string | null;
   customer: Pick<Customer, 'id' | 'name' | 'phoneDisplay'>;
   vehicle: Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color'>;
 };

@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from './api';
 import { productFeatures } from './features';
+import { OrderDocumentsPanel } from './OrderDocuments';
+import { ShareOrderButton } from './ShareOrderButton';
+import { pluralRu } from './format';
+
+type MasterOption = { id: string; displayName: string; activeOrders: number };
 import type { Booking, Customer, EstimateLineInput, IntakeFinding, OrderRecommendation, Vehicle, WorkOrder } from './types';
 
 function money(amountMinor: number) {
@@ -82,7 +87,13 @@ function InspectionCar({ activeZone }: { activeZone: string }) {
   );
 }
 
-export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booking: Booking; customer: Customer; vehicle: Vehicle; onPhaseChange: (title: string) => void }) {
+export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId = null }: {
+  booking: Booking;
+  customer: Customer;
+  vehicle: Vehicle;
+  onPhaseChange: (title: string) => void;
+  orderId?: string | null;
+}) {
   const [order, setOrder] = useState<WorkOrder | null>(null);
   const [stage, setStage] = useState<'intake' | 'estimate' | 'approval'>('intake');
   const [summary, setSummary] = useState('Автомобиль принят при клиенте, комплектность проверена');
@@ -97,7 +108,8 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
   const [extraAmount, setExtraAmount] = useState('900');
   const [responsible, setResponsible] = useState('Анна, администратор');
   const [method, setMethod] = useState<'in_person' | 'phone' | 'messenger'>('in_person');
-  const [masterName, setMasterName] = useState('Дмитрий Соколов');
+  const [masters, setMasters] = useState<MasterOption[] | null>(null);
+  const [masterId, setMasterId] = useState('');
   const [pauseNote, setPauseNote] = useState('Ожидаем освобождения зоны сушки');
   const [qcResponsible, setQcResponsible] = useState('Мария, QC');
   const [qcNote, setQcNote] = useState('Все поверхности проверены при рабочем освещении');
@@ -116,7 +128,8 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.createOrder(booking.id)
+    // An existing order is only read (masters may not create orders); a new intake creates it idempotently.
+    (orderId ? api.getOrder(orderId) : api.createOrder(booking.id))
       .then((created) => {
         setOrder(created);
         if (created.status === 'APPROVED') setStage('approval');
@@ -125,7 +138,18 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
       })
       .catch((requestError: Error) => setError(requestError.message))
       .finally(() => setLoading(false));
-  }, [booking.id]);
+  }, [booking.id, orderId]);
+
+  // Masters come from the team (active members with the master role), least loaded first.
+  const needsMaster = order?.status === 'APPROVED' && !order.assignment;
+  useEffect(() => {
+    if (!needsMaster) return;
+    const controller = new AbortController();
+    api.listMasters(controller.signal)
+      .then((result) => { setMasters(result.items); setMasterId((current) => current || result.items[0]?.id || ''); })
+      .catch((requestError: Error) => { if (requestError.name !== 'AbortError') setMasters([]); });
+    return () => controller.abort();
+  }, [needsMaster]);
 
   useEffect(() => {
     if (!order) return;
@@ -235,7 +259,7 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
     finally { setLoading(false); }
   };
 
-  const assignMaster = () => order && runOrderAction(() => api.assignMaster(order.id, masterName));
+  const assignMaster = () => order && masterId && runOrderAction(() => api.assignMaster(order.id, masterId));
   const startWork = () => order && runOrderAction(() => api.startWork(order.id));
   const toggleOperation = (operationId: string, done: boolean) => order &&
     runOrderAction(() => api.updateWorkOperation(order.id, operationId, done ? 'PENDING' : 'DONE'));
@@ -253,6 +277,9 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
 
   if (loading && !order) return <section className="screen order-loading"><span className="spinner"/> Создаём заказ из записи</section>;
   if (!order) return <section className="screen"><div className="inline-error">{error || 'Не удалось создать заказ'}</div></section>;
+  const refreshOrder = () => {
+    api.getOrder(order.id).then(setOrder).catch((requestError: Error) => setError(requestError.message));
+  };
   const currentEstimate = order.estimateVersions.find((item) => item.id === order.currentEstimateVersionId);
   const intakePhoto = order.photos.find((photo) => photo.phase === 'intake');
   const resultPhoto = order.photos.find((photo) => photo.phase === 'result');
@@ -270,6 +297,8 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
       </div>
       <div className="handover-proof">✓ {order.handover?.note}</div>
       <div className="audit-note">Заказ и выдача зафиксированы в журнале · {order.auditTrail.length} событий</div>
+      <ShareOrderButton order={order} vehicle={vehicle}/>
+      <OrderDocumentsPanel order={order} defaultSigner={customer.name} onChanged={refreshOrder}/>
     </section>
   );
 
@@ -359,8 +388,10 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
       <div className="assignment-panel">
         <span>Следующий этап</span><h3>{order.assignment ? 'Мастер назначен' : 'Назначьте мастера'}</h3>
         {!order.assignment ? <>
-          <div className="master-options">{['Дмитрий Соколов', 'Алексей Волков'].map((name) => <button key={name} className={masterName === name ? 'selected' : ''} onClick={() => setMasterName(name)}><i>{name.split(' ').map((part) => part[0]).join('')}</i><span>{name}<small>{name.startsWith('Дмитрий') ? 'Свободен сейчас' : 'Через 35 мин'}</small></span></button>)}</div>
-          <button className="primary-button" data-testid="assign-master" disabled={loading} onClick={assignMaster}>Назначить мастера →</button>
+          {masters === null && <div className="workspace-state"><span className="spinner"/> Загружаем мастеров</div>}
+          {masters?.length === 0 && <p className="master-empty" role="note">В команде нет активных мастеров. Добавьте сотрудника с ролью «Мастер» в разделе «Профиль → Команда».</p>}
+          {masters && masters.length > 0 && <div className="master-options">{masters.map((master) => <button key={master.id} data-testid={`master-option-${master.id}`} aria-pressed={masterId === master.id} className={masterId === master.id ? 'selected' : ''} onClick={() => setMasterId(master.id)}><i>{master.displayName.split(' ').slice(0, 2).map((part) => part[0]).join('')}</i><span>{master.displayName}<small>{master.activeOrders ? `${master.activeOrders} ${pluralRu(master.activeOrders, 'заказ', 'заказа', 'заказов')} в работе` : 'Свободен'}</small></span></button>)}</div>}
+          <button className="primary-button" data-testid="assign-master" disabled={loading || !masterId} onClick={assignMaster}>Назначить мастера →</button>
         </> : <>
           <div className="assigned-master"><span className="master-avatar">ДС</span><span><strong>{order.assignment.masterName}</strong><small>Получит {order.work?.operations.length ?? currentEstimate?.lines.length} операции</small></span><b>Назначен</b></div>
           <button className="primary-button" data-testid="start-work" disabled={loading} onClick={startWork}>Начать работы →</button>
@@ -421,6 +452,7 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange }: { booki
       </>}
 
       {stage === 'estimate' && <>
+        <OrderDocumentsPanel order={order} types={['intake_act']} defaultSigner={customer.name} onChanged={refreshOrder}/>
         <div className="flow-heading"><span>02 · Версия сметы</span><h2>Проверьте состав работ</h2><p>После выпуска строки версии нельзя изменить.</p></div>
         <div className="estimate-list">
           {booking.lines.filter((line) => line.amountMinor > 0).map((line) => <div key={line.id}><span><strong>{line.name}</strong><small>из записи</small></span><b>{money(line.amountMinor)}</b></div>)}
