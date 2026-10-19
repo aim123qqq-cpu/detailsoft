@@ -903,9 +903,11 @@ export function createDetailFlowServer({
       }
 
       if (staticDir) {
-        // The landing page (public/landing) lives next to the app; its relative assets need the trailing slash.
-        if (url.pathname === '/landing') {
-          response.writeHead(301, { location: '/landing/' });
+        // Static pages next to the app (public/landing, public/landing22) are folders with an index.html;
+        // their relative assets need the trailing slash.
+        const folder = /^\/[a-z0-9-]+$/i.test(url.pathname) ? resolve(staticDir, url.pathname.slice(1), 'index.html') : null;
+        if (folder && await readFile(folder).then(() => true, () => false)) {
+          response.writeHead(301, { location: `${url.pathname}/` });
           return response.end();
         }
         const requested = url.pathname === '/' ? 'index.html' : url.pathname.endsWith('/') ? `${url.pathname.slice(1)}index.html` : url.pathname.slice(1);

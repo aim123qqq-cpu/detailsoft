@@ -24,6 +24,8 @@ pnpm start
 
 Лендинг продукта — статическая страница `public/landing/index.html`, после сборки она доступна на `/landing/` рядом с приложением. Скриншоты для неё (`public/landing/img`) снимаются с демо-данных: `pnpm build`, затем `node scripts/landing-shots.mjs`.
 
+Вторая версия лендинга — `public/landing22/` (`/landing22/`): на первом экране работает настоящая схема приёмки. Её геометрия берётся из `src/shared/carLayouts.ts` скриптом `node scripts/landing-layouts.mjs` (запускать после изменения схем). Кнопка в конце страницы открывает приложение с номером в поиске: `/?phone=…` или `/?plate=…`.
+
 ## Архитектура инкремента
 
 - `migrations/001_customer_vehicle.sql` — tenant-scoped Customer/Vehicle модель. `Customer` и `Vehicle` разделены временной связью `CustomerVehicle`; госномер намеренно не имеет жёсткого `UNIQUE`.

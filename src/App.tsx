@@ -39,12 +39,27 @@ function formatPhoneInput(value: string) {
   return result;
 }
 
+/** A search handed over in the link (the landing page opens `/?phone=…` or `/?plate=…`); read once, then dropped from the URL. */
+function initialSearch(): { mode: 'phone' | 'plate'; query: string } {
+  const params = new URLSearchParams(window.location.search);
+  const phone = params.get('phone');
+  const plate = params.get('plate');
+  if (phone === null && plate === null) return { mode: 'phone', query: '' };
+  params.delete('phone');
+  params.delete('plate');
+  window.history.replaceState(null, '', `${window.location.pathname}${params.size ? `?${params}` : ''}${window.location.hash}`);
+  return plate !== null
+    ? { mode: 'plate', query: plate.slice(0, 12).toLocaleUpperCase('ru-RU') }
+    : { mode: 'phone', query: formatPhoneInput(phone!.slice(0, 20)) };
+}
+
 export function App() {
+  const [handedSearch] = useState(initialSearch);
   const [workspace, setWorkspace] = useState<Workspace>('new');
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
-  const [mode, setMode] = useState<'phone' | 'plate'>('phone');
+  const [mode, setMode] = useState<'phone' | 'plate'>(handedSearch.mode);
   const [channel, setChannel] = useState('Telegram');
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(handedSearch.query);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [plateVehicles, setPlateVehicles] = useState<Array<Vehicle & { customer: Customer | null }>>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);

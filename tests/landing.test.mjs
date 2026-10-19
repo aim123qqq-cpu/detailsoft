@@ -16,6 +16,8 @@ before(async () => {
   await writeFile(join(staticDir, 'index.html'), '<title>app</title>');
   await writeFile(join(staticDir, 'landing', 'index.html'), '<title>landing</title>');
   await writeFile(join(staticDir, 'landing', 'img', 'intake.jpg'), Buffer.from([0xff, 0xd8, 0xff]));
+  await mkdir(join(staticDir, 'landing22'), { recursive: true });
+  await writeFile(join(staticDir, 'landing22', 'index.html'), '<title>landing 2</title>');
   server = createDetailFlowServer({ databasePath: ':memory:', seed: true, staticDir });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   baseUrl = `http://127.0.0.1:${server.address().port}`;
@@ -38,6 +40,11 @@ test('the landing page is served at /landing/ next to the app', async () => {
 
   const image = await fetch(`${baseUrl}/landing/img/intake.jpg`);
   assert.equal(image.headers.get('content-type'), 'image/jpeg');
+
+  const second = await fetch(`${baseUrl}/landing22`, { redirect: 'manual' });
+  assert.equal(second.status, 301, 'any folder with an index.html gets the trailing slash');
+  assert.equal(second.headers.get('location'), '/landing22/');
+  assert.equal((await fetch(`${baseUrl}/orders`, { redirect: 'manual' })).status, 200, 'app routes are not redirected');
 
   assert.equal(await (await fetch(`${baseUrl}/`)).text(), '<title>app</title>');
   assert.equal(await (await fetch(`${baseUrl}/orders/123`)).text(), '<title>app</title>', 'app routes still fall back to the app');
