@@ -4,6 +4,8 @@ import { productFeatures } from './features';
 import { OrderDocumentsPanel } from './OrderDocuments';
 import { ShareOrderButton } from './ShareOrderButton';
 import { pluralRu } from './format';
+import { InspectionPanel } from './intake/InspectionPanel';
+import { normalizeBodyType, type BodyType } from './shared/carLayouts';
 
 type MasterOption = { id: string; displayName: string; activeOrders: number };
 import type { Booking, Customer, EstimateLineInput, IntakeFinding, OrderRecommendation, Vehicle, WorkOrder } from './types';
@@ -11,28 +13,6 @@ import type { Booking, Customer, EstimateLineInput, IntakeFinding, OrderRecommen
 function money(amountMinor: number) {
   return `${Math.round(amountMinor / 100).toLocaleString('ru-RU')} ₽`;
 }
-
-const inspectionZones = [
-  { id: 'Кузов', icon: '▱' },
-  { id: 'Диски', icon: '◉' },
-  { id: 'Стёкла', icon: '▰' },
-  { id: 'Салон', icon: '◇' },
-  { id: 'Прочее', icon: '•••' }
-] as const;
-
-const zoneDefaults: Record<string, { area: string; note: string }> = {
-  Кузов: { area: 'Переднее крыло', note: 'Скол лакокрасочного покрытия справа' },
-  Диски: { area: 'Передний левый диск', note: 'Бордюрная царапина на ободе' },
-  Стёкла: { area: 'Лобовое стекло', note: 'Мелкий скол в нижней части' },
-  Салон: { area: 'Водительское сиденье', note: 'Локальное загрязнение обивки' },
-  Прочее: { area: 'Комплектность', note: 'Требуется уточнение при передаче' }
-};
-
-const quickFindings = [
-  { zone: 'Кузов', severity: 'LOW' as const, note: 'Битумные загрязнения на дисках и крыльях' },
-  { zone: 'Кузов', severity: 'MEDIUM' as const, note: 'Сильные загрязнения кузова' },
-  { zone: 'Стёкла', severity: 'LOW' as const, note: 'Шерсть в салоне' }
-];
 
 const supportedPhotoTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
@@ -66,27 +46,6 @@ async function preparePhoto(file: File) {
   return optimized;
 }
 
-function InspectionCar({ activeZone }: { activeZone: string }) {
-  return (
-    <svg className="inspection-car" viewBox="0 0 150 260" role="img" aria-label={`Схема автомобиля, зона ${activeZone}`}>
-      <defs>
-        <linearGradient id="carBody" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#aab0b4"/><stop offset=".46" stopColor="#4f575d"/><stop offset="1" stopColor="#20272c"/></linearGradient>
-        <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#253039"/><stop offset="1" stopColor="#0b1116"/></linearGradient>
-      </defs>
-      <path className="car-shadow" d="M38 18C48 5 102 5 112 18l14 39 8 132-12 49c-4 14-90 14-94 0l-12-49L24 57Z"/>
-      <path className="car-body" d="M42 14C52 5 98 5 108 14l15 41 7 132-14 51c-8 12-74 12-82 0l-14-51 7-132Z"/>
-      <path className="car-glass" d="M45 48c7-17 53-17 60 0l9 41H36Z"/>
-      <path className="car-glass rear" d="M37 170h76l-9 44c-9 14-49 14-58 0Z"/>
-      <path className="car-roof" d="M37 94h77l-2 70H38Z"/>
-      <path className="car-line" d="M75 94v70M27 130h11m74 0h11M37 94l-10-39m87 39 9-39"/>
-      <path className="wheel" d="M15 62h11v38H15zm109 0h11v38h-11zM15 172h11v38H15zm109 0h11v38h-11z"/>
-      <circle className="damage-pin" cx="31" cy="72" r="8"/><text x="31" y="75">1</text>
-      <circle className="damage-pin secondary" cx="104" cy="33" r="8"/><text x="104" y="36">2</text>
-      <circle className="damage-pin secondary" cx="51" cy="215" r="8"/><text x="51" y="218">3</text>
-    </svg>
-  );
-}
-
 export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId = null }: {
   booking: Booking;
   customer: Customer;
@@ -97,12 +56,9 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId =
   const [order, setOrder] = useState<WorkOrder | null>(null);
   const [stage, setStage] = useState<'intake' | 'estimate' | 'approval'>('intake');
   const [summary, setSummary] = useState('Автомобиль принят при клиенте, комплектность проверена');
-  const [zone, setZone] = useState('Кузов');
   const [inspectionTab, setInspectionTab] = useState<'inspection' | 'photo' | 'recommendations'>('inspection');
-  const [selectedArea, setSelectedArea] = useState('Переднее крыло');
-  const [checkedFindings, setCheckedFindings] = useState(() => new Set([0, 1, 2]));
-  const [severity, setSeverity] = useState<IntakeFinding['severity']>('MEDIUM');
-  const [note, setNote] = useState('Скол лакокрасочного покрытия справа');
+  const [bodyType, setBodyType] = useState<BodyType>(() => normalizeBodyType(vehicle.bodyType));
+  const [findings, setFindings] = useState<IntakeFinding[]>([]);
   const [recommendationTitle, setRecommendationTitle] = useState('Локальная защита скола');
   const [recommendationReason, setRecommendationReason] = useState('Снизит риск коррозии повреждённого участка');
   const [extraAmount, setExtraAmount] = useState('900');
@@ -132,6 +88,10 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId =
     (orderId ? api.getOrder(orderId) : api.createOrder(booking.id))
       .then((created) => {
         setOrder(created);
+        if (created.intake) {
+          setFindings(created.intake.findings.map(({ zone, severity, note }) => ({ zone, severity, note })));
+          if (created.intake.bodyType) setBodyType(normalizeBodyType(created.intake.bodyType));
+        }
         if (created.status === 'APPROVED') setStage('approval');
         else if (created.estimateVersions.length) setStage('approval');
         else if (created.intake) setStage('estimate');
@@ -176,16 +136,6 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId =
     window.scrollTo({ top: 0, behavior: 'auto' });
   }, [order?.status, stage]);
 
-  const findings = useMemo<IntakeFinding[]>(() => [
-    { zone: selectedArea, severity, note },
-    ...quickFindings.filter((_, index) => checkedFindings.has(index))
-  ], [selectedArea, severity, note, checkedFindings]);
-
-  const selectZone = (nextZone: string) => {
-    setZone(nextZone);
-    setSelectedArea(zoneDefaults[nextZone].area);
-    setNote(zoneDefaults[nextZone].note);
-  };
   const recommendations = useMemo<OrderRecommendation[]>(() => recommendationTitle.trim() ? [{
     title: recommendationTitle,
     reason: recommendationReason,
@@ -214,20 +164,20 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId =
     if (!order) return;
     setLoading(true); setError('');
     try {
-      const updated = await api.saveIntake(order.id, { conditionSummary: summary, findings, recommendations });
+      const updated = await api.saveIntake(order.id, { conditionSummary: summary, findings, recommendations, bodyType });
       setOrder(updated); setStage('estimate');
     } catch (requestError) { setError((requestError as Error).message); }
     finally { setLoading(false); }
   };
 
-  const uploadPhoto = async (file: File | undefined, kind: 'intake' | 'defect', phase: 'intake' | 'result' = 'intake') => {
+  const uploadPhoto = async (file: File | undefined, kind: 'intake' | 'defect', phase: 'intake' | 'result' = 'intake', zone = 'Общий вид') => {
     if (!order || !file) return;
     setPhotoUploading(true); setError('');
     try {
       const photo = await api.uploadOrderPhoto(order.id, {
         phase,
         kind,
-        zone: phase === 'result' ? 'Результат работ' : kind === 'defect' ? selectedArea : zone,
+        zone: phase === 'result' ? 'Результат работ' : zone,
         dataUrl: await preparePhoto(file)
       });
       setOrder((current) => current ? { ...current, photos: [...current.photos, photo] } : current);
@@ -425,41 +375,19 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId =
         </div>
 
         {inspectionTab === 'inspection' && <>
-          <div className="inspection-board">
-            <div className="zone-rail" aria-label="Зоны осмотра">{inspectionZones.map((item) => <button key={item.id} className={zone === item.id ? 'selected' : ''} onClick={() => selectZone(item.id)}><i>{item.icon}</i><span>{item.id}</span></button>)}</div>
-            <div className="car-stage"><InspectionCar activeZone={zone}/><span className="stage-caption">Нажмите на маркер дефекта</span></div>
-            <div className="defect-preview">
-              <span className="preview-photo"><b>1</b><i>⌁</i></span>
-              <strong>{selectedArea}</strong>
-              <small>{note}</small>
-              <div className="defect-tags"><em>{severity === 'HIGH' ? 'Сильное' : severity === 'MEDIUM' ? 'Среднее' : 'Лёгкое'}</em><button onClick={() => setSelectedArea(selectedArea === 'Переднее крыло' ? 'Капот' : 'Переднее крыло')}>Изменить</button></div>
-            </div>
-          </div>
-
-          <div className="severity-line"><span>Статус повреждения</span><div className="severity-chips">{(['LOW', 'MEDIUM', 'HIGH'] as const).map((value) => <button key={value} className={severity === value ? 'selected' : ''} onClick={() => setSeverity(value)}>{value === 'LOW' ? 'Лёгкое' : value === 'MEDIUM' ? 'Среднее' : 'Сильное'}</button>)}</div></div>
-          <label className="compact-note">Комментарий к дефекту<input data-testid="finding-note" value={note} onChange={(event) => setNote(event.target.value)}/></label>
-
-          <div className="inspection-photo-row"><span>Фото дефекта</span><div>
-            <label className="photo-add-button" aria-label="Добавить фотографию дефекта">{photoUploading ? '…' : '＋'}<input data-testid="defect-photo-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={photoUploading} onChange={(event) => { void uploadPhoto(event.target.files?.[0], 'defect'); event.target.value = ''; }}/></label>
-            {order.photos.filter((photo) => photo.phase === 'intake' && photo.kind === 'defect').slice(-3).map((photo) => <img key={photo.id} src={photo.dataUrl} alt={`Дефект: ${photo.zone}`}/>)}
-            {!order.photos.some((photo) => photo.phase === 'intake' && photo.kind === 'defect') && <small className="photo-empty-inline">Нет снимков</small>}
-          </div></div>
-
-          <div className="detected-card">
-            <div className="detected-title"><span>Обнаружено при осмотре</span><b>{checkedFindings.size + 1}</b></div>
-            {quickFindings.map((finding, index) => <label key={finding.note}><input type="checkbox" checked={checkedFindings.has(index)} onChange={() => setCheckedFindings((current) => { const next = new Set(current); next.has(index) ? next.delete(index) : next.add(index); return next; })}/><span>{finding.note}</span>{index === 0 && <em>＋ Добавить</em>}</label>)}
-          </div>
+          <InspectionPanel bodyType={bodyType} onBodyType={setBodyType} findings={findings} onFindings={setFindings}
+            photos={order.photos} photoUploading={photoUploading} onPhoto={(file, elementName) => void uploadPhoto(file, 'defect', 'intake', elementName)}/>
 
           <label className="intake-summary-line">Комментарий к приёмке<textarea data-testid="intake-summary" value={summary} onChange={(event) => setSummary(event.target.value)}/></label>
         </>}
 
         {inspectionTab === 'photo' && <div className="photo-tab-panel"><div className="photo-tab-head"><span>Фото приёмки · {order.photos.length}</span><label className="photo-add-text">{photoUploading ? 'Загрузка…' : '＋ Добавить'}<input data-testid="intake-photo-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={photoUploading} onChange={(event) => { void uploadPhoto(event.target.files?.[0], 'intake'); event.target.value = ''; }}/></label></div>
           {order.photos.some((photo) => photo.phase === 'intake') ? <div className="photo-grid">{order.photos.filter((photo) => photo.phase === 'intake').map((photo) => <figure key={photo.id}><img src={photo.dataUrl} alt={`Фото зоны ${photo.zone}`}/><figcaption>{photo.zone}</figcaption></figure>)}</div> : <div className="photo-empty"><span>▧</span><strong>Снимков пока нет</strong><small>Добавьте общий вид автомобиля или фото выбранной зоны</small></div>}
-          <p>Фото сохраняются в заказе и привязываются к текущей зоне «{zone}».</p></div>}
+          <p>Общие снимки сохраняются как «Общий вид». Фото конкретного элемента добавьте на вкладке «Осмотр».</p></div>}
 
         {inspectionTab === 'recommendations' && <div className="recommendation-card"><span>Рекомендация клиенту</span><input data-testid="recommendation-title" value={recommendationTitle} onChange={(event) => setRecommendationTitle(event.target.value)}/><textarea value={recommendationReason} onChange={(event) => setRecommendationReason(event.target.value)}/></div>}
         {error && <div className="inline-error">{error}</div>}
-        <div className="intake-actions"><button>Сохранить черновик</button><button data-testid="save-intake" disabled={loading || !summary.trim() || !selectedArea.trim() || !note.trim()} onClick={saveIntake}>Перейти к смете →</button></div>
+        <div className="intake-actions"><button>Сохранить черновик</button><button data-testid="save-intake" disabled={loading || !summary.trim()} onClick={saveIntake}>Перейти к смете →</button></div>
       </>}
 
       {stage === 'estimate' && <>

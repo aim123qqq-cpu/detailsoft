@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from './api';
+import { CarDiagram, findingMarks } from './intake/CarDiagram';
+import { BODY_TYPES, carLayout, normalizeBodyType } from './shared/carLayouts';
 import type { OrderDocument, OrderDocumentContent, OrderDocumentType, WorkOrder } from './types';
 
 const documentTitles: Record<OrderDocumentType, string> = {
@@ -48,8 +50,12 @@ export function DocumentPaper({ content, number, pendingNumber, signerName, sign
         <h3>Состояние при приёмке</h3>
         <p>{content.intake.conditionSummary}</p>
         <h3>Зафиксированные повреждения</h3>
+        {content.intake.bodyType && <figure className="document-diagram">
+          <CarDiagram layout={carLayout(normalizeBodyType(content.intake.bodyType))} marks={findingMarks(content.intake.findings)}/>
+          <figcaption>Схема осмотра · {BODY_TYPES.find((item) => item.code === content.intake?.bodyType)?.label ?? 'кузов'}. Номера в списке соответствуют элементам на схеме.</figcaption>
+        </figure>}
         {content.intake.findings.length ? <ol className="document-list">{content.intake.findings.map((finding, index) => (
-          <li key={index}><b>{finding.zone}</b> · {severityLabels[finding.severity]} — {finding.note}</li>
+          <li key={index}>{finding.element ? <span className="document-element">{finding.element}</span> : null}<b>{finding.zone}</b> · {severityLabels[finding.severity]} — {finding.note}</li>
         ))}</ol> : <p>Повреждений не выявлено.</p>}
         {content.intake.recommendations.length > 0 && <>
           <h3>Рекомендации</h3>

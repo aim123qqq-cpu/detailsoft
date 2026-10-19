@@ -175,7 +175,7 @@ export const bookingsMethods = {
     const items = this.db.prepare(`SELECT b.id, b.channel, b.start_at, b.estimated_duration_minutes,
         b.status, b.preliminary_amount_minor,
         c.id customer_id, c.name customer_name, c.phone_display customer_phone,
-        v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color,
+        v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color, v.body_type,
         w.order_id,
         EXISTS (SELECT 1 FROM booking_slot_conflicts sc WHERE sc.booking_id = b.id AND sc.resolved_at IS NULL) slot_conflict
       FROM bookings b
@@ -205,7 +205,8 @@ export const bookingsMethods = {
           model: row.model,
           generation: row.generation,
           plate: row.plate_display,
-          color: row.color
+          color: row.color,
+          bodyType: row.body_type
         }
       }));
     return { kind: 'listed', items };
@@ -228,7 +229,7 @@ export const bookingsMethods = {
     const items = this.db.prepare(`SELECT b.id, b.channel, b.start_at, b.estimated_duration_minutes,
         b.status, b.preliminary_amount_minor,
         c.id customer_id, c.name customer_name, c.phone_display customer_phone,
-        v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color,
+        v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color, v.body_type,
         w.order_id,
         EXISTS (SELECT 1 FROM booking_slot_conflicts sc WHERE sc.booking_id = b.id AND sc.resolved_at IS NULL) slot_conflict
       FROM bookings b
@@ -247,7 +248,7 @@ export const bookingsMethods = {
         orderId: row.order_id ?? null,
         slotConflict: row.slot_conflict === 1,
         customer: { id: row.customer_id, name: row.customer_name, phoneDisplay: row.customer_phone },
-        vehicle: { id: row.vehicle_id, make: row.make, model: row.model, generation: row.generation, plate: row.plate_display, color: row.color }
+        vehicle: { id: row.vehicle_id, make: row.make, model: row.model, generation: row.generation, plate: row.plate_display, color: row.color, bodyType: row.body_type }
       }));
     return { kind: 'listed', items };
   },

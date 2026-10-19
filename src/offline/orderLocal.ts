@@ -9,13 +9,14 @@ import type { IntakeFinding, OrderRecommendation, PhotoAsset, WorkOrder } from '
 const conflict = (code: string, message: string) => new ApiRequestError(message, 409, code);
 const invalid = (message: string) => new ApiRequestError(message, 422, 'validation_error');
 
-export function localSaveIntake(order: WorkOrder, input: { conditionSummary: string; findings: IntakeFinding[]; recommendations: OrderRecommendation[] }, now: string, newId: () => string): WorkOrder {
+export function localSaveIntake(order: WorkOrder, input: { conditionSummary: string; findings: IntakeFinding[]; recommendations: OrderRecommendation[]; bodyType?: string }, now: string, newId: () => string): WorkOrder {
   if (order.status === 'APPROVED') throw conflict('invalid_order_state', 'Согласованный заказ нельзя вернуть к приёмке');
   if (input.conditionSummary.trim().length < 3) throw invalid('Опишите состояние автомобиля');
   return {
     ...order,
     status: 'ESTIMATE_DRAFT',
     intake: {
+      bodyType: input.bodyType ?? null,
       conditionSummary: input.conditionSummary.trim(),
       completedAt: now,
       findings: input.findings.map((finding) => ({ ...finding, id: finding.id ?? `local_finding_${newId()}` })),

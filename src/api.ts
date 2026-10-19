@@ -666,6 +666,7 @@ export const api = {
     conditionSummary: string;
     findings: IntakeFinding[];
     recommendations: OrderRecommendation[];
+    bodyType?: string;
   }) {
     return orderChange(orderId, 'Приёмка автомобиля', 'PUT', orderUrl(orderId, '/intake'), input, (order) => {
       const next = localSaveIntake(order, input, nowIso(), randomId);

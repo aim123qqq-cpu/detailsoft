@@ -23,7 +23,7 @@ export type Customer = {
 
 export type CustomerMatch = { id: string; name: string; phoneDisplay: string; archived: boolean };
 
-type VehicleSummary = Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color'>;
+type VehicleSummary = Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color' | 'bodyType'>;
 
 export type CustomerProfile = {
   customer: { id: string; name: string; phoneDisplay: string; archived: boolean; archivedAt: string | null; createdAt: string };
@@ -342,7 +342,7 @@ export type BookingListItem = {
   slotConflict?: boolean;
   pendingSync?: boolean;
   customer: Pick<Customer, 'id' | 'name' | 'phoneDisplay'>;
-  vehicle: Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color'>;
+  vehicle: Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color' | 'bodyType'>;
 };
 
 export type IntakeFinding = {
@@ -398,6 +398,8 @@ export type WorkOrder = {
   currentEstimateVersionId: string | null;
   photos: PhotoAsset[];
   intake: null | {
+    /** Body type chosen at intake (selects the inspection diagram); null for intakes made before it existed. */
+    bodyType?: string | null;
     conditionSummary: string;
     completedAt: string;
     findings: IntakeFinding[];
@@ -469,9 +471,11 @@ export type OrderDocumentContent = {
   vehicle: { make: string; model: string; generation: string | null; plate: string; color: string };
   statement: string;
   intake?: {
+    bodyType?: string;
     conditionSummary: string;
     completedAt: string;
-    findings: Array<{ zone: string; severity: IntakeFinding['severity']; note: string }>;
+    /** element: the number on the inspection diagram (absent in acts issued before diagrams). */
+    findings: Array<{ zone: string; severity: IntakeFinding['severity']; note: string; element?: number | null }>;
     recommendations: Array<{ title: string; reason: string; priority: OrderRecommendation['priority'] }>;
     photoCount: number;
   };
@@ -494,7 +498,7 @@ export type OrderListItem = {
   masterName: string | null;
   masterMemberId: string | null;
   customer: Pick<Customer, 'id' | 'name' | 'phoneDisplay'>;
-  vehicle: Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color'>;
+  vehicle: Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color' | 'bodyType'>;
 };
 
 export type AnalyticsOverview = {

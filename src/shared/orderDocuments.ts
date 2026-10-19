@@ -3,6 +3,8 @@
  * signing offline): the act a client signs on the phone is built by the same code the server uses.
  */
 
+import { findLayoutElement, normalizeBodyType } from './carLayouts.ts';
+
 export type DocumentType = 'intake_act' | 'handover_act';
 
 export type DocumentParties = {
@@ -21,6 +23,7 @@ export type DocumentOrder = {
   currentEstimateVersionId: string | null;
   photos: Photo[];
   intake: null | {
+    bodyType?: string | null;
     conditionSummary: string;
     completedAt: string;
     findings: Array<{ zone: string; severity: string; note: string }>;
@@ -46,9 +49,11 @@ export function buildDocumentContent(order: DocumentOrder, parties: DocumentPart
       title: 'Акт приёмки автомобиля',
       ...base,
       intake: {
+        bodyType: normalizeBodyType(order.intake.bodyType),
         conditionSummary: order.intake.conditionSummary,
         completedAt: order.intake.completedAt,
-        findings: order.intake.findings.map(({ zone, severity, note }) => ({ zone, severity, note })),
+        // The element number matches the diagram printed on the act and shown at intake.
+        findings: order.intake.findings.map(({ zone, severity, note }) => ({ zone, severity, note, element: findLayoutElement(order.intake?.bodyType, zone)?.number ?? null })),
         recommendations: order.intake.recommendations.map(({ title, reason, priority }) => ({ title, reason, priority })),
         photoCount: photoCount('intake')
       },

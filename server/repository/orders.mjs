@@ -1,3 +1,4 @@
+import { BODY_TYPES } from '../../src/shared/carLayouts.ts';
 import { randomUUID, buildDocumentContent, clientId, apiTimestamp } from './shared.mjs';
 
 /** Work orders: intake, estimate, approval, work, handover and acts. Mixed into DetailFlowRepository (server/repository.mjs). */
@@ -55,8 +56,11 @@ export const ordersMethods = {
       ['LOW', 'MEDIUM', 'HIGH'].includes(item.severity) && String(item.note ?? '').trim();
     const validRecommendation = (item) => item && String(item.title ?? '').trim() &&
       String(item.reason ?? '').trim() && ['OPTIONAL', 'RECOMMENDED', 'URGENT'].includes(item.priority);
-    if (conditionSummary.length < 3 || !findings || !recommendations || findings.length > 20 || recommendations.length > 20 ||
-      findings.some((item) => !validFinding(item)) || recommendations.some((item) => !validRecommendation(item))) {
+    // The body type picks the inspection diagram; findings name its elements.
+    const bodyType = input.bodyType === undefined || input.bodyType === null ? null : String(input.bodyType);
+    if (conditionSummary.length < 3 || !findings || !recommendations || findings.length > 40 || recommendations.length > 20 ||
+      findings.some((item) => !validFinding(item)) || recommendations.some((item) => !validRecommendation(item)) ||
+      (bodyType !== null && !BODY_TYPES.some((item) => item.code === bodyType))) {
       return { kind: 'invalid' };
     }
 
@@ -79,6 +83,8 @@ export const ordersMethods = {
         `recommendation_${randomUUID()}`, orderId, String(recommendation.title).trim(),
         String(recommendation.reason).trim(), recommendation.priority
       );
+      if (bodyType) this.db.prepare(`INSERT INTO order_intake_body_types (order_id, tenant_id, body_type) VALUES (?, ?, ?)
+        ON CONFLICT(order_id) DO UPDATE SET body_type = excluded.body_type`).run(orderId, tenantId, bodyType);
       this.db.prepare(`UPDATE orders SET status = 'ESTIMATE_DRAFT' WHERE id = ? AND tenant_id = ?`)
         .run(orderId, tenantId);
       this.db.prepare('UPDATE order_workflows SET updated_at = CURRENT_TIMESTAMP WHERE order_id = ?').run(orderId);
@@ -620,7 +626,7 @@ export const ordersMethods = {
     const boundedLimit = Number.isInteger(requestedLimit) ? Math.min(50, Math.max(1, requestedLimit)) : 20;
     return this.db.prepare(`SELECT o.id, o.status, o.created_at,
         c.id customer_id, c.name customer_name, c.phone_display customer_phone,
-        v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color,
+        v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color, v.body_type,
         e.total_amount_minor, a.master_name, am.member_id master_member_id
       FROM orders o
       JOIN customers c ON c.id = o.customer_id AND c.tenant_id = o.tenant_id
@@ -649,7 +655,8 @@ export const ordersMethods = {
           model: row.model,
           generation: row.generation,
           plate: row.plate_display,
-          color: row.color
+          color: row.color,
+          bodyType: row.body_type
         }
       }));
   },
@@ -694,6 +701,7 @@ export const ordersMethods = {
           createdAt: apiTimestamp(photo.created_at)
         })),
       intake: intake ? {
+        bodyType: this.db.prepare('SELECT body_type FROM order_intake_body_types WHERE order_id = ? AND tenant_id = ?').get(orderId, tenantId)?.body_type ?? null,
         conditionSummary: intake.condition_summary,
         completedAt: apiTimestamp(intake.completed_at),
         findings: this.db.prepare(`SELECT id, zone, severity, note FROM inspection_findings

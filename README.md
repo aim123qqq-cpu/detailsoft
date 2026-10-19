@@ -39,6 +39,7 @@ pnpm start
 - `migrations/016_order_documents.sql` — номерные неизменяемые акты приёмки и выдачи с необязательной подписью клиента.
 - `migrations/018_order_assignment_members.sql` — связь назначения мастера с реальным сотрудником; имя в заказе остаётся снимком.
 - `migrations/022_booking_slot_conflicts.sql` — пометка «конфликт времени» у записи, сделанной без сети, пока её не перенесут.
+- `migrations/023_order_intake_body_types.sql` — тип кузова, выбранный при приёмке: по нему строится схема осмотра с нумерацией элементов (`src/shared/carLayouts.ts`).
 - `migrations/021_idempotent_requests.sql` — запомненные ответы на изменения с `Idempotency-Key` для отправки очереди без сети.
 - `migrations/020_catalog_sections.sql` — разделы каталога и их порядок; цена по умолчанию хранится строкой с классом `*`.
 - `migrations/019_tenant_roles.sql` — настраиваемые роли центра (права системных ролей и свои роли) и журнал их изменений.

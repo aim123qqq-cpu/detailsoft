@@ -288,7 +288,7 @@
 
 `POST /api/orders` принимает подтверждённый `bookingId`. Одна запись порождает не более одного заказа в tenant: повтор возвращает тот же заказ с `200`. Новый заказ начинается в `INTAKE`.
 
-`PUT /api/orders/{id}/intake` принимает `conditionSummary`, массив `findings` (`zone`, `severity`, `note`) и массив `recommendations` (`title`, `reason`, `priority`). После сохранения заказ переходит в `ESTIMATE_DRAFT`, а событие `INTAKE_COMPLETED` попадает в аудит.
+`PUT /api/orders/{id}/intake` принимает `conditionSummary`, массив `findings` (`zone`, `severity`, `note`; до 40 штук), массив `recommendations` (`title`, `reason`, `priority`) и необязательный `bodyType` (`sedan`, `hatchback`, `wagon`, `suv`, `coupe`, `van`, `pickup`; другое значение — `422`). `bodyType` выбирает схему осмотра, а `zone` замечания — это название элемента схемы (например, «Правое переднее крыло»). В акте приёмки у такого замечания есть `element` — номер элемента на схеме; у замечаний из старых версий приложения он `null`. Если `bodyType` не передан, сохранённый ранее тип не меняется; акт без типа строится как седан. После сохранения заказ переходит в `ESTIMATE_DRAFT`, а событие `INTAKE_COMPLETED` попадает в аудит.
 
 Каждый `POST /api/orders/{id}/estimates` создаёт новый снимок строк и вычисляет итог на сервере. Старые версии не обновляются. Согласовать можно только `currentEstimateVersionId`; устаревшая версия возвращает `409 stale_estimate`. Решение требует `decision`, `method`, `source` и `responsible`. После `APPROVED` приёмку нельзя молча переписать (`409 invalid_order_state`).
 

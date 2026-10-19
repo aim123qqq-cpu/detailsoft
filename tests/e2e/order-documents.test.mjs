@@ -29,7 +29,8 @@ test('mobile intake and handover acts: preview, finger signature, numbering, pri
   };
   const saveIntake = (orderId, note) => call(`/api/orders/${orderId}/intake`, 'PUT', {
     conditionSummary: 'Автомобиль принят при клиенте, комплектность проверена',
-    findings: [{ zone: 'Переднее крыло', severity: 'MEDIUM', note }],
+    bodyType: 'sedan',
+    findings: [{ zone: 'Правое переднее крыло', severity: 'MEDIUM', note }],
     recommendations: [{ title: 'Локальная защита скола', reason: 'Снизит риск коррозии', priority: 'RECOMMENDED' }]
   });
   const startOrder = async (startAt) => {
@@ -93,6 +94,10 @@ test('mobile intake and handover acts: preview, finger signature, numbering, pri
     assert.match(preview, /Предпросмотр/);
     assert.match(preview, /Скол ЛКП на переднем крыле/);
     assert.match(preview, /А123АА 55/);
+    // The act repeats the intake diagram; the finding carries the same element number.
+    assert.equal(await page.locator('.document-paper .car-diagram').count(), 1);
+    assert.match(await page.locator('.document-paper .document-element').first().innerText(), /^12$/);
+    assert.match(preview, /Схема осмотра · Седан/);
     const overlay = await page.locator('.document-overlay').boundingBox();
     assert.ok(overlay && overlay.width === 390 && overlay.height === 844, 'document overlay covers the whole viewport');
     const overflow = await page.evaluate(() => document.querySelector('.document-overlay').scrollWidth - document.querySelector('.document-overlay').clientWidth);
