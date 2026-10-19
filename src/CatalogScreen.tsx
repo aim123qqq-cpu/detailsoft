@@ -39,8 +39,11 @@ export function CatalogScreen({ onBack }: { onBack: () => void }) {
 
   const items = useMemo(() => catalog?.items.filter((item) => item.type === kind && (showArchived || item.active)) ?? [], [catalog, kind, showArchived]);
   const reload = () => setRevision((value) => value + 1);
-  // Section counts change with items, so the catalog is reloaded after a save.
-  const saved = (item: ManagedCatalogItem) => { setEditing(null); setCreating(null); setKind(item.type); reload(); window.scrollTo({ top: 0, behavior: 'auto' }); };
+  // The saved item shows at once; the reload then refreshes section counts.
+  const saved = (item: ManagedCatalogItem) => {
+    setCatalog((current) => current ? { ...current, items: current.items.some((entry) => entry.id === item.id) ? current.items.map((entry) => entry.id === item.id ? item : entry) : [...current.items, item] } : current);
+    setEditing(null); setCreating(null); setKind(item.type); reload(); window.scrollTo({ top: 0, behavior: 'auto' });
+  };
   const startCreate = (type: 'simple' | 'service' | 'package', sectionId?: string) => { setCreateSectionId(sectionId); setCreating(type); };
 
   if (catalog && creating === 'simple') return <SimpleServiceForm item={null} sections={catalog.sections} vehicleClasses={catalog.vehicleClasses} defaultSectionId={createSectionId} onCancel={() => setCreating(null)} onSaved={saved} onComposite={() => setCreating('service')}/>;
