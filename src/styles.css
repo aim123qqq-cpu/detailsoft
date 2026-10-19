@@ -1436,7 +1436,7 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
   :root { --app-width: 820px; }
   .app-shell { width: min(calc(100% - 32px), var(--app-width)); margin-top: 24px; margin-bottom: 24px; min-height: calc(100dvh - 48px); border-radius: 26px; border: 1px solid #303a44; }
   .app-header { padding-right: 28px; padding-left: 28px; }
-  .screen { padding: 25px 28px 42px; }
+  .screen { padding-top: 25px; padding-right: 28px; padding-left: 28px; }
   .bottom-nav { bottom: 0; width: min(calc(100% - 32px), var(--app-width)); }
   .intake-actions { width: min(calc(100% - 32px), var(--app-width)); padding-right: 28px; padding-left: 28px; }
   .inspection-panel { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }

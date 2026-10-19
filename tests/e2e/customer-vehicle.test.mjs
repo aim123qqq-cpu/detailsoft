@@ -158,6 +158,12 @@ test('mobile customer → vehicle → services → booking flow works end to end
     const findingFontSize = Number.parseFloat(await page.locator('.finding-text strong').first().evaluate((element) => getComputedStyle(element).fontSize));
     const tabletNav = await page.locator('.bottom-nav').boundingBox();
     assert.ok(findingFontSize >= 12, 'inspection findings remain readable on tablet');
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const summaryBox = await page.getByTestId('intake-summary').boundingBox();
+    const actionsBox = await page.locator('.intake-actions').boundingBox();
+    assert.ok(summaryBox && actionsBox && summaryBox.y + summaryBox.height <= actionsBox.y, 'the fixed intake actions never cover the end of the form');
+    await page.screenshot({ path: resolve(artifacts, '27-order-intake-tablet-bottom.png') });
+    await page.evaluate(() => window.scrollTo(0, 0));
     assert.ok(tabletNav && Math.abs(tabletNav.y + tabletNav.height - 1024) < 1, 'bottom navigation remains pinned on tablet');
     await page.screenshot({ path: resolve(artifacts, '26-order-intake-tablet.png') });
     await page.setViewportSize({ width: 390, height: 844 });
