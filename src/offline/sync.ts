@@ -17,7 +17,7 @@ export type OutboxItem = {
   /** Set when the server refused the change; the queue waits for "retry" or "discard". */
   error?: string;
   /** Time a booking made or moved on this phone occupies until the server has it. */
-  busy?: { id: string; startAt: string; durationMinutes: number };
+  busy?: { id: string; startAt: string; durationMinutes: number; free?: boolean };
 };
 
 /** "order:<id>" → "/api/orders/<id>", "booking:<id>" → "/api/bookings/<id>": the entity's own copy. */

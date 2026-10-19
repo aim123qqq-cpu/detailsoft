@@ -305,7 +305,9 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId =
         <div><span>Выдал</span><strong>{order.handover?.responsible}</strong></div>
       </div>
       <div className="handover-proof">✓ {order.handover?.note}</div>
-      <div className="audit-note">Заказ и выдача зафиксированы в журнале · {order.auditTrail.length} событий</div>
+      <div className="audit-note">{order.auditTrail.length
+        ? `Заказ и выдача зафиксированы в журнале · ${order.auditTrail.length} ${pluralRu(order.auditTrail.length, 'событие', 'события', 'событий')}`
+        : 'Журнал заполнится, когда изменения дойдут до сервера'}</div>
       <ShareOrderButton order={order} vehicle={vehicle}/>
       <OrderDocumentsPanel order={order} defaultSigner={customer.name} onChanged={refreshOrder}/>
     </section>

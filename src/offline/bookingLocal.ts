@@ -78,8 +78,10 @@ export function localQuote(pack: BookingPack, vehicleId: string, selections: Quo
 }
 
 /** Free time from the saved busy time plus bookings made on this phone and not yet sent. */
-export function localAvailability(pack: BookingPack, extraBusy: BusyBooking[], date: string, durationMinutes: number): BookingAvailability {
-  const result = availabilityForDate(pack.schedule, [...pack.busy.filter((item) => !extraBusy.some((extra) => extra.id === item.id)), ...extraBusy], date, durationMinutes);
+export function localAvailability(pack: BookingPack, extraBusy: Array<BusyBooking & { free?: boolean }>, date: string, durationMinutes: number): BookingAvailability {
+  // A booking cancelled here no longer occupies its time.
+  const busy = [...pack.busy.filter((item) => !extraBusy.some((extra) => extra.id === item.id)), ...extraBusy.filter((item) => !item.free)];
+  const result = availabilityForDate(pack.schedule, busy, date, durationMinutes);
   if (result.kind !== 'available') throw new ApiRequestError('Проверьте дату', 422, 'validation_error');
   const { kind, ...availability } = result;
   return availability;

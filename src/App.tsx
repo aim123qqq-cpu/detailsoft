@@ -156,6 +156,11 @@ export function App() {
 
   // Front-desk staff keep what booking needs offline (schedule, prices, busy time, customers).
   const canBook = Boolean(session?.capabilities.manageBookings);
+  const canAssign = Boolean(session?.capabilities.assignMasters);
+  useEffect(() => {
+    // The masters list lets an admin assign work without the server.
+    if (canAssign) api.listMasters().catch(() => {});
+  }, [canAssign]);
   useEffect(() => {
     if (!canBook) return;
     void api.refreshBookingPack(true);

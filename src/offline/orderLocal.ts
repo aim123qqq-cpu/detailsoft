@@ -80,3 +80,57 @@ export function localCompleteWork(order: WorkOrder, now: string, qualityControlE
   if (work.operations.some((operation) => operation.status !== 'DONE')) throw conflict('operations_incomplete', 'Завершите все согласованные операции');
   return { ...order, status: qualityControlEnabled ? 'QC' : 'READY', work: { ...work, status: 'COMPLETED', completedAt: now, updatedAt: now } };
 }
+
+/** A new intake started from a confirmed booking; `id` is chosen on the phone (order_<uuid>). */
+export function localCreateOrder(booking: { id: string; customerId: string; vehicleId: string; status: string }, id: string, now: string): WorkOrder {
+  if (booking.status !== 'CONFIRMED') throw new ApiRequestError('Подтверждённая запись не найдена', 404, 'booking_not_found');
+  return {
+    id, createdAt: now, bookingId: booking.id, customerId: booking.customerId, vehicleId: booking.vehicleId, status: 'INTAKE',
+    currentEstimateVersionId: null, photos: [], intake: null, estimateVersions: [], approval: null, assignment: null, work: null,
+    qualityControl: [], handover: null, auditTrail: [], documents: []
+  };
+}
+
+type LineInput = { sourceType: 'service' | 'package' | 'recommendation' | 'custom'; sourceId?: string | null; name: string; amountMinor: number; durationMinutes: number; reason?: string | null };
+
+/** A new estimate version; its id and line ids are chosen on the phone so approval and work can refer to them. */
+export function localCreateEstimate(order: WorkOrder, lines: Array<LineInput & { id: string }>, id: string, now: string) {
+  if (order.status !== 'ESTIMATE_DRAFT') throw conflict('invalid_order_state', 'Сначала завершите приёмку');
+  const valid = (line: LineInput) => ['service', 'package', 'recommendation', 'custom'].includes(line.sourceType) && line.name.trim() &&
+    Number.isInteger(line.amountMinor) && line.amountMinor >= 0 && Number.isInteger(line.durationMinutes) && line.durationMinutes >= 0;
+  if (!lines.length || lines.length > 30 || !lines.every(valid)) throw invalid('Проверьте строки сметы');
+  const estimate = {
+    id, orderId: order.id, version: Math.max(0, ...order.estimateVersions.map((item) => item.version)) + 1,
+    totalAmountMinor: lines.reduce((sum, line) => sum + line.amountMinor, 0),
+    totalDurationMinutes: lines.reduce((sum, line) => sum + line.durationMinutes, 0),
+    createdAt: now,
+    lines: lines.map((line) => ({ ...line, name: line.name.trim(), sourceId: line.sourceId ?? null, reason: line.reason?.trim() || null }))
+  };
+  return { order: { ...order, currentEstimateVersionId: id, estimateVersions: [...order.estimateVersions, estimate] }, estimate };
+}
+
+export function localDecideEstimate(order: WorkOrder, input: { estimateVersionId: string; decision: 'APPROVED' | 'REJECTED'; method: 'in_person' | 'phone' | 'messenger'; source: string; responsible: string }, now: string): WorkOrder {
+  if (!input.source.trim() || !input.responsible.trim()) throw invalid('Укажите, кто зафиксировал решение');
+  if (order.currentEstimateVersionId !== input.estimateVersionId) throw conflict('stale_estimate', 'Можно согласовать только актуальную версию сметы');
+  if (order.approval?.estimateVersionId === input.estimateVersionId) throw conflict('estimate_already_decided', 'Решение по этой версии уже сохранено');
+  return {
+    ...order,
+    status: input.decision === 'APPROVED' ? 'APPROVED' : 'ESTIMATE_DRAFT',
+    approval: { estimateVersionId: input.estimateVersionId, decision: input.decision, method: input.method, source: input.source.trim(), responsible: input.responsible.trim(), decidedAt: now }
+  };
+}
+
+export function localAssignMaster(order: WorkOrder, master: { id: string; displayName: string }, now: string): WorkOrder {
+  if (order.status !== 'APPROVED') throw conflict('invalid_order_state', 'Мастера можно назначить после согласования сметы');
+  return { ...order, assignment: { masterName: master.displayName, memberId: master.id, assignedAt: now } };
+}
+
+export function localCloseOrder(order: WorkOrder, input: { responsible: string; note: string; customerAccepted: boolean; completenessChecked: boolean }, now: string): WorkOrder {
+  if (input.responsible.trim().length < 2 || input.note.trim().length < 2) throw invalid('Укажите ответственного и комментарий');
+  if (order.status !== 'READY') throw conflict('invalid_order_state', 'Заказ не готов к выдаче');
+  if (!order.photos.some((photo) => photo.phase === 'intake') || !order.photos.some((photo) => photo.phase === 'result')) {
+    throw conflict('handover_photos_required', 'Добавьте фото автомобиля до и после работ');
+  }
+  if (!input.customerAccepted || !input.completenessChecked) throw invalid('Подтвердите осмотр и комплектность');
+  return { ...order, status: 'CLOSED', handover: { responsible: input.responsible.trim(), note: input.note.trim(), handedOverAt: now } };
+}

@@ -718,6 +718,7 @@ export function createDetailFlowServer({
           const result = repository.createOrderFromBooking(tenantId, await readJson(request));
           if (result.kind === 'created') return sendJson(response, 201, result.order);
           if (result.kind === 'replayed') return sendJson(response, 200, result.order);
+          if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
           if (result.kind === 'not_found') return sendJson(response, 404, {
             error: { code: 'booking_not_found', message: 'Подтверждённая запись не найдена' }
           });

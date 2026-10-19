@@ -28,6 +28,12 @@ const OPERATION_PRICE_CLASS = `(SELECT x.tenant_class FROM service_operation_pri
 const PACKAGE_PRICE_CLASS = `(SELECT x.tenant_class FROM service_package_prices x
   WHERE x.package_id = p.id AND x.tenant_class IN (?, '*') ORDER BY x.tenant_class = '*' LIMIT 1)`;
 
+/** An id chosen by a phone working offline: "<prefix>_<uuid>", or undefined when the server picks one. */
+function clientId(value, prefix) {
+  if (value === undefined || value === null) return undefined;
+  return typeof value === 'string' && new RegExp(`^${prefix}_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`).test(value) ? value : null;
+}
+
 function apiTimestamp(value) {
   if (!value) return null;
   return new Date(value.endsWith?.('Z') ? value : `${value.replace(' ', 'T')}Z`).toISOString();
@@ -1674,12 +1680,24 @@ export class DetailFlowRepository {
     if (!bookingId) return { kind: 'invalid' };
     const existing = this.db.prepare(`SELECT order_id FROM order_workflows
       WHERE tenant_id = ? AND booking_id = ?`).get(tenantId, bookingId);
-    if (existing) return { kind: 'replayed', order: this.getOrder(tenantId, existing.order_id) };
+    if (existing) {
+      // Another phone started this intake first: its order stands, the offline one is refused.
+      if (input.id !== undefined && input.id !== existing.order_id) {
+        return { kind: 'conflict', code: 'order_exists_for_booking', message: 'По этой записи приёмку уже начали на другом устройстве' };
+      }
+      return { kind: 'replayed', order: this.getOrder(tenantId, existing.order_id) };
+    }
     const booking = this.db.prepare(`SELECT id, customer_id, vehicle_id, status
       FROM bookings WHERE id = ? AND tenant_id = ?`).get(bookingId, tenantId);
     if (!booking || booking.status !== 'CONFIRMED') return { kind: 'not_found', resource: 'booking' };
 
-    const orderId = `order_${randomUUID()}`;
+    // An intake started offline names the order on the phone, so its later changes can refer to it.
+    const requestedId = clientId(input.id, 'order');
+    if (requestedId === null) return { kind: 'invalid' };
+    if (requestedId && this.db.prepare('SELECT 1 FROM orders WHERE id = ?').get(requestedId)) {
+      return { kind: 'conflict', code: 'order_exists', message: 'Заказ с таким номером уже есть' };
+    }
+    const orderId = requestedId ?? `order_${randomUUID()}`;
     this.db.exec('BEGIN');
     try {
       this.db.prepare(`INSERT INTO orders (id, tenant_id, customer_id, vehicle_id, status)
@@ -1807,10 +1825,18 @@ export class DetailFlowRepository {
       String(line.name ?? '').trim() && Number.isInteger(line.amountMinor) && line.amountMinor >= 0 &&
       Number.isInteger(line.durationMinutes) && line.durationMinutes >= 0;
     if (!lines || lines.length < 1 || lines.length > 30 || lines.some((line) => !validLine(line))) return { kind: 'invalid' };
+    // Offline phones choose the version and line ids: approval and work operations refer to them.
+    const requestedId = clientId(input.id, 'estimate');
+    const lineIds = lines.map((line) => clientId(line.id, 'estimate_line'));
+    if (requestedId === null || lineIds.some((id) => id === null) || new Set(lineIds.filter(Boolean)).size !== lineIds.filter(Boolean).length) return { kind: 'invalid' };
+    if ((requestedId && this.db.prepare('SELECT 1 FROM estimate_versions WHERE id = ?').get(requestedId)) ||
+      lineIds.some((id) => id && this.db.prepare('SELECT 1 FROM estimate_lines WHERE id = ?').get(id))) {
+      return { kind: 'conflict', code: 'estimate_exists', message: 'Смета с таким номером уже есть' };
+    }
 
     const version = this.db.prepare('SELECT COALESCE(MAX(version), 0) + 1 version FROM estimate_versions WHERE order_id = ?')
       .get(orderId).version;
-    const estimateVersionId = `estimate_${randomUUID()}`;
+    const estimateVersionId = requestedId ?? `estimate_${randomUUID()}`;
     const totalAmountMinor = lines.reduce((sum, line) => sum + line.amountMinor, 0);
     const totalDurationMinutes = lines.reduce((sum, line) => sum + line.durationMinutes, 0);
     this.db.exec('BEGIN');
@@ -1824,7 +1850,7 @@ export class DetailFlowRepository {
         (id, estimate_version_id, sequence, source_type, source_id, name, amount_minor, duration_minutes, reason)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
       lines.forEach((line, index) => insertLine.run(
-        `estimate_line_${randomUUID()}`, estimateVersionId, index + 1, line.sourceType,
+        lineIds[index] ?? `estimate_line_${randomUUID()}`, estimateVersionId, index + 1, line.sourceType,
         line.sourceId ?? null, String(line.name).trim(), line.amountMinor, line.durationMinutes,
         String(line.reason ?? '').trim() || null
       ));

@@ -2,7 +2,7 @@ import type { AuthProvider, CatalogOperation, LoginRequest, LoginStatus, Messeng
 import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogSection, CatalogVariant, CenterRole, CenterSettings, Customer, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, OrderDocument, OrderDocumentContent, OrderDocumentType, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, Permission, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, SimpleServiceInput, TeamMember, TeamRole, Vehicle, VehicleProfile, WorkOrder } from './types';
 
 import { ApiRequestError } from './apiError';
-import { localAddPhoto, localCompleteWork, localSaveIntake, localSetPause, localStartWork, localUpdateOperation } from './offline/orderLocal';
+import { localAddPhoto, localAssignMaster, localCloseOrder, localCompleteWork, localCreateEstimate, localCreateOrder, localDecideEstimate, localSaveIntake, localSetPause, localStartWork, localUpdateOperation } from './offline/orderLocal';
 import { cachedPaths, configureSync, enqueue, flush, hasPending, markReachable, pendingBusy, readCache, tokenScope, writeCache } from './offline/sync';
 import { localAvailability, localBooking, localQuote, localSearchCustomers, localSearchVehicles, localServicesCatalog, type BookingPack } from './offline/bookingLocal';
 import { isSlotAvailable } from './shared/bookingRules';
@@ -122,6 +122,17 @@ const prefetched = new Map<string, number>();
  * Keeps unfinished orders on the phone so a master can work on them without the server.
  * Runs in the background after the list loads; each order is refreshed at most every 2 minutes.
  */
+/** Bookings of today and tomorrow are kept whole, so an intake can start from them offline. */
+async function prefetchBookings(items: BookingListItem[]) {
+  const until = Date.now() + 2 * 24 * 60 * 60 * 1000;
+  const due = items.filter((item) => item.status === 'CONFIRMED' && Date.parse(item.startAt) < until && Date.now() - (prefetched.get(item.id) ?? 0) > 120_000).slice(0, 20);
+  for (const item of due) {
+    if (await hasPending(`booking:${item.id}`)) continue;
+    prefetched.set(item.id, Date.now());
+    try { await request<Booking>(`/api/bookings/${encodeURIComponent(item.id)}`); } catch { return; }
+  }
+}
+
 async function prefetchOrders(items: OrderListItem[]) {
   const due = items.filter((item) => item.status !== 'CLOSED' && Date.now() - (prefetched.get(item.id) ?? 0) > 120_000).slice(0, 30);
   for (const item of due) {
@@ -193,7 +204,7 @@ async function withPack<T>(online: () => Promise<T>, local: (pack: BookingPack) 
 
 async function busyWithLocal(pack: BookingPack) {
   const local = await pendingBusy();
-  return [...pack.busy.filter((item) => !local.some((entry) => entry.id === item.id)), ...local];
+  return [...pack.busy.filter((item) => !local.some((entry) => entry.id === item.id)), ...local.filter((entry) => !entry.free)];
 }
 
 const BOOKING_LISTS = '/api/bookings?';
@@ -255,8 +266,10 @@ export const api = {
   getSession(signal?: AbortSignal) {
     return request<SessionContext>('/api/session', { signal });
   },
-  listBookings(signal?: AbortSignal) {
-    return request<{ items: BookingListItem[] }>('/api/bookings?view=upcoming&limit=50', { signal });
+  async listBookings(signal?: AbortSignal) {
+    const result = await request<{ items: BookingListItem[] }>('/api/bookings?view=upcoming&limit=50', { signal });
+    void prefetchBookings(result.items);
+    return result;
   },
   /** Past confirmed bookings with no order: arrival or no-show still has to be recorded. */
   listOverdueBookings(signal?: AbortSignal) {
@@ -485,13 +498,23 @@ export const api = {
         if (!(error instanceof NetworkError)) throw error;
       }
     }
-    if (!('startAt' in input)) throw new ApiRequestError('Отмену и неявку можно отметить, когда будет связь с сервером', 409, 'offline_unsupported');
-    // Moving offline: the same rules as the server, checked on the saved schedule.
     const booking = await readCache<Booking>(path);
     if (!booking) throw new NetworkError();
     if (booking.status !== 'CONFIRMED') throw new ApiRequestError('Изменить можно только подтверждённую запись', 409, 'invalid_booking_state');
     const listed = await findBookingListItem(bookingId);
     if (listed?.orderId) throw new ApiRequestError('По записи уже создан заказ', 409, 'booking_has_order');
+    if ('status' in input) {
+      // Cancelling or a no-show frees the time at once on this phone.
+      if (input.status === 'NO_SHOW' && Date.parse(booking.startAt) > Date.now()) {
+        throw new ApiRequestError('Отметить неявку можно после времени начала записи', 409, 'booking_not_started');
+      }
+      const changed: Booking = { ...booking, status: input.status, slotConflict: false, pendingSync: true };
+      await writeCache(path, changed);
+      if (listed) await upsertBookingInLists({ ...listed, status: input.status, slotConflict: false, pendingSync: true });
+      await enqueue({ method: 'PATCH', path, body, key, label: `${input.status === 'CANCELLED' ? 'Отмена' : 'Неявка'}${listed ? ` · ${listed.customer.name}` : ''}`,
+        entity: `booking:${bookingId}`, busy: { id: bookingId, startAt: booking.startAt, durationMinutes: booking.estimatedDurationMinutes, free: true } });
+      return changed;
+    }
     const pack = await offlinePack();
     if (!isSlotAvailable(pack.schedule, await busyWithLocal(pack), input.startAt, booking.estimatedDurationMinutes, bookingId)) {
       throw new ApiRequestError('Это время уже занято', 409, 'slot_unavailable');
@@ -547,8 +570,35 @@ export const api = {
       busy: { id, startAt: input.startAt, durationMinutes: quote.totalDurationMinutes } });
     return booking;
   },
-  createOrder(bookingId: string) {
-    return request<WorkOrder>('/api/orders', { method: 'POST', body: JSON.stringify({ bookingId }) });
+  async createOrder(bookingId: string) {
+    const id = `order_${randomId()}`;
+    const key = randomId();
+    const body = JSON.stringify({ bookingId, id });
+    if (!(await hasPending())) {
+      try {
+        return await request<WorkOrder>('/api/orders', { method: 'POST', body, headers: { 'idempotency-key': key } });
+      } catch (error) {
+        if (!(error instanceof NetworkError)) throw error;
+      }
+    }
+    // Offline intake: the order is created on the phone from the saved booking.
+    const listed = await findBookingListItem(bookingId);
+    const booking = await readCache<Booking>(`/api/bookings/${encodeURIComponent(bookingId)}`);
+    const source = booking ?? (listed && { id: listed.id, customerId: listed.customer.id, vehicleId: listed.vehicle.id, status: listed.status });
+    if (!source) throw new NetworkError();
+    if (listed?.orderId) {
+      const existing = await readCache<WorkOrder>(`/api/orders/${listed.orderId}`);
+      if (existing) return existing;
+    }
+    const order = localCreateOrder(source, id, nowIso());
+    await writeCache(`/api/orders/${id}`, order);
+    if (listed) {
+      await upsertBookingInLists({ ...listed, orderId: id });
+      const list = await readCache<{ items: OrderListItem[] }>(ORDERS_LIST);
+      if (list) await writeCache(ORDERS_LIST, { ...list, items: [{ id, status: order.status, createdAt: order.createdAt, totalAmountMinor: null, masterName: null, masterMemberId: null, customer: listed.customer, vehicle: listed.vehicle }, ...list.items] });
+    }
+    await enqueue({ method: 'POST', path: '/api/orders', body, key, label: `Начало приёмки${listed ? ` · ${listed.customer.name}` : ''}`, entity: `order:${id}` });
+    return order;
   },
   saveIntake(orderId: string, input: {
     conditionSummary: string;
@@ -568,10 +618,20 @@ export const api = {
     if (cached && !cached.photos.some((item) => item.id === photo.id)) await writeCache(`/api/orders/${orderId}`, { ...cached, photos: [...cached.photos, photo] });
     return photo;
   },
-  createEstimate(orderId: string, lines: EstimateLineInput[]) {
-    return request<EstimateVersion>(`/api/orders/${encodeURIComponent(orderId)}/estimates`, {
-      method: 'POST', body: JSON.stringify({ lines })
+  async createEstimate(orderId: string, lines: EstimateLineInput[]) {
+    // Ids come from the phone so an approval and work started offline can refer to this version.
+    const id = `estimate_${randomId()}`;
+    const withIds = lines.map((line) => ({ ...line, id: `estimate_line_${randomId()}` }));
+    const estimate = await orderChange<EstimateVersion>(orderId, 'Смета', 'POST', orderUrl(orderId, '/estimates'), { id, lines: withIds }, (order) => {
+      const local = localCreateEstimate(order, withIds, id, nowIso());
+      return { order: local.order, result: local.estimate };
     });
+    // Sent directly, the answer is the estimate only: keep the phone's copy of the order in step.
+    const cached = await readCache<WorkOrder>(`/api/orders/${orderId}`);
+    if (cached && !cached.estimateVersions.some((item) => item.id === estimate.id)) {
+      await writeCache(`/api/orders/${orderId}`, { ...cached, currentEstimateVersionId: estimate.id, estimateVersions: [...cached.estimateVersions, estimate] });
+    }
+    return estimate;
   },
   decideEstimate(orderId: string, input: {
     estimateVersionId: string;
@@ -580,16 +640,21 @@ export const api = {
     source: string;
     responsible: string;
   }) {
-    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/estimate-approvals`, {
-      method: 'POST', body: JSON.stringify(input)
+    return orderChange(orderId, input.decision === 'APPROVED' ? 'Согласование сметы' : 'Отказ от сметы', 'POST', orderUrl(orderId, '/estimate-approvals'), input, (order) => {
+      const next = localDecideEstimate(order, input, nowIso());
+      return { order: next, result: next };
     });
   },
   listMasters(signal?: AbortSignal) {
     return request<{ items: Array<{ id: string; displayName: string; activeOrders: number }> }>('/api/tenants/current/masters', { signal });
   },
-  assignMaster(orderId: string, memberId: string) {
-    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/assignment`, {
-      method: 'PUT', body: JSON.stringify({ memberId })
+  async assignMaster(orderId: string, memberId: string) {
+    const masters = (await readCache<{ items: Array<{ id: string; displayName: string }> }>('/api/tenants/current/masters'))?.items ?? [];
+    return orderChange(orderId, 'Назначение мастера', 'PUT', orderUrl(orderId, '/assignment'), { memberId }, (order) => {
+      const master = masters.find((item) => item.id === memberId);
+      if (!master) throw new ApiRequestError('Список мастеров не сохранён на телефоне. Назначьте мастера, когда будет связь', 422, 'not_a_master');
+      const next = localAssignMaster(order, master, nowIso());
+      return { order: next, result: next };
     });
   },
   startWork(orderId: string) {
@@ -645,8 +710,9 @@ export const api = {
     });
   },
   closeOrder(orderId: string, input: { responsible: string; note: string; customerAccepted: boolean; completenessChecked: boolean }) {
-    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/handover`, {
-      method: 'POST', body: JSON.stringify(input)
+    return orderChange(orderId, 'Выдача автомобиля', 'POST', orderUrl(orderId, '/handover'), input, (order) => {
+      const next = localCloseOrder(order, input, nowIso());
+      return { order: next, result: next };
     });
   }
 };
