@@ -87,7 +87,10 @@ tests/e2e/chrome.mjs              путь к Chrome для E2E (CHROME_PATH и�
 android/                          Android-оболочка (Java, WebView, без зависимостей): адрес сервера, мост share/print/clipboard, камера
 src/platform.ts                   randomId() без secure context и доступ к мосту Android
 tests/android/smoke.mjs           Playwright _android: сценарий в настоящем WebView (не входит в pnpm test)
-migrations/                       схема 001–021
+migrations/                       схема 001–022
+src/shared/                       общий код сервера и приложения: bookingRules.ts (слоты, расчёт, подпись цены), normalize.ts
+server/offline-pack.mjs           пакет для записи без сети (GET /api/offline/booking-pack)
+src/offline/bookingLocal.ts       каталог, расчёт, свободное время, поиск и запись на телефоне по пакету
 server/idempotency.mjs            общий Idempotency-Key для изменяющих запросов (запомненный ответ, 7 дней)
 src/offline/                      работа без сети: store.ts (IndexedDB), sync.ts (копия ответов и очередь), orderLocal.ts (правила заказа на телефоне)
 src/SyncBanner.tsx                плашка «нет подключения / отправляем / не отправлено»
@@ -261,7 +264,7 @@ pnpm test:e2e     # только E2E
 
 Последняя подтверждённая база (16 октября 2026, после четырёх комплексов):
 
-- `pnpm test`-эквивалент: **150/150 passed** (было 68; последними добавлены `idempotency` (2), `offline-order-local` (1, правила телефона против настоящего сервера), `offline-queue` (2) и E2E `offline-work`; до этого `catalog-sections` (5) и E2E `catalog-sections`, в E2E `reference-management` составная услуга открывается кнопкой «Собрать услугу из нескольких операций»; до этого `roles` (5) и E2E `roles`; в `session.test.mjs` добавлены `roleNames` и `acceptAssignments`; до этого `platform` (1, `randomId` без `crypto.randomUUID` — по `http://192.168…` его нет, и создание записи с телефона падало), `health` (1, `/api/ready`), `setup-owner` (2), до этого `role-access` (5), `backup` (4), тест `view=upcoming|overdue`, E2E `role-workspaces`). E2E с несколькими ролями открывает каждую роль в своём контексте Chrome и закрывает его перед следующей. Добавлены: `customer-profile` (8), `booking-quote-revision` (6), `order-documents` (6), `messenger-auth` (6), `messenger-adapters` (4), `share-order` (3, импортирует `src/shareOrder.ts` напрямую — Node 24 снимает типы сам), 4 новых E2E; в `session.test.mjs` обновлена форма `actor` (`memberId`, `authMethod`);
+- `pnpm test`-эквивалент: **156/156 passed** (было 68; последними добавлены `offline-booking-local` (3, совпадение телефона с сервером), `booking-offline-sync` (2) и E2E `offline-booking`; в E2E `customer-vehicle` пакет для записи отключён, чтобы проверять путь «ошибка поиска → повторить»; до этого `idempotency` (2), `offline-order-local` (1, правила телефона против настоящего сервера), `offline-queue` (2) и E2E `offline-work`; до этого `catalog-sections` (5) и E2E `catalog-sections`, в E2E `reference-management` составная услуга открывается кнопкой «Собрать услугу из нескольких операций»; до этого `roles` (5) и E2E `roles`; в `session.test.mjs` добавлены `roleNames` и `acceptAssignments`; до этого `platform` (1, `randomId` без `crypto.randomUUID` — по `http://192.168…` его нет, и создание записи с телефона падало), `health` (1, `/api/ready`), `setup-owner` (2), до этого `role-access` (5), `backup` (4), тест `view=upcoming|overdue`, E2E `role-workspaces`). E2E с несколькими ролями открывает каждую роль в своём контексте Chrome и закрывает его перед следующей. Добавлены: `customer-profile` (8), `booking-quote-revision` (6), `order-documents` (6), `messenger-auth` (6), `messenger-adapters` (4), `share-order` (3, импортирует `src/shareOrder.ts` напрямую — Node 24 снимает типы сам), 4 новых E2E; в `session.test.mjs` обновлена форма `actor` (`memberId`, `authMethod`);
 - `pnpm build` (`tsc --noEmit && vite build`): успешно;
 - 7 реальных Chromium mobile E2E: основной lifecycle, история/передача автомобиля, ручной автомобиль/конструктор каталога, карточка клиента, изменение состава записи, акты и подпись, вход через мессенджер (`tests/e2e/messenger-login.test.mjs`).
 - Запуск с ограничением времени: `node --test --test-timeout=180000 "tests/**/*.test.mjs"`.
@@ -401,7 +404,13 @@ pnpm test:e2e     # только E2E
      - Запуск APK без сервера через `ShellCache`.
 
      Решение по дублям клиентов (до этапа 4): без слияния. Клиент, созданный без сети, при синхронизации предлагается привязать к существующему клиенту с тем же телефоном. Серверные клиенты не сливаются. Владелец явно не возражал (19.10: «далее»).
-     **Осталось:** этап 2 — записи (создание и перенос, конфликт слота); этап 3 — смета, согласование, выдача; этап 4 — новые клиенты и авто.
+     **Этап 2 выполнен 19.10.2026: записи без сети.**
+     - Правила слотов и расчёта вынесены в `src/shared/bookingRules.ts`, сервер переведён на них.
+     - Пакет `/api/offline/booking-pack` и номер записи, выбранный телефоном.
+     - `allowSlotConflict` и пометка `booking_slot_conflicts`.
+     - Перенос без сети. Занятость считается вместе с неотправленными записями телефона (`pendingBusy`).
+
+     **Осталось:** этап 3 — смета, согласование, выдача; этап 4 — новые клиенты и авто; без сети пока нельзя отменить запись, отметить неявку и начать приёмку по записи (создание заказа).
      **Ограничения этапа 1:**
      - копия не чистится: заказы с фото могут занимать десятки мегабайт;
      - браузер без HTTPS не стартует без сервера (нужен service worker);

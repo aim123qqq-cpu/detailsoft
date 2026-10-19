@@ -18,6 +18,9 @@ test('mobile customer → vehicle → services → booking flow works end to end
   await mkdir(artifacts, { recursive: true });
 
   try {
+    // Without the offline booking pack a failed search shows the error and "retry"
+    // (with it, search falls back to the saved customers: tests/e2e/offline-booking.test.mjs).
+    await page.route('**/api/offline/booking-pack', (route) => route.abort('connectionfailed'));
     await page.goto(`http://127.0.0.1:${port}`, { waitUntil: 'domcontentloaded' });
     const firstFocusableClass = await page.locator('a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])').first().getAttribute('class');
     assert.match(firstFocusableClass ?? '', /skip-link/, 'skip link is first in the keyboard focus order');

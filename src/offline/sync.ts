@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { storeDelete, storeEntries, storeGet, storeSet } from './store.ts';
+import { storeDelete, storeEntries, storeGet, storeKeys, storeSet } from './store.ts';
 
 /** A change made while the server was out of reach, sent later in the same order. */
 export type OutboxItem = {
@@ -16,7 +16,15 @@ export type OutboxItem = {
   createdAt: string;
   /** Set when the server refused the change; the queue waits for "retry" or "discard". */
   error?: string;
+  /** Time a booking made or moved on this phone occupies until the server has it. */
+  busy?: { id: string; startAt: string; durationMinutes: number };
 };
+
+/** "order:<id>" → "/api/orders/<id>", "booking:<id>" → "/api/bookings/<id>": the entity's own copy. */
+function entityPath(entity: string) {
+  const match = /^(order|booking):(.+)$/.exec(entity);
+  return match ? `/api/${match[1]}s/${match[2]}` : null;
+}
 
 export type SyncState = { reachable: boolean; syncing: boolean; pending: number; failed: OutboxItem | null };
 
@@ -134,11 +142,25 @@ export async function flush() {
 }
 
 async function afterSent(item: OutboxItem, payload: unknown) {
-  // An order change answers with the whole order: it replaces the local copy.
-  const orderId = /^order:(.+)$/.exec(item.entity)?.[1];
-  if (orderId && payload && typeof payload === 'object' && (payload as { id?: string }).id === orderId && 'estimateVersions' in payload) {
-    await writeCache(`/api/orders/${orderId}`, payload);
-  }
+  // An order or booking change answers with the whole entity: it replaces the local copy.
+  const path = entityPath(item.entity);
+  const id = item.entity.slice(item.entity.indexOf(':') + 1);
+  if (path && payload && typeof payload === 'object' && (payload as { id?: string }).id === id &&
+    ('estimateVersions' in payload || 'quoteVersions' in payload)) await writeCache(path, payload);
+}
+
+/** Busy time of bookings made or moved here and not yet accepted (latest change per booking). */
+export async function pendingBusy() {
+  const latest = new Map<string, NonNullable<OutboxItem['busy']>>();
+  for (const item of await scopedItems()) if (item.busy) latest.set(item.busy.id, item.busy);
+  return [...latest.values()];
+}
+
+/** Paths of saved answers starting with a prefix, for patching lists after a local change. */
+export async function cachedPaths(prefix: string) {
+  const scope = `${scopeOf()}|`;
+  return (await storeKeys('cache'))
+    .filter((key) => key.startsWith(scope + prefix)).map((key) => key.slice(scope.length));
 }
 
 export async function retryFailed() {
@@ -158,8 +180,8 @@ export async function discardFailed() {
   if (!failed) return 0;
   const dropped = items.filter((item) => item.entity === failed.entity && item.id >= failed.id);
   for (const item of dropped) await storeDelete('outbox', item.id);
-  const orderId = /^order:(.+)$/.exec(failed.entity)?.[1];
-  if (orderId) await storeDelete('cache', cacheKey(`/api/orders/${orderId}`));
+  const path = entityPath(failed.entity);
+  if (path) await storeDelete('cache', cacheKey(path));
   await refreshCounts();
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('detailflow:synced'));
   await flush();

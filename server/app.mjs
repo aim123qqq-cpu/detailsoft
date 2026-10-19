@@ -7,6 +7,7 @@ import { AuthRepository, MESSENGER_PROVIDERS } from './auth-repository.mjs';
 import { createBotDialog } from './messenger/bot-dialog.mjs';
 import { PERMISSIONS } from './roles-repository.mjs';
 import { createIdempotency } from './idempotency.mjs';
+import { buildBookingPack } from './offline-pack.mjs';
 
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -627,6 +628,12 @@ export function createDetailFlowServer({
           return sendJson(response, 422, {
             error: { code: 'validation_error', message: 'Диапазон календаря должен быть не больше 31 дня' }
           });
+        }
+        if (request.method === 'GET' && url.pathname === '/api/offline/booking-pack') {
+          if (!capabilities.manageBookings) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Записи без сети доступны тем, кто ведёт записи' }
+          });
+          return sendJson(response, 200, buildBookingPack(repository, tenantId, { includeCustomers: capabilities.manageCustomers }));
         }
         if (request.method === 'POST' && url.pathname === '/api/bookings') {
           if (!capabilities.manageBookings) return sendJson(response, 403, {

@@ -66,3 +66,9 @@ export async function storeEntries<T>(store: StoreName): Promise<Array<[string, 
   ]);
   return (keys ?? []).map((key, index) => [String(key), (values ?? [])[index]] as [string, T]);
 }
+
+/** Keys only: cheap even when the values are large (orders with photos). */
+export async function storeKeys(store: StoreName): Promise<string[]> {
+  if (!(await open())) return [...memory[store].keys()];
+  return ((await run<IDBValidKey[]>(store, 'readonly', (objects) => objects.getAllKeys())) ?? []).map(String);
+}

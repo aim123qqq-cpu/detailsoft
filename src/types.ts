@@ -307,6 +307,10 @@ export type Booking = {
   quoteVersion: number;
   lines: QuoteLine[];
   quoteVersions: BookingQuoteVersion[];
+  /** Made offline while its time was taken on the server: has to be moved. */
+  slotConflict?: boolean;
+  /** Made or moved on this phone and not yet accepted by the server. */
+  pendingSync?: boolean;
 };
 
 export type BookingQuoteVersion = {
@@ -335,6 +339,8 @@ export type BookingListItem = {
   status: Booking['status'];
   preliminaryAmountMinor: number;
   orderId: string | null;
+  slotConflict?: boolean;
+  pendingSync?: boolean;
   customer: Pick<Customer, 'id' | 'name' | 'phoneDisplay'>;
   vehicle: Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color'>;
 };

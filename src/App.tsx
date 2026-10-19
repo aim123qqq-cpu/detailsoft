@@ -154,6 +154,25 @@ export function App() {
     return () => controller.abort();
   }, [authGate]);
 
+  // Front-desk staff keep what booking needs offline (schedule, prices, busy time, customers).
+  const canBook = Boolean(session?.capabilities.manageBookings);
+  useEffect(() => {
+    if (!canBook) return;
+    void api.refreshBookingPack(true);
+    const timer = setInterval(() => { void api.refreshBookingPack(); }, 10 * 60_000);
+    return () => clearInterval(timer);
+  }, [canBook]);
+
+  // Offline changes reached the server: reload lists and the booking pack.
+  useEffect(() => {
+    const synced = () => {
+      setWorkspaceRefresh((value) => value + 1);
+      if (canBook) void api.refreshBookingPack(true);
+    };
+    window.addEventListener('detailflow:synced', synced);
+    return () => window.removeEventListener('detailflow:synced', synced);
+  }, [canBook]);
+
   useEffect(() => {
     const requireSignIn = () => setAuthGate('login');
     window.addEventListener('detailflow:unauthorized', requireSignIn);

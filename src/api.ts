@@ -3,7 +3,9 @@ import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, 
 
 import { ApiRequestError } from './apiError';
 import { localAddPhoto, localCompleteWork, localSaveIntake, localSetPause, localStartWork, localUpdateOperation } from './offline/orderLocal';
-import { configureSync, enqueue, flush, hasPending, markReachable, readCache, tokenScope, writeCache } from './offline/sync';
+import { cachedPaths, configureSync, enqueue, flush, hasPending, markReachable, pendingBusy, readCache, tokenScope, writeCache } from './offline/sync';
+import { localAvailability, localBooking, localQuote, localSearchCustomers, localSearchVehicles, localServicesCatalog, type BookingPack } from './offline/bookingLocal';
+import { isSlotAvailable } from './shared/bookingRules';
 import { randomId } from './platform';
 
 export { ApiRequestError };
@@ -72,13 +74,17 @@ configureSync({
 
 // Sign-in polling is live state and is never served from the offline copy.
 const cacheable = (path: string) => !path.startsWith('/api/auth/login-requests');
-const orderPath = (path: string) => /^\/api\/orders\/([^/?]+)$/.exec(path)?.[1] ?? null;
+/** "/api/orders/<id>" → "order:<id>", "/api/bookings/<id>" → "booking:<id>". */
+const entityOf = (path: string) => {
+  const match = /^\/api\/(order|booking)s\/([^/?]+)$/.exec(path);
+  return match && !['availability', 'quote-preview'].includes(match[2]) ? `${match[1]}:${match[2]}` : null;
+};
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, options: { offlineCopy?: boolean } = {}): Promise<T> {
   const method = init?.method ?? 'GET';
-  // An order with unsent changes is shown from the phone's copy until the queue reaches the server.
-  const pendingOrder = method === 'GET' ? orderPath(path) : null;
-  if (pendingOrder && await hasPending(`order:${pendingOrder}`)) {
+  // An order or booking with unsent changes is shown from the phone's copy until the queue reaches the server.
+  const pendingEntity = method === 'GET' ? entityOf(path) : null;
+  if (pendingEntity && await hasPending(pendingEntity)) {
     const local = await readCache<T>(path);
     if (local !== undefined) { void flush(); return local; }
   }
@@ -88,7 +94,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     markReachable(false);
-    if (method === 'GET' && cacheable(path)) {
+    if (method === 'GET' && cacheable(path) && options.offlineCopy !== false) {
       const cached = await readCache<T>(path);
       if (cached !== undefined) return cached;
     }
@@ -157,6 +163,67 @@ async function orderChange<T>(orderId: string, label: string, method: string, pa
   return result;
 }
 
+// ---- Bookings without the server ------------------------------------------------------------
+
+const PACK_PATH = '/api/offline/booking-pack';
+let packLoadedAt = 0;
+
+/** Keeps the booking pack (schedule, prices, busy time, customers) fresh while online. */
+async function refreshBookingPack(force = false) {
+  if (!force && Date.now() - packLoadedAt < 60_000) return;
+  packLoadedAt = Date.now();
+  try { await request<BookingPack>(PACK_PATH); } catch { /* offline: the saved pack stays */ }
+}
+
+async function offlinePack() {
+  const pack = await readCache<BookingPack>(PACK_PATH);
+  if (!pack) throw new NetworkError();
+  return pack;
+}
+
+/** The server answer when it can be reached, otherwise the same computation on the saved pack. */
+async function withPack<T>(online: () => Promise<T>, local: (pack: BookingPack) => T): Promise<T> {
+  try {
+    return await online();
+  } catch (error) {
+    if (!(error instanceof NetworkError)) throw error;
+    return local(await offlinePack());
+  }
+}
+
+async function busyWithLocal(pack: BookingPack) {
+  const local = await pendingBusy();
+  return [...pack.busy.filter((item) => !local.some((entry) => entry.id === item.id)), ...local];
+}
+
+const BOOKING_LISTS = '/api/bookings?';
+
+/** Puts a booking made or moved on this phone into the saved booking lists it belongs to. */
+async function upsertBookingInLists(item: BookingListItem) {
+  const today = new Date().toISOString().slice(0, 10);
+  const day = item.startAt.slice(0, 10);
+  for (const path of await cachedPaths(BOOKING_LISTS)) {
+    const list = await readCache<{ items: BookingListItem[] }>(path);
+    if (!list) continue;
+    const params = new URLSearchParams(path.slice(BOOKING_LISTS.length));
+    const fits = params.get('view') === 'upcoming' ? day >= today
+      : params.get('from') ? day >= params.get('from')! && day <= (params.get('to') ?? params.get('from'))!
+      : false;
+    const items = list.items.filter((entry) => entry.id !== item.id);
+    if (fits) items.push(item);
+    if (params.get('view') !== 'overdue') items.sort((left, right) => Date.parse(left.startAt) - Date.parse(right.startAt));
+    await writeCache(path, { ...list, items });
+  }
+}
+
+async function findBookingListItem(bookingId: string) {
+  for (const path of await cachedPaths(BOOKING_LISTS)) {
+    const found = (await readCache<{ items: BookingListItem[] }>(path))?.items.find((item) => item.id === bookingId);
+    if (found) return found;
+  }
+  return null;
+}
+
 const orderUrl = (orderId: string, suffix: string) => `/api/orders/${encodeURIComponent(orderId)}${suffix}`;
 
 export const api = {
@@ -209,6 +276,7 @@ export const api = {
       method: 'PATCH', body: JSON.stringify({ status })
     });
   },
+  refreshBookingPack,
   async listOrders(signal?: AbortSignal) {
     const result = await request<{ items: OrderListItem[] }>(ORDERS_LIST, { signal });
     void prefetchOrders(result.items);
@@ -221,7 +289,8 @@ export const api = {
     return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}`, { signal });
   },
   searchCustomers(phone: string, signal?: AbortSignal, includeArchived = false) {
-    return request<{ items: Customer[] }>(`/api/customers?phone=${encodeURIComponent(phone)}${includeArchived ? '&includeArchived=true' : ''}`, { signal });
+    return withPack(() => request<{ items: Customer[] }>(`/api/customers?phone=${encodeURIComponent(phone)}${includeArchived ? '&includeArchived=true' : ''}`, { signal }),
+      (pack) => ({ items: localSearchCustomers(pack, phone) }));
   },
   getCustomerProfile(customerId: string, signal?: AbortSignal) {
     return request<CustomerProfile>(`/api/customers/${encodeURIComponent(customerId)}/profile`, { signal });
@@ -237,7 +306,8 @@ export const api = {
     });
   },
   searchVehicles(plate: string, signal?: AbortSignal) {
-    return request<{ items: Array<Vehicle & { customer: Customer | null }> }>(`/api/vehicles?plate=${encodeURIComponent(plate)}`, { signal });
+    return withPack(() => request<{ items: Array<Vehicle & { customer: Customer | null }> }>(`/api/vehicles?plate=${encodeURIComponent(plate)}`, { signal }),
+      (pack) => ({ items: localSearchVehicles(pack, plate) }));
   },
   searchCatalog(query: string, signal?: AbortSignal) {
     return request<{ items: CatalogVariant[] }>(`/api/vehicle-catalog/variants?q=${encodeURIComponent(query)}`, { signal });
@@ -277,7 +347,8 @@ export const api = {
     });
   },
   getServices(vehicleId: string, signal?: AbortSignal) {
-    return request<ServiceCatalog>(`/api/tenants/current/services?vehicleId=${encodeURIComponent(vehicleId)}`, { signal });
+    return withPack(() => request<ServiceCatalog>(`/api/tenants/current/services?vehicleId=${encodeURIComponent(vehicleId)}`, { signal }),
+      (pack) => localServicesCatalog(pack, vehicleId));
   },
   getManagedCatalog(signal?: AbortSignal) {
     return request<ManagedCatalog>('/api/tenants/current/catalog', { signal });
@@ -377,14 +448,23 @@ export const api = {
     });
   },
   previewQuote(vehicleId: string, selections: QuoteSelection[], signal?: AbortSignal) {
-    return request<BookingQuote>('/api/bookings/quote-preview', {
+    return withPack(() => request<BookingQuote>('/api/bookings/quote-preview', {
       method: 'POST',
       body: JSON.stringify({ vehicleId, selections }),
       signal
-    });
+    }), (pack) => localQuote(pack, vehicleId, selections));
   },
-  getBookingAvailability(date: string, durationMinutes: number, signal?: AbortSignal) {
-    return request<BookingAvailability>(`/api/bookings/availability?date=${encodeURIComponent(date)}&durationMinutes=${durationMinutes}`, { signal });
+  async getBookingAvailability(date: string, durationMinutes: number, signal?: AbortSignal) {
+    // Bookings made here and not yet sent are unknown to the server: count them on the phone.
+    if (!(await pendingBusy()).length) {
+      try {
+        return await request<BookingAvailability>(`/api/bookings/availability?date=${encodeURIComponent(date)}&durationMinutes=${durationMinutes}`, { signal }, { offlineCopy: false });
+      } catch (error) {
+        if (!(error instanceof NetworkError)) throw error;
+      }
+    }
+    const pack = await offlinePack();
+    return localAvailability(pack, await pendingBusy(), date, durationMinutes);
   },
   getBooking(bookingId: string, signal?: AbortSignal) {
     return request<Booking>(`/api/bookings/${encodeURIComponent(bookingId)}`, { signal });
@@ -394,12 +474,36 @@ export const api = {
       method: 'PUT', body: JSON.stringify(input)
     });
   },
-  updateBooking(bookingId: string, input: { startAt: string } | { status: 'CANCELLED' | 'NO_SHOW' }) {
-    return request<Booking>(`/api/bookings/${encodeURIComponent(bookingId)}`, {
-      method: 'PATCH', body: JSON.stringify(input)
-    });
+  async updateBooking(bookingId: string, input: { startAt: string } | { status: 'CANCELLED' | 'NO_SHOW' }) {
+    const path = `/api/bookings/${encodeURIComponent(bookingId)}`;
+    const key = randomId();
+    const body = JSON.stringify(input);
+    if (!(await hasPending())) {
+      try {
+        return await request<Booking>(path, { method: 'PATCH', body, headers: { 'idempotency-key': key } });
+      } catch (error) {
+        if (!(error instanceof NetworkError)) throw error;
+      }
+    }
+    if (!('startAt' in input)) throw new ApiRequestError('Отмену и неявку можно отметить, когда будет связь с сервером', 409, 'offline_unsupported');
+    // Moving offline: the same rules as the server, checked on the saved schedule.
+    const booking = await readCache<Booking>(path);
+    if (!booking) throw new NetworkError();
+    if (booking.status !== 'CONFIRMED') throw new ApiRequestError('Изменить можно только подтверждённую запись', 409, 'invalid_booking_state');
+    const listed = await findBookingListItem(bookingId);
+    if (listed?.orderId) throw new ApiRequestError('По записи уже создан заказ', 409, 'booking_has_order');
+    const pack = await offlinePack();
+    if (!isSlotAvailable(pack.schedule, await busyWithLocal(pack), input.startAt, booking.estimatedDurationMinutes, bookingId)) {
+      throw new ApiRequestError('Это время уже занято', 409, 'slot_unavailable');
+    }
+    const moved: Booking = { ...booking, startAt: input.startAt, pendingSync: true };
+    await writeCache(path, moved);
+    if (listed) await upsertBookingInLists({ ...listed, startAt: input.startAt, pendingSync: true });
+    await enqueue({ method: 'PATCH', path, body, key, label: `Перенос записи${listed ? ` · ${listed.customer.name}` : ''}`, entity: `booking:${bookingId}`,
+      busy: { id: bookingId, startAt: input.startAt, durationMinutes: booking.estimatedDurationMinutes } });
+    return moved;
   },
-  createBooking(input: {
+  async createBooking(input: {
     leadId?: string;
     customerId: string;
     vehicleId: string;
@@ -407,11 +511,41 @@ export const api = {
     startAt: string;
     selections: QuoteSelection[];
   }, idempotencyKey: string) {
-    return request<Booking>('/api/bookings', {
-      method: 'POST',
-      headers: { 'idempotency-key': idempotencyKey },
-      body: JSON.stringify(input)
+    if (!(await hasPending())) {
+      try {
+        const booking = await request<Booking>('/api/bookings', {
+          method: 'POST',
+          headers: { 'idempotency-key': idempotencyKey },
+          body: JSON.stringify(input)
+        });
+        void refreshBookingPack(true);
+        return booking;
+      } catch (error) {
+        if (!(error instanceof NetworkError)) throw error;
+      }
+    }
+    // Offline: the phone picks the id, checks the time like the server and queues the booking.
+    // If the time is taken on the server meanwhile, it is kept there with a conflict mark.
+    const pack = await offlinePack();
+    const quote = localQuote(pack, input.vehicleId, input.selections);
+    if (!isSlotAvailable(pack.schedule, await busyWithLocal(pack), input.startAt, quote.totalDurationMinutes)) {
+      throw new ApiRequestError('Это время уже занято', 409, 'slot_unavailable');
+    }
+    const id = `booking_${randomId()}`;
+    const booking: Booking = { ...localBooking(id, input, quote, pack, nowIso()), pendingSync: true };
+    await writeCache(`/api/bookings/${id}`, booking);
+    const customer = pack.customers.find((item) => item.id === input.customerId);
+    const vehicle = customer?.vehicles.find((item) => item.id === input.vehicleId);
+    if (customer && vehicle) await upsertBookingInLists({
+      id, channel: input.channel, startAt: input.startAt, estimatedDurationMinutes: quote.totalDurationMinutes, status: 'CONFIRMED',
+      preliminaryAmountMinor: quote.totalAmountMinor, orderId: null, pendingSync: true,
+      customer: { id: customer.id, name: customer.name, phoneDisplay: customer.phoneDisplay },
+      vehicle: { id: vehicle.id, make: vehicle.make, model: vehicle.model, generation: vehicle.generation, plate: vehicle.plate, color: vehicle.color }
     });
+    await enqueue({ method: 'POST', path: '/api/bookings', body: JSON.stringify({ ...input, id, allowSlotConflict: true }), key: idempotencyKey,
+      label: `Новая запись${customer ? ` · ${customer.name}` : ''}`, entity: `booking:${id}`,
+      busy: { id, startAt: input.startAt, durationMinutes: quote.totalDurationMinutes } });
+    return booking;
   },
   createOrder(bookingId: string) {
     return request<WorkOrder>('/api/orders', { method: 'POST', body: JSON.stringify({ bookingId }) });

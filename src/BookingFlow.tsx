@@ -259,9 +259,11 @@ export function ScheduleStep({
     return (
       <section className="screen booking-confirmed" data-testid="booking-confirmed">
         <span className="confirmation-mark">✓</span>
-        <span className="confirmation-kicker">Запись подтверждена</span>
+        <span className="confirmation-kicker">{booking.pendingSync ? 'Запись сохранена на телефоне' : 'Запись подтверждена'}</span>
         <h2>{bookedDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: booking.timezone })}, {bookedDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: booking.timezone })}</h2>
-        <p>Клиент и автомобиль уже добавлены в расписание центра.</p>
+        {booking.pendingSync
+          ? <p className="booking-pending-sync" data-testid="booking-pending-sync">Нет связи с сервером. Запись отправится сама, когда связь появится. Если это время за это время займут, запись сохранится с пометкой «конфликт времени».</p>
+          : <p>Клиент и автомобиль уже добавлены в расписание центра.</p>}
         <VehicleSummary vehicle={vehicle} onChange={onBack}/>
         <div className="confirmation-summary">
           <div><span>Клиент</span><strong>{customer.name}</strong></div>

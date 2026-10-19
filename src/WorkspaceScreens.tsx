@@ -297,7 +297,7 @@ function BookingCard({ item, onOpen }: { item: BookingListItem; onOpen: () => vo
     <button className="workspace-card booking-card" data-testid={`booking-card-${item.id}`} onClick={onOpen}>
       <div className="workspace-card-time"><strong>{bookingTime.format(date)}</strong><span>{bookingDate.format(date)}</span></div>
       <div className="workspace-card-body">
-        <div className="workspace-card-top"><span className={`status-pill ${status.className}`}>{status.label}</span><span>{item.orderId ? 'Есть заказ' : leadChannelLabels[item.channel as Lead['channel']] ?? item.channel}</span></div>
+        <div className="workspace-card-top"><span className={`status-pill ${status.className}`}>{status.label}</span>{item.slotConflict ? <span className="booking-flag conflict">Конфликт времени</span> : item.pendingSync ? <span className="booking-flag pending">Не отправлено</span> : <span>{item.orderId ? 'Есть заказ' : leadChannelLabels[item.channel as Lead['channel']] ?? item.channel}</span>}</div>
         <h3>{item.customer.name}</h3>
         <p>{item.vehicle.make} {item.vehicle.model} {item.vehicle.generation}</p>
         <div className="workspace-card-meta"><span className="plate">{item.vehicle.plate}</span><span>{item.estimatedDurationMinutes} мин</span><strong>{money.format(item.preliminaryAmountMinor / 100)}</strong></div>
@@ -390,7 +390,7 @@ function BookingDetails({ item, onBack, onChanged, onOpenCustomer, onOpenOrder, 
     setError('');
     try {
       const updated = await api.updateBooking(item.id, input);
-      onChanged({ ...item, startAt: updated.startAt, status: updated.status });
+      onChanged({ ...item, startAt: updated.startAt, status: updated.status, slotConflict: updated.slotConflict ?? false, pendingSync: updated.pendingSync });
       setMode('details');
       window.scrollTo({ top: 0, behavior: 'auto' });
     } catch (requestError) {
@@ -412,6 +412,8 @@ function BookingDetails({ item, onBack, onChanged, onOpenCustomer, onOpenOrder, 
         <div className="details-vehicle"><span className="plate">{item.vehicle.plate}</span><strong>{item.vehicle.make} {item.vehicle.model} {item.vehicle.generation}</strong><small>{item.vehicle.color}</small></div>
         {canOpenCustomer && <button className="details-customer-link" data-testid="booking-open-customer" onClick={() => onOpenCustomer(item.customer.id)}>Карточка клиента ›</button>}
       </div>
+      {item.slotConflict && <div className="booking-conflict-banner" data-testid="booking-slot-conflict" role="alert"><strong>Конфликт времени</strong><span>Запись сделали без связи с сервером, а это время за это время заняли. Перенесите её на свободное время.</span></div>}
+      {!item.slotConflict && item.pendingSync && <div className="booking-pending-banner" role="status">Сохранено на телефоне — отправится, когда появится связь</div>}
       <div className="details-grid">
         <div><span>Дата</span><strong>{bookingDateLong.format(new Date(item.startAt))}</strong></div>
         <div><span>Время</span><strong>{bookingTime.format(new Date(item.startAt))}</strong></div>
