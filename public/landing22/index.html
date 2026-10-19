@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b1016">
+  <!-- Where the app lives; scripts/build-landing-pages.mjs empties it for a copy without the app. -->
+  <meta name="df-app" content="/">
   <title>DetailFlow — CRM детейлинг-центра</title>
   <meta name="description" content="Запись, приёмка по схеме с номерами элементов, смета, работа мастера и акты с подписью клиента. В телефоне и без сети.">
   <meta property="og:title" content="DetailFlow — CRM детейлинг-центра">
@@ -474,7 +476,7 @@
         <a href="#roles">Роли</a>
         <a href="#faq">Вопросы</a>
       </nav>
-      <a class="button" href="/">Открыть</a>
+      <a class="button" href="/" data-app-link>Открыть</a>
     </div>
   </header>
 
@@ -488,7 +490,7 @@
         <div class="hero-side">
           <p class="hero-lead" data-load style="--d:440ms">DetailFlow ведёт детейлинг-центр: запись, приёмка по схеме с номерами элементов, смета, работа мастера и акты с подписью клиента. Работает и там, где в боксе нет сети.</p>
           <div class="hero-actions" data-load style="--d:520ms">
-            <a class="button" href="/">Открыть DetailFlow
+            <a class="button" href="/" data-app-link>Открыть DetailFlow
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
             <a class="link" href="#intake">Попробовать схему</a>
           </div>
@@ -694,7 +696,7 @@
     <section class="start" aria-labelledby="start-title">
       <div class="start-copy">
         <h2 class="display lines" id="start-title" data-reveal><span class="line">Примите</span><span class="line">первую машину</span></h2>
-        <p data-reveal style="--d:90ms">Кнопка откроет DetailFlow с этим номером в поиске. В демо есть клиент с телефоном +7 913 123-45-67 и двумя машинами.</p>
+        <p data-reveal style="--d:90ms" id="start-note">Кнопка откроет DetailFlow с этим номером в поиске. В демо есть клиент с телефоном +7 913 123-45-67 и двумя машинами.</p>
       </div>
       <form class="search-dialog" data-ui id="start-form" action="/" method="get" data-reveal style="--d:160ms">
         <h3>Новая запись</h3>
@@ -713,7 +715,7 @@
 
   <footer class="frame foot">
     <span>DetailFlow · CRM детейлинг-центра</span>
-    <nav aria-label="Нижнее меню"><a href="#intake">Приёмка</a><a href="#offline">Без сети</a><a href="#path">Путь заказа</a><a href="#faq">Вопросы</a><a href="/">Открыть</a></nav>
+    <nav aria-label="Нижнее меню"><a href="#intake">Приёмка</a><a href="#offline">Без сети</a><a href="#path">Путь заказа</a><a href="#faq">Вопросы</a><a href="/" data-app-link>Открыть</a></nav>
     <span class="year">© <span id="year">2026</span></span>
   </footer>
 
@@ -721,6 +723,10 @@
   <script>
   (() => {
     const $ = (selector, root = document) => root.querySelector(selector);
+
+    /* The app's address. A copy published without the app keeps the visitor on the page's own demo. */
+    const appUrl = document.querySelector('meta[name="df-app"]')?.content ?? '/';
+    document.querySelectorAll('[data-app-link]').forEach((link) => { link.href = appUrl || '#intake'; });
     document.getElementById('year').textContent = new Date().getFullYear();
 
     /* ---------- The intake: the app's own diagram, numbering and quick notes ---------- */
@@ -1021,6 +1027,13 @@
       label.textContent = mode === 'phone' ? 'Телефон клиента' : 'Госномер автомобиля';
       form.querySelector('button[type="submit"]').textContent = mode === 'phone' ? 'Найти клиента' : 'Найти автомобиль';
     }));
+    if (appUrl) form.action = appUrl;
+    else {
+      // No app behind this copy yet: say so plainly and send the visitor to the demo above.
+      $('#start-note').textContent = 'Приложение пока открывается по приглашению. Схему приёмки можно попробовать прямо на этой странице, вверху.';
+      form.querySelector('.demo').textContent = 'Кнопка вернёт к схеме приёмки.';
+      form.addEventListener('submit', (event) => { event.preventDefault(); $('#intake').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); });
+    }
 
     /* ---------- Section entrances, once ---------- */
     // A picture that opens from a mask is clipped to nothing, so its parent is what gets watched.

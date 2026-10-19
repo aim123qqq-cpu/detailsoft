@@ -24,7 +24,7 @@ pnpm start
 
 Лендинг продукта — статическая страница `public/landing/index.html`, после сборки она доступна на `/landing/` рядом с приложением. Скриншоты для неё (`public/landing/img`) снимаются с демо-данных: `pnpm build`, затем `node scripts/landing-shots.mjs`.
 
-Вторая версия лендинга — `public/landing22/` (`/landing22/`): на первом экране работает настоящая схема приёмки. Её геометрия берётся из `src/shared/carLayouts.ts` скриптом `node scripts/landing-layouts.mjs` (запускать после изменения схем). Кнопка в конце страницы открывает приложение с номером в поиске: `/?phone=…` или `/?plate=…`.
+Вторая версия лендинга — `public/landing22/` (`/landing22/`): на первом экране работает настоящая схема приёмки. Её геометрия берётся из `src/shared/carLayouts.ts` скриптом `node scripts/landing-layouts.mjs` (запускать после изменения схем). Кнопка в конце страницы открывает приложение с номером в поиске: `/?phone=…` или `/?plate=…`. Публичная копия лендинга публикуется на GitHub Pages (ветка `gh-pages`) workflow `.github/workflows/landing-pages.yml` при каждом изменении `public/landing22`. Куда ведут кнопки «Открыть DetailFlow», задаёт переменная репозитория `LANDING_APP_URL` (Settings → Secrets and variables → Actions → Variables); пока её нет, кнопки ведут к демо-схеме на самой странице. Собрать копию локально: `node scripts/build-landing-pages.mjs`.
 
 ## Архитектура инкремента
 
