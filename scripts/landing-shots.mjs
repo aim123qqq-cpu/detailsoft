@@ -1,12 +1,12 @@
 // Screenshots of the app for the landing page (public/landing/img), taken from the demo data at 2x.
-// Run after `pnpm build`: node scripts/landing-shots.mjs
+// Run after `pnpm build`: node scripts/landing-shots.mjs [output folder, public/landing/img by default]
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright-core';
 import { createDetailFlowServer } from '../server/app.mjs';
 import { chromePath } from '../tests/e2e/chrome.mjs';
 
-const out = resolve('public/landing/img');
+const out = resolve(process.argv[2] ?? 'public/landing/img');
 await mkdir(out, { recursive: true });
 const server = createDetailFlowServer({ databasePath: ':memory:', seed: true, staticDir: resolve('dist') });
 await new Promise((done) => server.listen(0, '127.0.0.1', done));
@@ -59,6 +59,10 @@ try {
   await finding('car-part-wheel-front-left', 'Бордюрная царапина', 'Лёгкое');
   await finding('car-part-left-rear-door', 'Мелкие царапины у ручки', 'Лёгкое');
   await shot('intake', '.body-type-picker');
+  // The same intake on a tablet in landscape, as it hangs on the wall of a bay.
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await shot('intake-tablet', '.inspection-tabs');
+  await page.setViewportSize({ width: 390, height: 844 });
 
   await page.getByTestId('save-intake').click();
   await page.getByTestId('order-estimate').waitFor();
@@ -86,6 +90,12 @@ try {
   await page.getByTestId('work-operation-0').click();
   await page.waitForFunction(() => document.querySelector('[data-testid="master-work"]')?.textContent?.includes('1 выполнено'));
   await shot('work');
+
+  await page.getByTestId('profile-nav').click();
+  await page.getByTestId('team-entry').click();
+  await page.getByTestId('team-tab-roles').click();
+  await page.getByTestId('role-card-owner').waitFor();
+  await shot('roles');
 
 } finally {
   await browser.close();

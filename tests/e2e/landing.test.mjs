@@ -42,6 +42,15 @@ test('landing22: the intake diagram works, the network switch flips, and the sea
     assert.equal(await network.getAttribute('aria-checked'), 'true');
     assert.equal(await page.locator('#net-word').innerText(), 'вернулась');
 
+    // Roles: the permissions the server grants, the role's own screen.
+    await page.locator('#role-tabs').scrollIntoViewIfNeeded();
+    assert.equal(await page.locator('#perms li.on').count(), 2, 'a master performs work and takes orders');
+    await page.locator('#role-tabs').getByRole('tab', { name: 'Приёмщик' }).click();
+    assert.deepEqual(await page.locator('#perms li.on b').allInnerTexts(), ['Приёмка']);
+    await page.waitForFunction(() => document.querySelector('#role-shot')?.getAttribute('src') === 'img/intake.jpg');
+    await page.locator('#role-tabs').getByRole('tab', { name: 'Владелец' }).click();
+    assert.equal(await page.locator('#perms li.on').count(), 11, 'the owner has every right except being an executor, plus the team');
+
     await page.locator('#start-form').scrollIntoViewIfNeeded();
     await page.locator('#start-form').getByRole('button', { name: 'Найти клиента' }).click();
     await page.getByTestId('main-search').waitFor();

@@ -100,7 +100,7 @@
     .hero-lead { max-width: 40ch; margin-top: 32px; font-size: var(--step-lead); line-height: 1.55; }
     .hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 32px; }
     .hero-actions .link { font-weight: 700; }
-    .stage { grid-column: 2; grid-row: 2 / span 2; margin: 24px calc(-1 * var(--margin)) 0 0; padding: 56px 56px 72px; background: var(--accent); overflow: clip; clip-path: polygon(152px 0, 100% 0, 100% 100%, 0 100%, 0 152px); }
+    .stage { grid-column: 2; grid-row: 2 / span 2; margin: 24px calc(-1 * var(--margin)) 0 0; padding: 56px 56px 72px; background: var(--accent); overflow: clip; border-top-left-radius: 72px; }
     .stage-inner { width: max-content; }
 
     /* --- Product fragments (data-ui): the app's own conventions apply inside. --- */
@@ -208,8 +208,8 @@
     .switch[aria-checked="true"] .queue em { color: #7fe2bf; }
 
     /* How it works: one order card, four fields, further along each time. */
-    .path { margin-top: 0; display: grid; grid-template-columns: repeat(4, 1fr); min-height: 84svh; }
-    .field { position: relative; display: flex; flex-direction: column; padding: 28px; min-height: 84svh; }
+    .path { margin-top: 0; display: grid; grid-template-columns: repeat(4, 1fr); min-height: 72svh; }
+    .field { position: relative; display: flex; flex-direction: column; padding: 28px; min-height: 72svh; }
     .field:nth-child(1) { background: #10171e; }
     .field:nth-child(2) { background: #2b3741; }
     .field:nth-child(3) { background: var(--accent); color: var(--accent-ink); }
@@ -287,44 +287,44 @@
     .act-stamp { position: absolute; right: 22px; top: 22px; padding: 6px 10px; border: 2px solid #1f9e72; border-radius: 6px; color: #1f9e72; font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; opacity: 0; transform: rotate(-6deg) scale(1.15); transition: opacity 240ms ease, transform 360ms var(--ease-out); }
     .act-paper[data-step="3"] .act-stamp { opacity: 1; transform: rotate(-6deg) scale(1); }
 
-    /* The bay: two real pictures of the world the product works in. */
-    .bay { display: grid; grid-template-columns: minmax(0, 8fr) minmax(0, 4fr); gap: 32px; align-items: start; padding-top: var(--gap-section); }
-    .bay figure { margin: 0; }
-    .bay-wide { overflow: clip; border-radius: 8px; aspect-ratio: 16 / 10; background: #3a4048; }
-    .bay-wide img { width: 100%; height: 100%; object-fit: cover; }
-    .bay h2 { font-size: var(--step-head); }
-    .bay-side p { margin-top: 16px; font-size: var(--step-lead); line-height: 1.55; }
-    .bay-side figure { margin-top: 32px; }
-    .bay-side .frame-sq { overflow: clip; border-radius: 8px; aspect-ratio: 1; background: #5a4a3a; }
-    .bay-side img { width: 100%; height: 100%; object-fit: cover; }
-    .bay figcaption { margin-top: 10px; color: var(--ink-soft); font-size: var(--step-small); }
+    /* Roles: pick a role, see its screen and what it may do. */
+    .roles { margin-top: var(--gap-section); padding: clamp(88px, 9vw, 140px) 0; background: var(--ground-2); }
+    .roles-grid { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 4fr) minmax(0, 4fr); gap: 0 clamp(24px, 3vw, 48px); align-items: start; }
+    .roles-head { grid-column: 1 / -1; margin-bottom: clamp(40px, 5vw, 72px); }
+    .roles h2 { font-size: var(--step-display); }
+    .roles-lead { margin-top: 20px; max-width: 46ch; font-size: var(--step-lead); }
+    .role-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 6px; border-radius: 14px; background: var(--ground); }
+    .role-tabs button { min-height: 48px; border: 0; border-radius: 10px; background: transparent; color: var(--ink-soft); font-size: 16px; font-weight: 700; cursor: pointer; transition: background-color var(--t-hover) ease, color var(--t-hover) ease, transform var(--t-press) var(--ease-out); }
+    .role-tabs button:active { transform: scale(0.97); }
+    .role-tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+    @media (hover: hover) and (pointer: fine) { .role-tabs button:not([aria-selected="true"]):hover { color: var(--ink); background: var(--ground-3); } }
+    .role-about { margin-top: 32px; }
+    .role-about h3 { font-size: var(--step-head); font-weight: 700; letter-spacing: -.01em; }
+    .role-about p { margin-top: 12px; max-width: 34ch; font-size: var(--step-lead); }
+    .role-screen { margin: 0; justify-self: center; width: min(100%, 340px); }
+    .role-screen .frame-ui { overflow: clip; aspect-ratio: 390 / 700; border-radius: 28px; background: var(--ground); }
+    .role-screen img { width: 100%; height: 100%; object-fit: cover; object-position: top; transition: opacity 160ms ease, filter 160ms ease, transform 220ms var(--ease-out); }
+    .role-screen img.swapping { opacity: 0; filter: blur(4px); transform: scale(.985); }
+    .role-screen figcaption { margin-top: 12px; color: var(--ink-soft); font-size: var(--step-small); text-align: center; }
+    .perms { margin: 0; padding: 0; list-style: none; }
+    .perms li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 12px; align-items: start; padding: 9px 0; color: var(--ink-soft); transition: color 200ms ease; transition-delay: calc(var(--i) * 18ms); }
+    .perms li b { display: block; font-size: 16px; font-weight: 700; }
+    .perms li small { display: block; font-size: 14px; color: #7f8b95; }
+    .perms .box { width: 20px; height: 20px; margin-top: 1px; display: grid; place-items: center; border-radius: 6px; background: var(--ground-3); color: transparent; transition: background-color 200ms ease, color 200ms ease; transition-delay: calc(var(--i) * 18ms); }
+    .perms li.on { color: var(--ink); }
+    .perms li.on .box { background: var(--accent); color: var(--accent-ink); }
+    .perms li.owner-only { display: none; }
+    .perms[data-role="owner"] li.owner-only { display: grid; }
 
-    /* Features: one narrow module repeated, small proof beside text. */
-    .more { margin-top: var(--gap-section); padding: clamp(80px, 9vw, 140px) 0; background: var(--ground-2); }
-    .more-inner { padding-left: max(0px, calc(22vw - var(--margin) - (100vw - min(100vw - 2 * var(--margin), var(--wrap))) / 2)); }
-    .more h2 { font-size: var(--step-head); max-width: 18em; }
-    .module { display: grid; grid-template-columns: 520px 380px; gap: 40px; align-items: start; margin-top: 64px; }
-    .module + .module { margin-top: clamp(64px, 6vw, 96px); }
-    .module h3 { font-size: var(--step-lead); font-weight: 700; line-height: 1.3; }
-    .module p { margin-top: 10px; color: var(--ink-soft); }
-    .module p:first-of-type { color: var(--ink); }
-    .proof { position: relative; width: 520px; border-radius: 8px; background: var(--ground); overflow: clip; }
-    .proof.shot { height: 280px; }
-    .proof.shot img { width: 100%; height: 100%; object-fit: cover; }
-    .proof.tall { height: 340px; }
-    .proof.flush { padding: 16px; }
-    .perm { display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; padding: 9px 2px; border-top: 1px solid #222d36; font-size: 13px; } /* taste-skill-ignore: row divider inside the roles fragment (data-ui) */
-    .perm:first-of-type { border-top: 0; }
-    .perm input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--accent); }
-    .perm b { display: block; color: #fff; font-weight: 700; }
-    .perm small { color: #8e9aa4; font-size: 12px; }
-    .prices { width: 100%; border-collapse: collapse; font-size: 13px; }
-    .prices td { padding: 8px 4px; border-top: 1px solid #222d36; }
-    .prices tr:first-child td { border-top: 0; }
-    .prices td:last-child { text-align: right; font-weight: 800; color: #fff; font-variant-numeric: tabular-nums; }
-    .prices tr.on td { color: #ff9a6d; }
-    .prices tr.on td:last-child { color: #ff9a6d; }
-    .prices tr { cursor: pointer; }
+    /* The bay: the tablet on the wall, on a light field. */
+    .bay { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 4vw, 64px); align-items: center; padding: clamp(88px, 9vw, 140px) 0 clamp(88px, 9vw, 140px) var(--margin); background: var(--paper); color: var(--paper-ink); overflow: clip; }
+    .bay h2 { font-size: var(--step-display); }
+    .bay-lead { margin-top: 20px; max-width: 38ch; font-size: var(--step-lead); }
+    .bay dl { margin: 40px 0 0; display: grid; gap: 24px; max-width: 44ch; }
+    .bay dt { font-size: var(--step-lead); font-weight: 800; }
+    .bay dd { margin: 6px 0 0; color: var(--paper-soft); }
+    .bay-shot { margin: 0; justify-self: end; width: 100%; border-radius: 24px 0 0 24px; overflow: clip; background: #0f161c; }
+    .bay-shot img { width: 100%; height: auto; }
 
     /* FAQ: sticky heading, filled tiles. */
     .faq { display: grid; grid-template-columns: 4fr 8fr; gap: 24px; padding-top: var(--gap-section); }
@@ -360,8 +360,6 @@
 
     /* Footer: one quiet line. */
     .foot { display: grid; grid-template-columns: 1fr auto 1fr; align-items: baseline; gap: 16px; padding: 30svh 0 30px; font-size: var(--step-small); color: var(--ink-soft); }
-    .credits { grid-column: 1 / -1; color: var(--ink-soft); }
-    .credits a { color: var(--ink-soft); }
     .foot nav { display: flex; gap: 24px; }
     .foot nav a { color: var(--ink); text-decoration: none; }
     .foot nav a:hover { text-decoration: underline; text-underline-offset: .2em; }
@@ -371,7 +369,7 @@
     @media (prefers-reduced-motion: no-preference) {
       .js .hero [data-line] { transform: translateY(105%); animation: line-up 900ms var(--ease-expo) forwards; animation-delay: calc(var(--i) * 110ms + 150ms); }
       .js .hero [data-load] { opacity: 0; transform: translateY(12px); animation: rise 520ms var(--ease-out) forwards; animation-delay: var(--d); }
-      .js .stage { clip-path: polygon(152px 100%, 100% 100%, 100% 100%, 0 100%, 0 100%); animation: stage-open 1000ms var(--ease-in-out) 200ms forwards; }
+      .js .stage { clip-path: inset(100% 0 0 0); animation: stage-open 1000ms var(--ease-in-out) 200ms forwards; }
       .js .stage-inner { opacity: 0; transform: translateY(28px); animation: rise 900ms var(--ease-expo) 520ms forwards; }
       .js [data-reveal] { opacity: 0; transform: translateY(24px); transition: opacity 700ms var(--ease-out), transform 900ms var(--ease-expo); transition-delay: var(--d, 0ms); }
       .js [data-reveal].is-in { opacity: 1; transform: none; }
@@ -386,13 +384,13 @@
     /* One moving picture: the screenshots drift inside their frames as the page scrolls. */
     @supports (animation-timeline: view()) {
       @media (prefers-reduced-motion: no-preference) {
-        .bay-wide img.drift { animation: drift-scale linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
-        @keyframes drift-scale { from { transform: scale(1.12) translateY(-3%); } to { transform: scale(1.02) translateY(3%); } }
+        .bay-shot img { animation: drift-scale linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+        @keyframes drift-scale { from { transform: translateX(4%); } to { transform: translateX(0); } }
       }
     }
     @keyframes line-up { to { transform: none; } }
     @keyframes rise { to { opacity: 1; transform: none; } }
-    @keyframes stage-open { to { clip-path: polygon(152px 0, 100% 0, 100% 100%, 0 100%, 0 152px); } }
+    @keyframes stage-open { to { clip-path: inset(0); } }
     @keyframes swap { from { opacity: 0; transform: translateY(.4em); filter: blur(3px); } }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { transition-duration: 1ms !important; animation-duration: 1ms !important; animation-delay: 0ms !important; }
@@ -413,9 +411,7 @@
       .hero-lead { font-size: 16px; margin-top: 20px; }
       .hero-grid { grid-template-columns: minmax(0, 1fr); }
       .hero-side { padding-right: 0; }
-      .stage { grid-column: 1; grid-row: auto; margin: 40px calc(-1 * var(--margin)) 0; padding: 16px 16px 40px; clip-path: polygon(72px 0, 100% 0, 100% 100%, 0 100%, 0 72px); }
-      .js .stage { clip-path: polygon(72px 100%, 100% 100%, 100% 100%, 0 100%, 0 100%); }
-      @keyframes stage-open { to { clip-path: polygon(72px 0, 100% 0, 100% 100%, 0 100%, 0 72px); } }
+      .stage { grid-column: 1; grid-row: auto; margin: 40px calc(-1 * var(--margin)) 0; padding: 16px 16px 40px; border-top-left-radius: 32px; }
       .stage-inner { width: auto; }
       .intake { width: auto; max-width: 420px; }
       .intake-grid { grid-template-columns: 1fr; }
@@ -424,7 +420,15 @@
       .offline { min-height: 86svh; }
       .offline-copy p { font-size: 16px; }
       .switch-wrap { left: -4%; top: auto; bottom: 4%; font-size: 11vw; }
-      .bay { grid-template-columns: 1fr; }
+      .roles-grid { grid-template-columns: minmax(0, 1fr); }
+      .role-screen { grid-row: 3; width: min(100%, 320px); margin-top: 32px; }
+      .perms { grid-row: 5; margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+      .perms li { padding: 7px 0; gap: 10px; }
+      .perms li small { display: none; }
+      .perms li b { font-size: 14px; }
+      .perms[data-role="owner"] li.owner-only { display: grid; }
+      .bay { grid-template-columns: minmax(0, 1fr); padding-right: 0; }
+      .bay > div { padding-right: var(--margin); }
       .act { grid-template-columns: 1fr; gap: 32px; }
       .act-pin { position: static; grid-column: 1; grid-row: 2; margin-top: 0; }
       .act-steps { grid-column: 1; grid-row: 3; margin-top: 0; }
@@ -438,11 +442,6 @@
       .field .card-slot { position: static; translate: none; margin-top: 32px; }
       .field p { order: -1; margin-top: 12px; }
       .field h2 { order: -2; margin-bottom: 4px; }
-      .more-inner { padding-left: 0; }
-      .module { grid-template-columns: 1fr; gap: 16px; }
-      .module + .module { margin-top: 64px; }
-      .proof { width: min(100%, 460px); }
-      .proof.shot { height: 220px; }
       .faq { grid-template-columns: 1fr; }
       .faq h2 { position: static; }
       .tile summary { min-height: 64px; padding: 14px 20px; font-size: 18px; }
@@ -474,6 +473,7 @@
         <a href="#intake">Приёмка</a>
         <a href="#offline">Без сети</a>
         <a href="#path">Путь заказа</a>
+        <a href="#roles">Роли</a>
         <a href="#faq">Вопросы</a>
       </nav>
       <a class="button" href="/">Открыть</a>
@@ -640,98 +640,40 @@
       </div>
     </section>
 
-    <section class="bay frame" aria-labelledby="bay-title">
-      <figure>
-        <div class="bay-wide" data-open><img class="drift" src="img/bay.jpg" alt="Моечный бокс: машина в активной пене, мойщица с пистолетом" width="1600" height="900" fetchpriority="low" decoding="async"></div>
-        <figcaption>Моечный бокс в Тюмени.</figcaption>
-      </figure>
-      <div class="bay-side">
-        <h2 class="display" id="bay-title" data-reveal>Сделано для бокса</h2>
-        <p data-reveal style="--d:90ms">Мокрые руки, перчатки и пропадающая сеть. Крупные кнопки, приёмка в несколько касаний, всё хранится на телефоне.</p>
-        <figure data-reveal style="--d:180ms">
-          <div class="frame-sq"><img src="img/swirls.jpg" alt="Задняя дверь и колесо кроссовера с разводами на лаке" width="900" height="900" fetchpriority="low" decoding="async"></div>
-          <figcaption>Разводы на задней двери. На схеме у неё свой номер.</figcaption>
+    <section class="roles" id="roles" aria-labelledby="roles-title">
+      <div class="frame roles-grid">
+        <div class="roles-head">
+          <h2 class="display" id="roles-title" data-reveal>Каждый видит своё</h2>
+          <p class="roles-lead" data-reveal style="--d:90ms">Права настраиваются галочками. Выберите роль, чтобы увидеть её экран и то, что ей разрешено.</p>
+        </div>
+        <div data-reveal style="--d:120ms">
+          <div class="role-tabs" role="tablist" aria-label="Роль" data-ui id="role-tabs">
+            <button type="button" role="tab" aria-selected="false" data-role="owner">Владелец</button>
+            <button type="button" role="tab" aria-selected="false" data-role="admin">Администратор</button>
+            <button type="button" role="tab" aria-selected="false" data-role="intake">Приёмщик</button>
+            <button type="button" role="tab" aria-selected="true" data-role="master">Мастер</button>
+          </div>
+          <div class="role-about" aria-live="polite"><h3 id="role-name">Мастер</h3><p id="role-text">Видит только назначенные ему заказы и чек-лист работ. Телефонов клиентов не видит.</p></div>
+        </div>
+        <figure class="role-screen" data-reveal style="--d:200ms">
+          <div class="frame-ui"><img id="role-shot" src="img/work.jpg" alt="Экран мастера: чек-лист работ" width="390" height="844" fetchpriority="low" decoding="async"></div>
+          <figcaption id="role-caption">Экран мастера: чек-лист работ</figcaption>
         </figure>
+        <ul class="perms" id="perms" data-role="master" aria-label="Права роли" data-reveal style="--d:280ms"></ul>
       </div>
     </section>
 
-    <section class="more" aria-labelledby="more-title">
-      <div class="frame"><div class="more-inner">
-        <h2 class="display" id="more-title" data-reveal>Что ещё делает DetailFlow</h2>
-
-        <article class="module">
-          <div class="proof shot" data-open><img src="img/schedule.jpg" alt="Выбор даты и свободного времени записи" width="390" height="844" fetchpriority="low" decoding="async" style="object-position:50% 28%"></div>
-          <div data-reveal style="--d:120ms">
-            <h3>Записывает только на свободное время</h3>
-            <p>Слоты считаются по часам работы и загрузке центра, поэтому двух машин на одно время не будет.</p>
-            <p>Перенос и отмена сохраняются в истории, календарь на день и неделю.</p>
-          </div>
-        </article>
-
-        <article class="module">
-          <div class="proof flush" data-reveal>
-            <div data-ui>
-              <span class="ui-label">Роль «Мастер» · доступ</span>
-              <div style="margin-top:8px">
-                <label class="perm"><input type="checkbox" checked><span><b>Выполнение работ</b><small>Отметка операций и пауз</small></span></label>
-                <label class="perm"><input type="checkbox" checked><span><b>Исполнитель заказов</b><small>Видит «Мои» заказы</small></span></label>
-                <label class="perm"><input type="checkbox"><span><b>Клиенты и автомобили</b><small>Карточки, телефоны и госномера</small></span></label>
-              </div>
-            </div>
-          </div>
-          <div data-reveal style="--d:120ms">
-            <h3>Права настраиваются галочками</h3>
-            <p>Владелец, администратор, приёмщик, мастер и свои роли. Отметьте, что можно каждому.</p>
-            <p>Мастер без доступа к клиентам не увидит их телефонов.</p>
-          </div>
-        </article>
-
-        <article class="module">
-          <div class="proof shot tall" data-open><img src="img/approval.jpg" alt="Смета v1 на согласовании у клиента" width="390" height="844" fetchpriority="low" decoding="async" style="object-position:50% 70%"></div>
-          <div data-reveal style="--d:120ms">
-            <h3>Смета не меняется задним числом</h3>
-            <p>Клиент согласует конкретную версию: лично, по телефону или в мессенджере.</p>
-            <p>Изменили состав, значит выпустили v2. Первая версия осталась в истории.</p>
-          </div>
-        </article>
-
-        <article class="module">
-          <div class="proof flush" data-reveal>
-            <div data-ui>
-              <span class="ui-label">Бережная мойка · 35 мин · выберите класс</span>
-              <table class="prices" style="margin-top:6px" id="prices">
-                <tr class="on" tabindex="0"><td>Компакт</td><td>1 190 ₽</td></tr>
-                <tr tabindex="0"><td>Средний</td><td>1 400 ₽</td></tr>
-                <tr tabindex="0"><td>Бизнес</td><td>1 680 ₽</td></tr>
-                <tr tabindex="0"><td>SUV</td><td>1 960 ₽</td></tr>
-              </table>
-            </div>
-          </div>
-          <div data-reveal style="--d:120ms">
-            <h3>Свои услуги и цены по классу машины</h3>
-            <p>Разделы, услуги, время работы и цена для каждого класса. Комплексы собираются из услуг.</p>
-            <p>Цены здесь взяты из демо-каталога.</p>
-          </div>
-        </article>
-
-        <article class="module">
-          <div class="proof shot" data-open><img src="img/work.jpg" alt="Чек-лист работ мастера" width="390" height="844" fetchpriority="low" decoding="async" style="object-position:50% 36%"></div>
-          <div data-reveal style="--d:120ms">
-            <h3>Мастер видит свой чек-лист</h3>
-            <p>Отмечает операции и ставит паузу с причиной. Администратор видит прогресс сразу.</p>
-            <p>Каждое действие записывается в журнал заказа.</p>
-          </div>
-        </article>
-
-        <article class="module" hidden>
-          <div class="proof shot tall" data-open><img src="img/act.jpg" alt="Акт приёмки со схемой и номерами повреждений" width="390" height="844" fetchpriority="low" decoding="async" style="object-position:50% 34%"></div>
-          <div data-reveal style="--d:120ms">
-            <h3>Акт с той же схемой и подписью</h3>
-            <p>Номера в акте совпадают со схемой приёмки. Клиент расписывается пальцем на экране.</p>
-            <p>Подписать можно и без сети, номер акта присвоится сам.</p>
-          </div>
-        </article>
-      </div></div>
+    <section class="bay" id="bay" aria-labelledby="bay-title">
+      <div>
+        <h2 class="display" id="bay-title" data-reveal>Сделано для бокса</h2>
+        <p class="bay-lead" data-reveal style="--d:90ms">DetailFlow работает там, где моют и полируют: на телефоне в кармане или на планшете у стены.</p>
+        <dl data-reveal style="--d:160ms">
+          <div><dt>Без сети</dt><dd>Android-приложение запускается и работает без интернета. Всё сделанное в боксе отправится само, когда появится связь.</dd></div>
+          <div><dt>Планшет на стене</dt><dd>На планшете приёмка в две колонки: схема слева, салон, замечания и фото справа.</dd></div>
+          <div><dt>Под палец, а не под мышь</dt><dd>Детали схемы, чипы и кнопки крупные: попасть легко, даже когда руки заняты.</dd></div>
+        </dl>
+      </div>
+      <figure class="bay-shot" data-reveal style="--d:120ms"><img src="img/intake-tablet.jpg" alt="Приёмка на планшете: схема хэтчбека с номерами и карточка элемента 10" width="1400" height="1178" fetchpriority="low" decoding="async"></figure>
     </section>
 
     <section class="faq frame" id="faq" aria-labelledby="faq-title">
@@ -788,7 +730,6 @@
     <span>DetailFlow · CRM детейлинг-центра</span>
     <nav aria-label="Нижнее меню"><a href="#intake">Приёмка</a><a href="#offline">Без сети</a><a href="#path">Путь заказа</a><a href="#faq">Вопросы</a><a href="/">Открыть</a></nav>
     <span class="year">© <span id="year">2026</span></span>
-    <span class="credits">Фото: <a href="https://commons.wikimedia.org/wiki/File:Virino_lavas_la_a%C5%ADton_Honda_CR-V_en_a%C5%ADtolavejo_(Tjumeno).jpg">RG72</a>, CC BY 4.0; <a href="https://commons.wikimedia.org/wiki/File:Polishing_of_car_after_spraying_05.jpg">Wun-nam Rahimatu</a>, CC BY-SA 4.0 (кадрировано). Wikimedia Commons.</span>
   </footer>
 
   <script src="car-layouts.js"></script>
@@ -1012,13 +953,74 @@
       setStep('1');
     }
 
-    /* ---------- Prices by class ---------- */
-    const rows = document.querySelectorAll('#prices tr');
-    rows.forEach((row) => {
-      const pick = () => rows.forEach((other) => other.classList.toggle('on', other === row));
-      row.addEventListener('click', pick);
-      row.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); pick(); } });
+    /* ---------- Roles: the server's permissions, the role's real screen ---------- */
+    const PERMISSIONS = [
+      ['viewAnalytics', 'Статистика', 'Выручка, загрузка и итоги центра'],
+      ['manageBookings', 'Записи и обращения', 'Создание, перенос, отмена'],
+      ['manageCustomers', 'Клиенты и автомобили', 'Карточки, телефоны и госномера'],
+      ['manageIntake', 'Приёмка', 'Осмотр, фото, акт приёмки'],
+      ['approveEstimates', 'Смета и согласование', 'Версии сметы и решение клиента'],
+      ['assignMasters', 'Назначение мастера', 'Выбор исполнителя заказа'],
+      ['performWork', 'Выполнение работ', 'Отметка операций и пауз'],
+      ['acceptAssignments', 'Исполнитель заказов', 'В списке мастеров, видит «Мои» заказы'],
+      ['closeOrders', 'Выдача и закрытие', 'Выдача автомобиля, акт выдачи'],
+      ['manageCatalog', 'Каталог услуг', 'Услуги, цены и время работ'],
+      ['manageSettings', 'График центра', 'Рабочие дни, часы и вместимость'],
+      ['manageTeam', 'Команда и роли', 'Только у владельца']
+    ];
+    const allButExecutor = PERMISSIONS.map(([key]) => key).filter((key) => key !== 'acceptAssignments' && key !== 'manageTeam');
+    const ROLES = {
+      owner: { name: 'Владелец', text: 'Видит всё: статистику центра, команду и права. Сам настраивает роли галочками.', perms: [...allButExecutor, 'manageTeam'], shot: 'img/roles.jpg', caption: 'Экран владельца: команда и роли' },
+      admin: { name: 'Администратор', text: 'Записывает клиентов, ведёт смету, назначает мастеров и выдаёт машины.', perms: allButExecutor, shot: 'img/schedule.jpg', caption: 'Экран администратора: запись на свободное время' },
+      intake: { name: 'Приёмщик', text: 'Принимает машину: осмотр по схеме, фото и акт с подписью клиента.', perms: ['manageIntake'], shot: 'img/intake.jpg', caption: 'Экран приёмщика: схема осмотра' },
+      master: { name: 'Мастер', text: 'Видит только назначенные ему заказы и чек-лист работ. Телефонов клиентов не видит.', perms: ['performWork', 'acceptAssignments'], shot: 'img/work.jpg', caption: 'Экран мастера: чек-лист работ' }
+    };
+    const perms = $('#perms');
+    PERMISSIONS.forEach(([key, title, note], index) => {
+      const row = document.createElement('li');
+      row.dataset.key = key;
+      row.style.setProperty('--i', index);
+      if (key === 'manageTeam') row.className = 'owner-only';
+      row.innerHTML = '<span class="box" aria-hidden="true"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg></span><span><b></b><small></small></span>';
+      row.querySelector('b').textContent = title;
+      row.querySelector('small').textContent = note;
+      perms.appendChild(row);
     });
+    const shot = $('#role-shot');
+    const tabs = [...document.querySelectorAll('#role-tabs [data-role]')];
+    const showRole = (code, animate) => {
+      const role = ROLES[code];
+      tabs.forEach((tab) => tab.setAttribute('aria-selected', String(tab.dataset.role === code)));
+      perms.dataset.role = code;
+      perms.querySelectorAll('li').forEach((row) => {
+        const on = role.perms.includes(row.dataset.key);
+        row.classList.toggle('on', on);
+        row.setAttribute('aria-label', `${row.querySelector('b').textContent}: ${on ? 'разрешено' : 'нет доступа'}`);
+      });
+      $('#role-name').textContent = role.name;
+      $('#role-text').textContent = role.text;
+      $('#role-caption').textContent = role.caption;
+      if (!animate) { shot.src = role.shot; shot.alt = role.caption; return; }
+      // A short blur covers the swap of two screens (they never overlap).
+      shot.classList.add('swapping');
+      const next = new Image();
+      next.src = role.shot;
+      setTimeout(() => (next.decode ? next.decode() : Promise.resolve()).catch(() => {}).then(() => {
+        shot.src = role.shot; shot.alt = role.caption; shot.classList.remove('swapping');
+      }), 160);
+    };
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => showRole(tab.dataset.role, true));
+      tab.addEventListener('keydown', (event) => {
+        const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+        if (!step) return;
+        event.preventDefault();
+        const next = tabs[(index + step + tabs.length) % tabs.length];
+        next.focus();
+        showRole(next.dataset.role, true);
+      });
+    });
+    showRole('master', false);
 
     /* ---------- The app's first screen: hands the search to the real app ---------- */
     const form = $('#start-form');
