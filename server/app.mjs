@@ -14,7 +14,8 @@ const contentTypes = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
-  '.png': 'image/png'
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg'
 };
 
 function sendJson(response, status, payload) {
@@ -902,7 +903,12 @@ export function createDetailFlowServer({
       }
 
       if (staticDir) {
-        const requested = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
+        // The landing page (public/landing) lives next to the app; its relative assets need the trailing slash.
+        if (url.pathname === '/landing') {
+          response.writeHead(301, { location: '/landing/' });
+          return response.end();
+        }
+        const requested = url.pathname === '/' ? 'index.html' : url.pathname.endsWith('/') ? `${url.pathname.slice(1)}index.html` : url.pathname.slice(1);
         const safePath = requested.includes('..') ? 'index.html' : requested;
         try {
           const filePath = resolve(staticDir, safePath);

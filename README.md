@@ -22,6 +22,8 @@ pnpm start
 
 Демо-поиск: `+7 913 123-45-67`. У клиента есть Mazda 3 BL и Toyota Camry XV70.
 
+Лендинг продукта — статическая страница `public/landing/index.html`, после сборки она доступна на `/landing/` рядом с приложением. Скриншоты для неё (`public/landing/img`) снимаются с демо-данных: `pnpm build`, затем `node scripts/landing-shots.mjs`.
+
 ## Архитектура инкремента
 
 - `migrations/001_customer_vehicle.sql` — tenant-scoped Customer/Vehicle модель. `Customer` и `Vehicle` разделены временной связью `CustomerVehicle`; госномер намеренно не имеет жёсткого `UNIQUE`.
