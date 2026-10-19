@@ -418,10 +418,19 @@
       .stage { --cut: 64px; grid-column: 1; grid-row: auto; margin: 40px calc(-1 * var(--margin)) 0; padding: 28px 16px 40px; }
       .stage-inner { grid-template-columns: minmax(0, 1fr); gap: 20px; width: auto; max-width: 440px; margin-inline: auto; }
       .stage .car-diagram { width: min(100%, 250px); }
-      .stage .body-types { flex-wrap: nowrap; overflow-x: auto; margin-inline: -16px; padding-inline: 16px; }
+      .stage .body-types { flex-wrap: wrap; }
       .offline { min-height: 86svh; }
       .offline-copy p { font-size: 16px; }
-      .switch-wrap { left: -4%; top: auto; bottom: 4%; font-size: 11vw; }
+      .offline { min-height: 0; padding-bottom: 56px; }
+      .switch-wrap { position: static; width: auto; margin: 32px var(--margin) 0; font-size: 44px; }
+      .js .switch-wrap[data-reveal] { transform: translateY(24px); }
+      .switch { width: 100%; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; padding: 22px 20px; border-radius: 24px; }
+      .switch-text { display: contents; }
+      .switch-text b { grid-column: 1; grid-row: 1; }
+      .switch-text small { grid-column: 1; grid-row: 2; font-size: 14px; }
+      .track { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 30px; }
+      .queue { grid-column: 1 / -1; grid-row: 3; margin-top: 16px; font-size: 14px; gap: 6px; }
+      .queue .qrow { padding: 10px 12px; border-radius: 10px; gap: 12px; }
       .roles-grid { grid-template-columns: minmax(0, 1fr); }
       .role-screen { grid-row: 3; width: min(100%, 320px); margin-top: 32px; }
       .perms { grid-row: 5; margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
@@ -435,11 +444,14 @@
       .act-step, .act-step:last-child { min-height: 0; padding: 0 0 28px; opacity: 1; }
       .act h2 { white-space: normal; }
       .act-paper { padding: 20px 18px 18px; }
-      .act-body { grid-template-columns: 120px minmax(0, 1fr); }
-      .act-svg { width: 120px; }
+      .act-body { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+      .act-svg { width: 170px; }
+      .act-list { justify-self: stretch; }
+      .act-parties { grid-template-columns: minmax(0, 1fr); }
       .path { min-height: 0; }
       .field { min-height: 0; padding: 28px 20px 44px; }
-      .field .card-slot { position: static; translate: none; margin-top: 32px; }
+      .field .card-slot { position: static; translate: none; margin-top: 24px; }
+      .order-card { width: 100%; max-width: 420px; font-size: 14px; }
       .field p { order: -1; margin-top: 12px; }
       .field h2 { order: -2; margin-bottom: 4px; }
       .faq { grid-template-columns: 1fr; }
