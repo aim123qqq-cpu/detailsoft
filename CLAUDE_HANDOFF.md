@@ -88,6 +88,10 @@ android/                          Android-оболочка (Java, WebView, бе�
 src/platform.ts                   randomId() без secure context и доступ к мосту Android
 tests/android/smoke.mjs           Playwright _android: сценарий в настоящем WebView (не входит в pnpm test)
 migrations/                       схема 001–022
+server/repository/                методы репозитория по областям (center, leads, customers, vehicles, catalog, bookings, orders, analytics) + shared.mjs; класс в server/repository.mjs подмешивает их
+src/workspace/                    BookingsWorkspace.tsx, OrdersWorkspace.tsx, shared.tsx (бывший WorkspaceScreens.tsx)
+src/app/                          AppChrome.tsx (иконки, шапка, нижнее меню), AddVehicle.tsx, OrderWorkspaceLoader.tsx
+src/shared/orderDocuments.ts      содержимое актов: общий код сервера и приложения
 src/shared/                       общий код сервера и приложения: bookingRules.ts (слоты, расчёт, подпись цены), normalize.ts
 server/offline-pack.mjs           пакет для записи без сети (GET /api/offline/booking-pack)
 src/offline/bookingLocal.ts       каталог, расчёт, свободное время, поиск и запись на телефоне по пакету
@@ -264,7 +268,7 @@ pnpm test:e2e     # только E2E
 
 Последняя подтверждённая база (16 октября 2026, после четырёх комплексов):
 
-- `pnpm test`-эквивалент: **164/164 passed** (было 68; последними добавлены `offline-customers` (2), ещё 2 теста очереди (перепривязка, каскадная отмена, подтверждение дубля) и E2E `offline-new-customer`. Найдено: `page.waitForFunction` с async-предикатом не ждёт результата — в E2E работы без сети ожидание сохранения заменено на `tests/e2e/offline-helpers.mjs` (`waitForOfflineCopy`); `src/offline/store.ts` пересоздаёт хранилища, если база открылась без них; до этого `offline-order-lifecycle` (2, весь цикл заказа на телефоне против сервера) и E2E `offline-lifecycle` (визит от приезда до выдачи без сети); до этого `offline-booking-local` (3, совпадение телефона с сервером), `booking-offline-sync` (2) и E2E `offline-booking`; в E2E `customer-vehicle` пакет для записи отключён, чтобы проверять путь «ошибка поиска → повторить»; до этого `idempotency` (2), `offline-order-local` (1, правила телефона против настоящего сервера), `offline-queue` (2) и E2E `offline-work`; до этого `catalog-sections` (5) и E2E `catalog-sections`, в E2E `reference-management` составная услуга открывается кнопкой «Собрать услугу из нескольких операций»; до этого `roles` (5) и E2E `roles`; в `session.test.mjs` добавлены `roleNames` и `acceptAssignments`; до этого `platform` (1, `randomId` без `crypto.randomUUID` — по `http://192.168…` его нет, и создание записи с телефона падало), `health` (1, `/api/ready`), `setup-owner` (2), до этого `role-access` (5), `backup` (4), тест `view=upcoming|overdue`, E2E `role-workspaces`). E2E с несколькими ролями открывает каждую роль в своём контексте Chrome и закрывает его перед следующей. Добавлены: `customer-profile` (8), `booking-quote-revision` (6), `order-documents` (6), `messenger-auth` (6), `messenger-adapters` (4), `share-order` (3, импортирует `src/shareOrder.ts` напрямую — Node 24 снимает типы сам), 4 новых E2E; в `session.test.mjs` обновлена форма `actor` (`memberId`, `authMethod`);
+- `pnpm test`-эквивалент: **168/168 passed** (было 68; последними добавлены `offline-prune` (2, чистка копии), `booking-move-composition` (2, состав и время одним запросом, `excludeBookingId`); E2E `offline-lifecycle` дополнен актом выдачи с подписью без сети, E2E `booking-composition` — выбором нового времени. При полном параллельном прогоне браузерные тесты иногда упираются в тайм-ауты от нагрузки на машину: перепроверять падение отдельным запуском. До этого `offline-customers` (2), ещё 2 теста очереди (перепривязка, каскадная отмена, подтверждение дубля) и E2E `offline-new-customer`. Найдено: `page.waitForFunction` с async-предикатом не ждёт результата — в E2E работы без сети ожидание сохранения заменено на `tests/e2e/offline-helpers.mjs` (`waitForOfflineCopy`); `src/offline/store.ts` пересоздаёт хранилища, если база открылась без них; до этого `offline-order-lifecycle` (2, весь цикл заказа на телефоне против сервера) и E2E `offline-lifecycle` (визит от приезда до выдачи без сети); до этого `offline-booking-local` (3, совпадение телефона с сервером), `booking-offline-sync` (2) и E2E `offline-booking`; в E2E `customer-vehicle` пакет для записи отключён, чтобы проверять путь «ошибка поиска → повторить»; до этого `idempotency` (2), `offline-order-local` (1, правила телефона против настоящего сервера), `offline-queue` (2) и E2E `offline-work`; до этого `catalog-sections` (5) и E2E `catalog-sections`, в E2E `reference-management` составная услуга открывается кнопкой «Собрать услугу из нескольких операций»; до этого `roles` (5) и E2E `roles`; в `session.test.mjs` добавлены `roleNames` и `acceptAssignments`; до этого `platform` (1, `randomId` без `crypto.randomUUID` — по `http://192.168…` его нет, и создание записи с телефона падало), `health` (1, `/api/ready`), `setup-owner` (2), до этого `role-access` (5), `backup` (4), тест `view=upcoming|overdue`, E2E `role-workspaces`). E2E с несколькими ролями открывает каждую роль в своём контексте Chrome и закрывает его перед следующей. Добавлены: `customer-profile` (8), `booking-quote-revision` (6), `order-documents` (6), `messenger-auth` (6), `messenger-adapters` (4), `share-order` (3, импортирует `src/shareOrder.ts` напрямую — Node 24 снимает типы сам), 4 новых E2E; в `session.test.mjs` обновлена форма `actor` (`memberId`, `authMethod`);
 - `pnpm build` (`tsc --noEmit && vite build`): успешно;
 - 7 реальных Chromium mobile E2E: основной lifecycle, история/передача автомобиля, ручной автомобиль/конструктор каталога, карточка клиента, изменение состава записи, акты и подпись, вход через мессенджер (`tests/e2e/messenger-login.test.mjs`).
 - Запуск с ограничением времени: `node --test --test-timeout=180000 "tests/**/*.test.mjs"`.
@@ -302,9 +306,9 @@ pnpm test:e2e     # только E2E
    - лимит частоты входа хранится в памяти процесса (при нескольких экземплярах сервера нужен общий);
    - ~~нет bootstrap первого владельца~~ — сделано 16.10.2026: `pnpm setup:owner` (`server/setup.mjs`) создаёт центр и владельца с консоли и печатает приглашение в бота; `--tenant` восстанавливает доступ к существующему центру.
 2. SQLite и `data URL` для фотографий подходят локальному прототипу, но не production. Нет PostgreSQL/object storage, резервного копирования и политики хранения.
-3. `server/repository.mjs`, `src/App.tsx` и часть экранов уже крупные. Разделять их следует вертикальными срезами с тестами, а не массовой косметической перестройкой.
+3. ~~Крупные файлы~~ — разделены 19.10.2026 механически, без изменения кода методов. `server/repository.mjs` (2549 строк) разложен на 8 файлов `server/repository/*.mjs`. `WorkspaceScreens.tsx` разделён на `src/workspace/`. Из `App.tsx` вынесены `src/app/*`. Проверено полным набором тестов и `tsc --checkJs` на неразрешённые имена. `src/api.ts` (~850 строк) пока целиком.
 4. ~~Нет полноценной карточки клиента~~ — сделано (раздел 10). Расхождение визитов исправлено 16.10.2026: `visitCount` в поиске считается по закрытым заказам, как в карточке. Колонка `customers.visit_count` устарела и не используется; она не удалена, потому что миграции только добавочные.
-5. ~~Нельзя пересобрать состав записи~~ — сделано (`PUT /api/bookings/{id}/quote`, версии расчёта). Ограничение: при `409 slot_unavailable` перенос и смена состава выполняются двумя шагами (сначала перенос на время, где помещается текущий состав, затем изменение состава). Атомарного «перенести и изменить» нет.
+5. ~~Нельзя пересобрать состав записи~~ — сделано (`PUT /api/bookings/{id}/quote`, версии расчёта). С 19.10.2026 состав и время меняются одним запросом (`startAt`), а свободное время для переноса считается без самой записи (`excludeBookingId`).
 6. ~~Нет подписи и документов~~ — сделаны акты с рукописной подписью на экране. Ограничения: это не квалифицированная ЭП и не подтверждение по SMS; PDF генерирует браузер, а не сервер; юридические формулировки актов (`statement` в `buildOrderDocumentContent`) стоит согласовать с юристом центра.
 7. Каналы обращения — метаданные; реальных интеграций Telegram/VK/Instagram и уведомлений нет.
 8. ~~Нет экрана библиотеки операций~~ — сделана вкладка «Каталог → Операции» (`src/OperationLibrary.tsx`): поиск, «где используется», переименование, защищённая архивация, восстановление. Попутно исправлено: проверка дубля названия операции не учитывала регистр кириллицы (SQLite `lower()` работает только с ASCII).
@@ -424,9 +428,12 @@ pnpm test:e2e     # только E2E
      - В очереди `dependsOn`: отмена каскадом снимает зависящие изменения. `linkFailedToExisting` — «это тот же клиент», `confirmFailedDuplicate` — «другой человек», с новым ключом.
 
      Слияния клиентов нет: так требуют правила проекта, и владелец согласовал этот вариант («далее» 19.10).
-     **Оффлайн завершён.** Остающиеся ограничения:
-     - акты без сети не выпускаются;
-     - копия на телефоне не чистится;
+     **Оффлайн завершён.** 19.10.2026 доделано:
+     - акты без сети (номер присваивает сервер при отправке);
+     - чистка копии (`pruneCache`, хранилище `meta`);
+     - плашка сети над шапкой (`.app-top`).
+
+     Остающиеся ограничения:
      - браузер без HTTPS не стартует без сервера;
      - справочник моделей без сети доступен только по сохранённым запросам (ручной ввод работает).
      **Ограничения этапа 1:**

@@ -83,6 +83,24 @@ test('mobile offline: from "client arrived" to handover without the server, then
     await settle(page);
     await page.screenshot({ path: resolve(artifacts, '111-offline-order-closed.png') });
 
+    // The handover act is shown, signed and kept on the phone; the server numbers it later.
+    await page.getByTestId('issue-handover_act').click();
+    await page.getByTestId('document-paper').waitFor();
+    await page.getByTestId('signer-name').fill('Алексей Морозов');
+    const pad = page.getByTestId('signature-pad');
+    await pad.scrollIntoViewIfNeeded();
+    const box = await pad.boundingBox();
+    await page.mouse.move(box.x + 30, box.y + 110);
+    await page.mouse.down();
+    for (const [dx, dy] of [[60, -50], [100, 20], [150, -40], [210, 30]]) await page.mouse.move(box.x + dx, box.y + 90 + dy, { steps: 6 });
+    await page.mouse.up();
+    await page.getByTestId('sign-document').click();
+    await page.getByTestId('document-viewer').waitFor();
+    assert.match(await page.getByTestId('document-viewer').innerText(), /Акт выдачи[\s\S]*номер присвоится при отправке[\s\S]*Алексей Морозов/);
+    await settle(page);
+    await page.screenshot({ path: resolve(artifacts, '115-offline-signed-act.png') });
+    await page.keyboard.press('Escape');
+
     await context.setOffline(false);
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
     await page.getByTestId('offline-banner').waitFor({ state: 'detached' });
@@ -99,6 +117,11 @@ test('mobile offline: from "client arrived" to handover without the server, then
     assert.ok(order.work.operations.every((operation) => operation.status === 'DONE'));
     assert.deepEqual(order.photos.map((item) => item.phase).sort(), ['intake', 'result']);
     assert.equal(order.handover.responsible.length > 1, true);
+    const acts = order.documents.filter((item) => item.type === 'handover_act');
+    assert.equal(acts.length, 1);
+    assert.match(acts[0].number, /^АВ-\d{6}$/, 'the server numbered the act');
+    assert.equal(acts[0].signed, true);
+    assert.equal(acts[0].signerName, 'Алексей Морозов');
   } finally {
     await browser.close();
     await new Promise((done) => server.close(done));

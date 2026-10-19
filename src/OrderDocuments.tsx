@@ -17,9 +17,11 @@ function formatDate(value: string | null | undefined) {
   return value ? dateTime.format(new Date(value)) : '—';
 }
 
-export function DocumentPaper({ content, number, signerName, signatureDataUrl, signedAt, actorName }: {
+export function DocumentPaper({ content, number, pendingNumber, signerName, signatureDataUrl, signedAt, actorName }: {
   content: OrderDocumentContent;
   number?: string;
+  /** Issued offline: the server numbers it once the queue is sent. */
+  pendingNumber?: boolean;
   signerName?: string | null;
   signatureDataUrl?: string | null;
   signedAt?: string | null;
@@ -31,7 +33,7 @@ export function DocumentPaper({ content, number, signerName, signatureDataUrl, s
       <header>
         <span>{content.center.name}</span>
         <h2>{content.title}</h2>
-        <p>{number ? `№ ${number}` : 'Предпросмотр · номер присвоится при сохранении'} · заказ #{content.order.number}</p>
+        <p>{number ? `№ ${number}` : pendingNumber ? 'Сохранён на телефоне · номер присвоится при отправке' : 'Предпросмотр · номер присвоится при сохранении'} · заказ #{content.order.number}</p>
       </header>
       <dl className="document-parties">
         <div><dt>Клиент</dt><dd>{content.customer.name}</dd></div>
@@ -252,19 +254,22 @@ function DocumentViewer({ orderId, documentId, onClose }: { orderId: string; doc
   }, [orderId, documentId]);
   return (
     <DocumentOverlay
-      title={document ? `${documentTitles[document.type]} № ${document.number}` : 'Документ'}
+      title={document ? `${documentTitles[document.type]} ${numberLabel(document)}` : 'Документ'}
       onClose={onClose}
       actions={document && <button type="button" className="primary" data-testid="print-document" onClick={() => window.print()}>Печать / PDF</button>}
     >
       <div className="document-viewer" data-testid="document-viewer">
         {!document ? <div className="workspace-state">{error || <><span className="spinner"/> Загружаем документ</>}</div> : <>
           {document.outdated && <div className="customer-note duplicate-note document-outdated"><strong>Акт устарел</strong><span>После его подписания приёмку осмотрели повторно. Документ сохранён без изменений; оформите новый акт.</span></div>}
-          <DocumentPaper content={document.content} number={document.number} signerName={document.signerName} signatureDataUrl={document.signatureDataUrl} signedAt={document.signedAt} actorName={document.actorName}/>
+          <DocumentPaper content={document.content} number={document.id.startsWith('doc_local_') ? undefined : document.number} pendingNumber={document.id.startsWith('doc_local_')} signerName={document.signerName} signatureDataUrl={document.signatureDataUrl} signedAt={document.signedAt} actorName={document.actorName}/>
         </>}
       </div>
     </DocumentOverlay>
   );
 }
+
+/** An act issued offline gets its number from the server when it is sent. */
+const numberLabel = (document: { id: string; number: string }) => document.id.startsWith('doc_local_') ? 'номер присвоится при отправке' : `№ ${document.number}`;
 
 export function OrderDocumentsPanel({ order, types = ['intake_act', 'handover_act'], defaultSigner, onChanged }: {
   order: WorkOrder;
@@ -288,7 +293,7 @@ export function OrderDocumentsPanel({ order, types = ['intake_act', 'handover_ac
           <div>
             <strong>{documentTitles[type]}</strong>
             <small className={latest?.outdated ? 'warn' : ''}>{latest
-              ? `№ ${latest.number} · ${latest.signed ? `подписан: ${latest.signerName}` : 'без подписи'}${latest.outdated ? ' · устарел после повторного осмотра' : ''}`
+              ? `${numberLabel(latest)} · ${latest.signed ? `подписан: ${latest.signerName}` : 'без подписи'}${latest.outdated ? ' · устарел после повторного осмотра' : ''}`
               : 'Ещё не оформлен'}</small>
           </div>
           <div className="order-document-actions">
@@ -297,7 +302,7 @@ export function OrderDocumentsPanel({ order, types = ['intake_act', 'handover_ac
           </div>
           {older.length > 0 && <details className="order-document-history">
             <summary>Ранее выпущенные · {older.length}</summary>
-            {older.map((item) => <button type="button" key={item.id} onClick={() => setViewing(item.id)}>№ {item.number} · {item.signed ? `подписан: ${item.signerName}` : 'без подписи'}{item.outdated ? ' · устарел' : ''}</button>)}
+            {older.map((item) => <button type="button" key={item.id} onClick={() => setViewing(item.id)}>{numberLabel(item)} · {item.signed ? `подписан: ${item.signerName}` : 'без подписи'}{item.outdated ? ' · устарел' : ''}</button>)}
           </details>}
         </div>;
       })}

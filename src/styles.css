@@ -24,7 +24,11 @@ input, textarea, select { min-height: 44px; }
 .skip-link { position: fixed; z-index: 100; top: 8px; left: 50%; padding: 11px 16px; border-radius: 10px; color: #17100c; background: var(--primary); font-size: 13px; font-weight: 800; transform: translate(-50%, -150%); transition: transform .15s ease; }
 .skip-link:focus { transform: translate(-50%, 0); }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 3px solid #ffb18b !important; outline-offset: 3px; }
-.connectivity-banner { position: fixed; z-index: 90; top: max(10px, env(safe-area-inset-top)); left: 50%; width: min(calc(100% - 24px), calc(var(--app-width) - 24px)); display: flex; align-items: center; gap: 9px; padding: 11px 13px; border: 1px solid rgba(242,189,102,.45); border-radius: 12px; color: #d7c49e; background: rgba(39,31,20,.97); box-shadow: 0 12px 30px rgba(0,0,0,.38); transform: translateX(-50%); }
+.app-top { position: sticky; top: 0; z-index: 20; }
+.app-top .app-header { position: static; }
+/* The banner takes the safe area, so the header below it does not add it again. */
+.app-top:has(.connectivity-banner) .app-header { padding-top: 12px; }
+.connectivity-banner { display: flex; align-items: center; gap: 9px; padding: max(9px, env(safe-area-inset-top)) 18px 9px; border-bottom: 1px solid rgba(242,189,102,.35); color: #d7c49e; background: rgb(39,31,20); }
 .connectivity-banner strong { flex: 0 0 auto; color: #ffd58a; font-size: 12px; }
 .connectivity-banner span { min-width: 0; font-size: 10px; line-height: 1.35; }
 .connectivity-banner.sync-pending { border-color: rgba(143,166,255,.45); color: #c8d2f5; background: rgba(22,28,44,.97); }
@@ -1446,3 +1450,8 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
 .booking-conflict-banner strong { color: #ff9d82; font-size: 12px; }
 .booking-pending-banner { margin-top: 12px; padding: 11px 14px; border: 1px solid rgba(143,166,255,.35); border-radius: 13px; color: #c8d2f5; background: rgba(22,28,44,.7); font-size: 11px; }
 .booking-pending-sync { color: #c8d2f5; }
+
+.composition-new-time { display: grid; gap: 8px; margin-top: 12px; padding: 12px; border: 1px solid rgba(255,121,57,.35); border-radius: 13px; background: rgba(255,121,57,.05); }
+.composition-new-time strong { font-size: 12px; }
+.composition-new-time label { color: #8c99a3; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.composition-new-time input { min-height: 44px; padding: 9px 10px; border: 1px solid #35424c; border-radius: 10px; color: #edf1f3; background: #0c1319; font: inherit; }

@@ -81,8 +81,55 @@ export async function readCache<T>(path: string): Promise<T | undefined> {
   return (await storeGet<Cached<T>>('cache', cacheKey(path)))?.value;
 }
 
-export async function writeCache(path: string, value: unknown) {
-  await storeSet('cache', cacheKey(path), { value, savedAt: new Date().toISOString() });
+/** What cleanup needs to know about a saved answer without loading it (orders with photos are large). */
+type CacheMeta = { path: string; scope: string; savedAt: string; size: number; finished: boolean };
+
+const FINISHED = ['CLOSED', 'CANCELLED', 'NO_SHOW'];
+
+export async function writeCache(path: string, value: unknown, savedAt = new Date().toISOString()) {
+  await storeSet('cache', cacheKey(path), { value, savedAt });
+  let size = 0;
+  try { size = JSON.stringify(value)?.length ?? 0; } catch { /* unserializable values are not cached anyway */ }
+  const status = value && typeof value === 'object' ? (value as { status?: string }).status : undefined;
+  await storeSet('meta', cacheKey(path), { path, scope: scopeOf(), savedAt, size, finished: FINISHED.includes(status ?? '') } satisfies CacheMeta);
+}
+
+// Always kept: what the app needs to open and to book offline; they are replaced, not accumulated.
+const ALWAYS_KEPT = ['/api/session', '/api/auth/providers', '/api/offline/booking-pack', '/api/tenants/current/masters', '/api/tenants/current/vehicle-classes'];
+const DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * Keeps the phone's copy from growing without end. Never touches what is waiting to be sent or the
+ * always-kept answers; runs only while the server is reachable, so nothing needed offline is lost:
+ * finished orders and bookings after 2 days, any order or booking after 21 days, searches and lists
+ * after 7 days, other employees' copies after 7 days, then the oldest beyond 80 MB.
+ */
+export async function pruneCache(now = Date.now(), limitBytes = 80 * 1024 * 1024) {
+  const pending = new Set((await storeEntries<OutboxItem>('outbox')).map(([, item]) => `${item.scope}|${entityPath(item.entity)}`));
+  const metas = (await storeEntries<CacheMeta>('meta')).map(([key, meta]) => ({ key, ...meta }));
+  const scope = scopeOf();
+  const remove = new Set<string>();
+  const age = (meta: CacheMeta) => now - Date.parse(meta.savedAt);
+  const protectedKey = (meta: CacheMeta & { key: string }) => pending.has(meta.key) || (meta.scope === scope && ALWAYS_KEPT.includes(meta.path));
+  for (const meta of metas) {
+    if (protectedKey(meta)) continue;
+    const entity = /^\/api\/(orders|bookings)\/[^/?]+$/.test(meta.path);
+    if (meta.scope !== scope && age(meta) > 7 * DAY) remove.add(meta.key);
+    else if (entity && meta.finished && age(meta) > 2 * DAY) remove.add(meta.key);
+    else if (entity && age(meta) > 21 * DAY) remove.add(meta.key);
+    else if (meta.path.includes('?') && age(meta) > 7 * DAY) remove.add(meta.key);
+  }
+  let total = metas.filter((meta) => !remove.has(meta.key)).reduce((sum, meta) => sum + meta.size, 0);
+  for (const meta of metas.filter((item) => !remove.has(item.key) && !protectedKey(item)).sort((left, right) => left.savedAt.localeCompare(right.savedAt))) {
+    if (total <= limitBytes) break;
+    remove.add(meta.key);
+    total -= meta.size;
+  }
+  for (const key of remove) {
+    await storeDelete('cache', key);
+    await storeDelete('meta', key);
+  }
+  return remove.size;
 }
 
 // ---- Queue of changes ------------------------------------------------------------------------
@@ -196,7 +243,7 @@ export async function discardFailed() {
   for (const item of dropped) await storeDelete('outbox', item.id);
   for (const entity of droppedEntities) {
     const path = entityPath(entity);
-    if (path) await storeDelete('cache', cacheKey(path));
+    if (path) { await storeDelete('cache', cacheKey(path)); await storeDelete('meta', cacheKey(path)); }
   }
   await refreshCounts();
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('detailflow:synced'));

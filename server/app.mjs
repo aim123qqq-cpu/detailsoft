@@ -613,7 +613,7 @@ export function createDetailFlowServer({
         }
         if (request.method === 'GET' && url.pathname === '/api/bookings/availability') {
           const duration = Number(url.searchParams.get('durationMinutes') ?? 60);
-          const result = repository.getBookingAvailability(tenantId, url.searchParams.get('date') ?? '', duration);
+          const result = repository.getBookingAvailability(tenantId, url.searchParams.get('date') ?? '', duration, url.searchParams.get('excludeBookingId'));
           if (result.kind === 'available') return sendJson(response, 200, result);
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте дату и длительность' } });
         }

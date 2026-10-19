@@ -3,10 +3,12 @@
  * Falls back to memory when IndexedDB is unavailable (private mode, tests): the app keeps working,
  * it just forgets the copy on reload.
  */
-type StoreName = 'cache' | 'outbox';
+/** cache: saved answers; outbox: queued changes; meta: when and how big each saved answer is (for cleanup). */
+type StoreName = 'cache' | 'outbox' | 'meta';
+const STORES: StoreName[] = ['cache', 'outbox', 'meta'];
 
 const DB_NAME = 'detailflow-offline';
-const memory: Record<StoreName, Map<string, unknown>> = { cache: new Map(), outbox: new Map() };
+const memory: Record<StoreName, Map<string, unknown>> = { cache: new Map(), outbox: new Map(), meta: new Map() };
 let opening: Promise<IDBDatabase | null> | null = null;
 
 function open(): Promise<IDBDatabase | null> {
@@ -17,12 +19,12 @@ function open(): Promise<IDBDatabase | null> {
       const connect = (version?: number) => {
         const request = version ? indexedDB.open(DB_NAME, version) : indexedDB.open(DB_NAME);
         request.onupgradeneeded = () => {
-          for (const store of ['cache', 'outbox']) if (!request.result.objectStoreNames.contains(store)) request.result.createObjectStore(store);
+          for (const store of STORES) if (!request.result.objectStoreNames.contains(store)) request.result.createObjectStore(store);
         };
         request.onsuccess = () => {
           const db = request.result;
-          // A database created elsewhere without our stores is upgraded once instead of failing silently.
-          if (!db.objectStoreNames.contains('cache') || !db.objectStoreNames.contains('outbox')) {
+          // A database without one of our stores (older app version, or created elsewhere) is upgraded once.
+          if (STORES.some((store) => !db.objectStoreNames.contains(store))) {
             const next = db.version + 1;
             db.close();
             return version ? resolve(null) : connect(next);

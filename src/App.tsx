@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, authSession, demoAuthEnabled } from './api';
 import { LoginScreen } from './LoginScreen';
 import { visitsLabel } from './format';
@@ -6,54 +6,22 @@ import { NoAccess, SessionInfo } from './session';
 import { ScheduleStep, ServicesStep } from './BookingFlow';
 import { OrderFlow } from './OrderFlow';
 import { SyncBanner } from './SyncBanner';
-import { BookingsWorkspace, OrdersWorkspace } from './WorkspaceScreens';
+import { pruneCache, syncState } from './offline/sync';
+import { BookingsWorkspace } from './workspace/BookingsWorkspace';
+import { OrdersWorkspace } from './workspace/OrdersWorkspace';
 import { AnalyticsScreen } from './AnalyticsScreen';
 import { ProfileScreen } from './ProfileScreen';
 import { VehicleProfileScreen } from './VehicleProfileScreen';
 import { CustomerProfileScreen } from './CustomerProfileScreen';
-import type { Booking, BookingQuote, CatalogVariant, Customer, Lead, OrderTarget, QuoteSelection, SessionContext, Vehicle } from './types';
+import type { Booking, BookingQuote, Customer, Lead, OrderTarget, QuoteSelection, SessionContext, Vehicle } from './types';
+import { type Workspace, Icon, VehicleCard, Header, BottomNav } from './app/AppChrome';
+import { AddVehicle } from './app/AddVehicle';
+import { OrderWorkspaceLoader } from './app/OrderWorkspaceLoader';
 
-type Workspace = 'bookings' | 'new' | 'orders' | 'analytics' | 'profile';
 type ProfileOverlay = { kind: 'customer' | 'vehicle'; id: string } | ({ kind: 'order' } & OrderTarget);
 
-function OrderWorkspaceLoader({ target, onPhaseChange, onBack }: { target: OrderTarget; onPhaseChange: (title: string) => void; onBack: () => void }) {
-  const [booking, setBooking] = useState<Booking | null>(null);
-  const [error, setError] = useState('');
-  useEffect(() => {
-    const controller = new AbortController();
-    api.getBooking(target.id, controller.signal)
-      .then(setBooking)
-      .catch((requestError: Error) => { if (requestError.name !== 'AbortError') setError(requestError.message); });
-    return () => controller.abort();
-  }, [target.id]);
-  if (!booking) return <section className="screen">
-    <button className="details-back" onClick={onBack}>← Назад</button>
-    {error ? <div className="form-error" role="alert">{error}</div> : <div className="workspace-state"><span className="spinner"/> Открываем заказ</div>}
-  </section>;
-  return <OrderFlow booking={booking} customer={target.customer} vehicle={target.vehicle} orderId={target.orderId} onPhaseChange={onPhaseChange}/>;
-}
-
-type IconName = 'arrow' | 'search' | 'phone' | 'car' | 'user' | 'calendar' | 'clipboard' | 'plus' | 'check' | 'spark' | 'chart';
-
-function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
-  const paths: Record<IconName, React.ReactNode> = {
-    arrow: <><path d="M15 18l-6-6 6-6"/><path d="M9 12h10"/></>,
-    search: <><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></>,
-    phone: <path d="M8.5 3.5 6 4.5c-.8.3-1.2 1.1-1 1.9 1.3 5.9 5.7 10.3 11.6 11.6.8.2 1.6-.2 1.9-1l1-2.5-4-2-1.2 1.8c-2.3-.9-3.7-2.3-4.6-4.6l1.8-1.2-2-4Z"/>,
-    car: <><path d="M4 15v-4l2-5h12l2 5v4"/><path d="M4 13h16M7 13v2m10-2v2M6 18h1m10 0h1"/></>,
-    user: <><circle cx="12" cy="8" r="3"/><path d="M5.5 20c.7-4 3-6 6.5-6s5.8 2 6.5 6"/></>,
-    calendar: <><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M8 3v4m8-4v4M4 10h16"/></>,
-    clipboard: <><path d="M9 5h6l1 2h3v14H5V7h3l1-2Z"/><path d="M9 12h6m-6 4h4"/></>,
-    plus: <path d="M12 5v14M5 12h14"/>,
-    check: <path d="m5 12 4 4L19 6"/>,
-    spark: <><path d="m12 3 1.2 4.3L17 9l-3.8 1.7L12 15l-1.2-4.3L7 9l3.8-1.7L12 3Z"/><path d="m18 15 .7 2.3L21 18l-2.3.7L18 21l-.7-2.3L15 18l2.3-.7L18 15Z"/></>,
-    chart: <><path d="M5 19V9m7 10V5m7 14v-7"/><path d="M3 19h18"/></>
-  };
-  return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
-}
-
-const bodyLabels: Record<string, string> = { sedan: 'седан', hatchback: 'хэтчбек', suv: 'кроссовер', wagon: 'универсал', coupe: 'купе', van: 'фургон', pickup: 'пикап', other: 'другой' };
 const channels = ['Telegram', 'VK', 'Instagram', 'Звонок', 'На месте'];
+
 const leadChannelLabels: Record<Lead['channel'], string> = {
   telegram: 'Telegram', vk: 'VK', instagram: 'Instagram', call: 'Звонок', in_person: 'На месте'
 };
@@ -69,49 +37,6 @@ function formatPhoneInput(value: string) {
   if (parts[2]) result += `-${parts[2]}`;
   if (parts[3]) result += `-${parts[3]}`;
   return result;
-}
-
-function VehicleCard({ vehicle, onSelect }: { vehicle: Vehicle; onSelect: () => void }) {
-  return (
-    <button className="vehicle-card" onClick={onSelect} data-testid={`vehicle-${vehicle.id}`}>
-      <span className="vehicle-mark"><Icon name="car" size={22}/></span>
-      <span className="vehicle-copy">
-        <strong>{vehicle.make} {vehicle.model} {vehicle.generation}</strong>
-        <span>{bodyLabels[vehicle.bodyType ?? ''] ?? vehicle.bodyType} · {vehicle.color}</span>
-      </span>
-      <span className="plate">{vehicle.plate}</span>
-      <span className="card-arrow">›</span>
-    </button>
-  );
-}
-
-function Header({ step, workspace, onBack, orderTitle, overlayTitle, overlayEyebrow }: { step: number; workspace: Workspace; onBack: () => void; orderTitle?: string; overlayTitle?: string; overlayEyebrow?: string }) {
-  const workspaceTitle = workspace === 'bookings' ? 'Записи' : workspace === 'analytics' ? 'Статистика' : workspace === 'profile' ? 'Профиль' : 'Заказы';
-  return (
-    <header className="app-header">
-      <button className="icon-button" onClick={onBack} aria-label="Назад"><Icon name="arrow"/></button>
-      <div>
-        <span className="eyebrow">{overlayTitle ? overlayEyebrow ?? 'Клиенты и автомобили' : workspace === 'bookings' ? 'Расписание' : workspace === 'orders' ? 'Производство' : workspace === 'analytics' ? 'Управление' : workspace === 'profile' ? 'Аккаунт' : step === 5 ? 'Рабочий заказ' : 'Новая запись'}</span>
-        <h1>{overlayTitle ?? (workspace !== 'new' ? workspaceTitle : step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : step === 3 ? 'Услуги' : step === 4 ? 'Дата и время' : orderTitle ?? 'Рабочий заказ')}</h1>
-      </div>
-      <span aria-hidden="true"/>
-      {workspace === 'new' && !overlayTitle && <div className="progress" aria-label={step === 5 ? 'Рабочий заказ' : `Шаг ${step} из 4`}>
-        {[1, 2, 3, 4].map((item) => <span key={item} className={item <= step ? 'active' : ''}/>) }
-      </div>}
-    </header>
-  );
-}
-
-function BottomNav({ active, onSelect }: { active: Workspace; onSelect: (workspace: Workspace) => void }) {
-  return (
-    <nav className="bottom-nav" aria-label="Основная навигация">
-      <button data-testid="analytics-nav" className={active === 'analytics' ? 'active' : ''} aria-current={active === 'analytics' ? 'page' : undefined} onClick={() => onSelect('analytics')}><Icon name="chart"/><span>Статистика</span></button>
-      <button data-testid="bookings-nav" className={active === 'bookings' ? 'active' : ''} aria-current={active === 'bookings' ? 'page' : undefined} onClick={() => onSelect('bookings')}><Icon name="calendar"/><span>Записи</span></button>
-      <button data-testid="new-booking-nav" className={`new-nav ${active === 'new' ? 'active' : ''}`} aria-label="Новая запись" aria-current={active === 'new' ? 'page' : undefined} onClick={() => onSelect('new')}><span className="nav-action"><Icon name="plus" size={24}/></span></button>
-      <button data-testid="orders-nav" className={active === 'orders' ? 'active' : ''} aria-current={active === 'orders' ? 'page' : undefined} onClick={() => onSelect('orders')}><Icon name="clipboard"/><span>Заказы</span></button>
-      <button data-testid="profile-nav" className={active === 'profile' ? 'active' : ''} aria-current={active === 'profile' ? 'page' : undefined} onClick={() => onSelect('profile')}><Icon name="user"/><span>Профиль</span></button>
-    </nav>
-  );
 }
 
 export function App() {
@@ -167,6 +92,16 @@ export function App() {
     const timer = setInterval(() => { void api.refreshBookingPack(); }, 10 * 60_000);
     return () => clearInterval(timer);
   }, [canBook]);
+
+  // The phone's copy is cleaned up while the server is reachable: on start and every 6 hours.
+  const signedIn = Boolean(session);
+  useEffect(() => {
+    if (!signedIn) return;
+    const clean = () => { if (syncState().reachable) void pruneCache(); };
+    clean();
+    const timer = setInterval(clean, 6 * 60 * 60_000);
+    return () => clearInterval(timer);
+  }, [signedIn]);
 
   // Offline changes reached the server: reload lists and the booking pack.
   useEffect(() => {
@@ -357,9 +292,12 @@ export function App() {
     <SessionInfo.Provider value={session}>
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Перейти к содержимому</a>
-      <SyncBanner online={online}/>
-      <Header step={step} workspace={workspace} orderTitle={orderHeader} overlayTitle={overlay ? overlay.kind === 'customer' ? 'Карточка клиента' : overlay.kind === 'vehicle' ? 'Карточка автомобиля' : orderHeader : undefined}
-        overlayEyebrow={overlay?.kind === 'order' ? 'Рабочий заказ' : undefined} onBack={() => overlay ? closeOverlay() : workspace !== 'new' ? startNewBooking() : profileVehicleId ? setProfileVehicleId(null) : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
+      {/* The connection banner sits above the header in one sticky block: it pushes content, never covers it. */}
+      <div className="app-top">
+        <SyncBanner online={online}/>
+        <Header step={step} workspace={workspace} orderTitle={orderHeader} overlayTitle={overlay ? overlay.kind === 'customer' ? 'Карточка клиента' : overlay.kind === 'vehicle' ? 'Карточка автомобиля' : orderHeader : undefined}
+          overlayEyebrow={overlay?.kind === 'order' ? 'Рабочий заказ' : undefined} onBack={() => overlay ? closeOverlay() : workspace !== 'new' ? startNewBooking() : profileVehicleId ? setProfileVehicleId(null) : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
+      </div>
       <main id="main-content" tabIndex={-1}>
         {overlay?.kind === 'customer' && <CustomerProfileScreen
           key={overlay.id}
@@ -497,105 +435,5 @@ export function App() {
       <BottomNav active={workspace} onSelect={selectWorkspace}/>
     </div>
     </SessionInfo.Provider>
-  );
-}
-
-function AddVehicle({ customer, onCancel, onCreated }: { customer: Customer; onCancel: () => void; onCreated: (vehicle: Vehicle) => void }) {
-  const [entryMode, setEntryMode] = useState<'catalog' | 'manual'>('catalog');
-  const [modelQuery, setModelQuery] = useState('Mazda 3 BL');
-  const [variants, setVariants] = useState<CatalogVariant[]>([]);
-  const [variant, setVariant] = useState<CatalogVariant | null>(null);
-  const [plate, setPlate] = useState('');
-  const [color, setColor] = useState('');
-  const [manualMake, setManualMake] = useState('');
-  const [manualModel, setManualModel] = useState('');
-  const [manualGeneration, setManualGeneration] = useState('');
-  const [manualBodyType, setManualBodyType] = useState('sedan');
-  const [vehicleClasses, setVehicleClasses] = useState<string[]>([]);
-  const [tenantClass, setTenantClass] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      if (modelQuery.trim().length < 2) return setVariants([]);
-      try {
-        const result = await api.searchCatalog(modelQuery, controller.signal);
-        setVariants(result.items);
-        if (result.items.length === 1) setVariant(result.items[0]);
-      } catch (requestError) {
-        if ((requestError as Error).name !== 'AbortError') setError((requestError as Error).message);
-      }
-    }, 250);
-    return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [modelQuery]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    api.listVehicleClasses(controller.signal).then((result) => {
-      setVehicleClasses(result.items);
-      setTenantClass((current) => current || result.items[0] || '');
-    }).catch((requestError: Error) => { if (requestError.name !== 'AbortError') setError(requestError.message); });
-    return () => controller.abort();
-  }, []);
-
-  const chosenSummary = useMemo(() => variant ? `${variant.make} ${variant.model} ${variant.generation} · ${bodyLabels[variant.bodyType] ?? variant.bodyType}` : '', [variant]);
-  const submit = async () => {
-    if (entryMode === 'catalog' && !variant) return;
-    setLoading(true);
-    setError('');
-    try {
-      const result = await api.createVehicle({
-        customerId: customer.id,
-        ...(entryMode === 'catalog'
-          ? { catalogVariantId: variant!.id }
-          : { manual: { make: manualMake, model: manualModel, generation: manualGeneration, bodyType: manualBodyType }, tenantClass }),
-        plateDisplay: plate,
-        color
-      }, entryMode === 'catalog' ? variant : null);
-      onCreated(result.vehicle);
-    } catch (requestError) {
-      setError((requestError as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <section className="screen add-vehicle-screen" data-testid="add-vehicle-screen">
-      <div className="customer-strip"><span className="avatar small">АМ</span><span><small>Владелец</small><strong>{customer.name}</strong></span><button onClick={onCancel}>Сменить</button></div>
-      <div className="vehicle-entry-tabs" role="tablist" aria-label="Источник модели">
-        <button role="tab" aria-selected={entryMode === 'catalog'} className={entryMode === 'catalog' ? 'selected' : ''} onClick={() => setEntryMode('catalog')}>Из справочника</button>
-        <button role="tab" aria-selected={entryMode === 'manual'} className={entryMode === 'manual' ? 'selected' : ''} onClick={() => setEntryMode('manual')}>Ввести вручную</button>
-      </div>
-      {entryMode === 'catalog' ? <div className="form-group">
-        <label htmlFor="model-search">Марка, модель или поколение</label>
-        <div className="search-input filled"><Icon name="search"/><input id="model-search" value={modelQuery} onChange={(event) => { setModelQuery(event.target.value); setVariant(null); }}/></div>
-        {variants.length > 1 && <p className="choice-note"><Icon name="spark" size={16}/> Найдено несколько кузовов — выберите подходящий</p>}
-        <div className="variant-grid">
-          {variants.map((item) => <button key={item.id} aria-pressed={variant?.id === item.id} className={variant?.id === item.id ? 'selected' : ''} onClick={() => setVariant(item)}>
-            <span className="variant-icon"><Icon name="car" size={26}/></span>
-            <strong>{bodyLabels[item.bodyType] ?? item.bodyType}</strong>
-            <small>{item.yearFrom}–{item.yearTo}</small>
-            {variant?.id === item.id && <span className="variant-check"><Icon name="check" size={14}/></span>}
-          </button>)}
-        </div>
-      </div> : <div className="manual-vehicle-form" data-testid="manual-vehicle-form">
-        <div className="form-row"><div className="form-group"><label>Марка</label><input data-testid="manual-make" value={manualMake} onChange={(event) => setManualMake(event.target.value)} placeholder="Zeekr"/></div><div className="form-group"><label>Модель</label><input data-testid="manual-model" value={manualModel} onChange={(event) => setManualModel(event.target.value)} placeholder="001"/></div></div>
-        <div className="form-group"><label>Поколение <small>необязательно</small></label><input value={manualGeneration} onChange={(event) => setManualGeneration(event.target.value)} placeholder="Например, 1 поколение"/></div>
-        <div className="form-row"><div className="form-group"><label>Тип кузова</label><select data-testid="manual-body" value={manualBodyType} onChange={(event) => setManualBodyType(event.target.value)}>{Object.entries(bodyLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div><div className="form-group"><label>Класс цены</label><select data-testid="manual-class" value={tenantClass} onChange={(event) => setTenantClass(event.target.value)}>{vehicleClasses.map((value) => <option key={value}>{value}</option>)}</select></div></div>
-        <p className="manual-vehicle-note"><Icon name="spark" size={16}/> Модель сохранится без дубля глобального справочника. Класс действует только в этом центре.</p>
-      </div>}
-      <div className="form-row">
-        <div className="form-group"><label htmlFor="plate">Госномер</label><input id="plate" data-testid="plate-input" value={plate} onChange={(event) => setPlate(event.target.value.toLocaleUpperCase('ru-RU'))} placeholder="А123АА 55"/></div>
-        <div className="form-group"><label htmlFor="color">Цвет</label><input id="color" data-testid="color-input" value={color} onChange={(event) => setColor(event.target.value)} placeholder="Например, графит"/></div>
-      </div>
-      {entryMode === 'catalog' && chosenSummary && <div className="auto-summary"><Icon name="check"/><span><small>Определено по справочнику</small><strong>{chosenSummary}</strong></span></div>}
-      {error && <p className="form-error">{error}</p>}
-      <button className="primary-button sticky-cta" data-testid="save-vehicle" onClick={submit} disabled={(entryMode === 'catalog' ? !variant : manualMake.trim().length < 2 || !manualModel.trim() || !tenantClass) || plate.trim().length < 3 || color.trim().length < 2 || loading}>
-        {loading ? <span className="spinner light"/> : <>Сохранить и выбрать <span>→</span></>}
-      </button>
-    </section>
   );
 }

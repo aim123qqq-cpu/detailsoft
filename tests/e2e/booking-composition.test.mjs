@@ -112,8 +112,22 @@ test('mobile booking composition revision keeps the previous quote and rechecks 
     await page.screenshot({ path: resolve(artifacts, '66-booking-composition-slot-conflict.png') });
     const unchanged = await (await apiCall(`/api/bookings/${crowded.id}`)).json();
     assert.equal(unchanged.quoteVersion, 1);
-    await page.getByRole('button', { name: 'Перенести запись на другое время' }).click();
-    await page.locator('#reschedule-date').waitFor();
+
+    // One step: pick a time where the new duration fits and save composition and time together.
+    await page.getByTestId('composition-new-time').waitFor();
+    assert.equal(await page.getByTestId('save-composition').isDisabled(), true, 'a time has to be picked first');
+    const slot = page.locator('[data-testid^="composition-slot-"]:not([disabled])').first();
+    await slot.click();
+    assert.match(await page.getByTestId('save-composition').innerText(), /и перенести/);
+    await settle(page);
+    await page.getByTestId('composition-new-time').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: resolve(artifacts, '114-composition-with-new-time.png') });
+    await page.getByTestId('save-composition').click();
+    await page.getByText(/запись перенесена/).waitFor();
+    const moved = await (await apiCall(`/api/bookings/${crowded.id}`)).json();
+    assert.equal(moved.quoteVersion, 2);
+    assert.notEqual(moved.startAt, unchanged.startAt);
+    assert.equal(moved.estimatedDurationMinutes, moved.quoteVersions.at(-1).totalDurationMinutes);
   } finally {
     await browser.close();
     await new Promise((done) => server.close(done));

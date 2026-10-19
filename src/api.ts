@@ -6,6 +6,7 @@ import { localAddPhoto, localAssignMaster, localCloseOrder, localCompleteWork, l
 import { cachedPaths, configureSync, enqueue, flush, hasPending, markReachable, pendingBusy, readCache, tokenScope, writeCache } from './offline/sync';
 import { localAvailability, localBooking, localCreateCustomer, localCreateVehicle, localQuote, localSearchCustomers, localSearchVehicles, localServicesCatalog, type BookingPack } from './offline/bookingLocal';
 import { isSlotAvailable } from './shared/bookingRules';
+import { buildDocumentContent, validSignature, type DocumentParties } from './shared/orderDocuments';
 import { randomId } from './platform';
 
 export { ApiRequestError };
@@ -233,6 +234,30 @@ async function findBookingListItem(bookingId: string) {
     if (found) return found;
   }
   return null;
+}
+
+/** Center, customer and car for an act built on the phone: from the saved session, orders list and pack. */
+async function localParties(order: WorkOrder): Promise<DocumentParties | null> {
+  const session = await readCache<SessionContext>('/api/session');
+  const listed = (await readCache<{ items: OrderListItem[] }>(ORDERS_LIST))?.items.find((item) => item.id === order.id);
+  const pack = await readCache<BookingPack>(PACK_PATH);
+  const customer = listed?.customer ?? pack?.customers.find((item) => item.id === order.customerId);
+  const vehicle = listed?.vehicle ?? pack?.customers.flatMap((item) => item.vehicles).find((item) => item.id === order.vehicleId);
+  if (!session || !customer || !vehicle) return null;
+  return {
+    centerName: session.tenant.name,
+    customer: { name: customer.name, phoneDisplay: customer.phoneDisplay },
+    vehicle: { make: vehicle.make, model: vehicle.model, generation: vehicle.generation, plate: vehicle.plate, color: vehicle.color }
+  };
+}
+
+async function localDocumentContent(orderId: string, type: OrderDocumentType) {
+  const order = await readCache<WorkOrder>(`/api/orders/${orderId}`);
+  const parties = order && await localParties(order);
+  if (!order || !parties) throw new NetworkError();
+  const built = buildDocumentContent(order, parties, type);
+  if (built.kind !== 'built') throw new ApiRequestError(built.message, 409, built.code);
+  return { order, content: built.content as OrderDocumentContent };
 }
 
 const orderUrl = (orderId: string, suffix: string) => `/api/orders/${encodeURIComponent(orderId)}${suffix}`;
@@ -500,22 +525,24 @@ export const api = {
       signal
     }), (pack) => localQuote(pack, vehicleId, selections));
   },
-  async getBookingAvailability(date: string, durationMinutes: number, signal?: AbortSignal) {
+  /** excludeBookingId: free time for moving that booking (it does not block itself). */
+  async getBookingAvailability(date: string, durationMinutes: number, signal?: AbortSignal, excludeBookingId: string | null = null) {
     // Bookings made here and not yet sent are unknown to the server: count them on the phone.
     if (!(await pendingBusy()).length) {
       try {
-        return await request<BookingAvailability>(`/api/bookings/availability?date=${encodeURIComponent(date)}&durationMinutes=${durationMinutes}`, { signal }, { offlineCopy: false });
+        const exclude = excludeBookingId ? `&excludeBookingId=${encodeURIComponent(excludeBookingId)}` : '';
+        return await request<BookingAvailability>(`/api/bookings/availability?date=${encodeURIComponent(date)}&durationMinutes=${durationMinutes}${exclude}`, { signal }, { offlineCopy: false });
       } catch (error) {
         if (!(error instanceof NetworkError)) throw error;
       }
     }
     const pack = await offlinePack();
-    return localAvailability(pack, await pendingBusy(), date, durationMinutes);
+    return localAvailability(pack, await pendingBusy(), date, durationMinutes, excludeBookingId);
   },
   getBooking(bookingId: string, signal?: AbortSignal) {
     return request<Booking>(`/api/bookings/${encodeURIComponent(bookingId)}`, { signal });
   },
-  reviseBookingQuote(bookingId: string, input: { selections: QuoteSelection[]; expectedQuoteVersion: number; reason?: string }) {
+  reviseBookingQuote(bookingId: string, input: { selections: QuoteSelection[]; expectedQuoteVersion: number; reason?: string; startAt?: string }) {
     return request<Booking>(`/api/bookings/${encodeURIComponent(bookingId)}/quote`, {
       method: 'PUT', body: JSON.stringify(input)
     });
@@ -733,16 +760,52 @@ export const api = {
       method: 'POST', body: JSON.stringify(input)
     });
   },
-  previewOrderDocument(orderId: string, type: OrderDocumentType, signal?: AbortSignal) {
-    return request<{ type: OrderDocumentType; content: OrderDocumentContent }>(`/api/orders/${encodeURIComponent(orderId)}/documents/preview?type=${type}`, { signal });
+  async previewOrderDocument(orderId: string, type: OrderDocumentType, signal?: AbortSignal) {
+    // Unsent changes of the order are on the phone only: the preview is built here from them.
+    if (!(await hasPending(`order:${orderId}`))) {
+      try {
+        return await request<{ type: OrderDocumentType; content: OrderDocumentContent }>(`/api/orders/${encodeURIComponent(orderId)}/documents/preview?type=${type}`, { signal }, { offlineCopy: false });
+      } catch (error) {
+        if (!(error instanceof NetworkError)) throw error;
+      }
+    }
+    return { type, content: (await localDocumentContent(orderId, type)).content };
   },
-  getOrderDocument(orderId: string, documentId: string, signal?: AbortSignal) {
-    return request<OrderDocument>(`/api/orders/${encodeURIComponent(orderId)}/documents/${encodeURIComponent(documentId)}`, { signal });
+  async getOrderDocument(orderId: string, documentId: string, signal?: AbortSignal) {
+    const path = `/api/orders/${encodeURIComponent(orderId)}/documents/${encodeURIComponent(documentId)}`;
+    // An act issued offline exists only on the phone until the queue reaches the server.
+    if (documentId.startsWith('doc_local_')) {
+      const local = await readCache<OrderDocument>(path);
+      if (local) return local;
+    }
+    return request<OrderDocument>(path, { signal });
   },
-  issueOrderDocument(orderId: string, input: { type: OrderDocumentType; signerName?: string; signatureDataUrl?: string }) {
-    return request<OrderDocument>(`/api/orders/${encodeURIComponent(orderId)}/documents`, {
-      method: 'POST', body: JSON.stringify(input)
-    });
+  async issueOrderDocument(orderId: string, input: { type: OrderDocumentType; signerName?: string; signatureDataUrl?: string }) {
+    const path = `/api/orders/${encodeURIComponent(orderId)}/documents`;
+    const key = randomId();
+    if (!(await hasPending())) {
+      try {
+        return await request<OrderDocument>(path, { method: 'POST', body: JSON.stringify(input), headers: { 'idempotency-key': key } });
+      } catch (error) {
+        if (!(error instanceof NetworkError)) throw error;
+      }
+    }
+    // Offline: the act and the signature are kept on the phone; the server numbers the act when it
+    // receives it (numbers run through the whole center) and builds it with the same code.
+    const signed = Boolean(input.signatureDataUrl);
+    if (signed && !validSignature(input.signerName ?? '', input.signatureDataUrl!)) throw new ApiRequestError('Проверьте ФИО и подпись', 422, 'validation_error');
+    const { order, content } = await localDocumentContent(orderId, input.type);
+    const now = nowIso();
+    const document: OrderDocument = {
+      id: `doc_local_${randomId()}`, type: input.type, number: 'присвоится при отправке', signed,
+      signerName: signed ? input.signerName!.trim() : null, signedAt: signed ? now : null, actorName: null, createdAt: now,
+      current: true, outdated: false, content, signatureDataUrl: signed ? input.signatureDataUrl! : null
+    };
+    const { content: _content, signatureDataUrl: _signature, ...summary } = document;
+    await writeCache(`${path}/${document.id}`, document);
+    await writeCache(`/api/orders/${orderId}`, { ...order, documents: [summary, ...order.documents.map((item) => item.type === input.type ? { ...item, current: false } : item)] });
+    await enqueue({ method: 'POST', path, body: JSON.stringify(input), key, label: input.type === 'intake_act' ? 'Акт приёмки' : 'Акт выдачи', entity: `order:${orderId}` });
+    return document;
   },
   closeOrder(orderId: string, input: { responsible: string; note: string; customerAccepted: boolean; completenessChecked: boolean }) {
     return orderChange(orderId, 'Выдача автомобиля', 'POST', orderUrl(orderId, '/handover'), input, (order) => {
