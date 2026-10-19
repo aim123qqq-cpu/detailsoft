@@ -77,6 +77,8 @@ test('mobile workspaces follow the employee role: admin assigns a real master, m
     // The master opens the app on their own queue.
     const master = await openAs('e2e-master-token');
     await master.getByTestId('orders-workspace').waitFor();
+    // The counter is read only after the list has loaded (on a slow machine it would still be 0).
+    await master.getByTestId(`order-card-${order.id}`).waitFor();
     const mine = master.locator('.workspace-filters button.selected');
     assert.match(await mine.innerText(), /^Мои 1$/);
     assert.equal(await master.locator('[data-testid^="order-card-"]').count(), 1);
