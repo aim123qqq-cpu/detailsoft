@@ -100,8 +100,19 @@
     .hero-lead { max-width: 40ch; margin-top: 32px; font-size: var(--step-lead); line-height: 1.55; }
     .hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 32px; }
     .hero-actions .link { font-weight: 700; }
-    .stage { grid-column: 2; grid-row: 2 / span 2; margin: 24px calc(-1 * var(--margin)) 0 0; padding: 56px 56px 72px; background: var(--accent); overflow: clip; border-top-left-radius: 72px; }
-    .stage-inner { width: max-content; }
+    .stage { --cut: 120px; grid-column: 2; grid-row: 2 / span 2; margin: 24px calc(-1 * var(--margin)) 0 0; padding: 56px 56px 72px; background: var(--accent); overflow: clip; clip-path: polygon(var(--cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--cut)); }
+    .stage-inner { display: grid; grid-template-columns: 300px 360px; gap: 40px; align-items: start; width: max-content; }
+    .stage-car { display: grid; justify-items: center; }
+    .stage-side { display: grid; gap: 12px; }
+    .stage-title { color: var(--accent-ink); font-size: 15px; }
+    .stage-title strong { font-weight: 800; }
+    .stage .body-types { flex-wrap: wrap; overflow: visible; padding: 0; }
+    .stage .body-types .ui-chip { border-color: transparent; background: rgba(27,17,13,.13); color: var(--accent-ink); }
+    .stage .body-types .ui-chip[aria-checked="true"] { border-color: #0b1016; background: #0b1016; color: #fff; }
+    @media (hover: hover) and (pointer: fine) { .stage .body-types .ui-chip:not([aria-checked="true"]):hover { background: rgba(27,17,13,.24); color: var(--accent-ink); border-color: transparent; } }
+    .stage .editor { border: 0; border-radius: 16px; background: #0f161c; }
+    .stage .hint { border: 0; border-radius: 16px; background: rgba(27,17,13,.13); color: var(--accent-ink); }
+    .stage .findings { margin: 0; padding: 12px 14px 6px; border-radius: 16px; background: #0f161c; }
 
     /* --- Product fragments (data-ui): the app's own conventions apply inside. --- */
     [data-ui] { font-family: var(--text); color: #dce1e5; -webkit-tap-highlight-color: transparent; }
@@ -112,15 +123,17 @@
     .ui-chip[aria-checked="true"], .ui-chip[aria-pressed="true"] { border-color: var(--accent); color: #ff9a6d; background: rgba(255,121,57,.1); }
     @media (hover: hover) and (pointer: fine) { .ui-chip:hover { border-color: #4a5966; color: #e3e8eb; } }
 
-    .intake { width: 640px; padding: 18px; }
-    .intake-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 2px 4px 14px; }
-    .intake-head strong { font-size: 15px; color: #fff; }
-    .intake-head span { color: #8e9aa4; font-size: 13px; }
     .body-types { display: flex; gap: 6px; overflow-x: auto; padding: 0 2px 2px; scrollbar-width: none; }
     .body-types .ui-chip { flex: none; }
-    .intake-grid { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 14px; margin-top: 14px; }
-    .diagram-box { display: grid; place-items: center; padding: 10px 6px; border: 1px solid #26313a; border-radius: 12px; background: #0b1116; }
-    .car-diagram { width: 100%; height: auto; max-height: 470px; user-select: none; }
+    .car-diagram { width: 100%; height: auto; user-select: none; }
+    .stage .car-diagram { width: 300px; }
+    /* On the orange stage the selection turns white and the medium tint darkens, so neither melts into the stage. */
+    .stage .car-part.selected, .stage .car-part.selected:hover { fill: #fff7f1; stroke: #1b110d; stroke-width: 1.2; }
+    .stage .car-badge.selected circle { fill: #1b110d; stroke: #fff; }
+    .stage .car-badge.selected text { fill: #fff; }
+    .stage .car-part.severity-medium { fill: #a63c12; }
+    .stage .car-badge.severity-medium circle { fill: #6e2508; }
+    .stage .finding.severity-medium > b { background: #a63c12; }
     .car-shell { fill: #6f787e; }
     .car-part { stroke: #252d33; stroke-width: .8; stroke-linejoin: round; transition: fill 160ms ease; }
     .car-part.part-body { fill: url(#df-paint); }
@@ -316,16 +329,6 @@
     .perms li.owner-only { display: none; }
     .perms[data-role="owner"] li.owner-only { display: grid; }
 
-    /* The bay: the tablet on the wall, on a light field. */
-    .bay { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 4vw, 64px); align-items: center; padding: clamp(88px, 9vw, 140px) 0 clamp(88px, 9vw, 140px) var(--margin); background: var(--paper); color: var(--paper-ink); overflow: clip; }
-    .bay h2 { font-size: var(--step-display); }
-    .bay-lead { margin-top: 20px; max-width: 38ch; font-size: var(--step-lead); }
-    .bay dl { margin: 40px 0 0; display: grid; gap: 24px; max-width: 44ch; }
-    .bay dt { font-size: var(--step-lead); font-weight: 800; }
-    .bay dd { margin: 6px 0 0; color: var(--paper-soft); }
-    .bay-shot { margin: 0; justify-self: end; width: 100%; border-radius: 24px 0 0 24px; overflow: clip; background: #0f161c; }
-    .bay-shot img { width: 100%; height: auto; }
-
     /* FAQ: sticky heading, filled tiles. */
     .faq { display: grid; grid-template-columns: 4fr 8fr; gap: 24px; padding-top: var(--gap-section); }
     .faq h2 { position: sticky; top: 96px; font-size: var(--step-display); align-self: start; }
@@ -369,7 +372,7 @@
     @media (prefers-reduced-motion: no-preference) {
       .js .hero [data-line] { transform: translateY(105%); animation: line-up 900ms var(--ease-expo) forwards; animation-delay: calc(var(--i) * 110ms + 150ms); }
       .js .hero [data-load] { opacity: 0; transform: translateY(12px); animation: rise 520ms var(--ease-out) forwards; animation-delay: var(--d); }
-      .js .stage { clip-path: inset(100% 0 0 0); animation: stage-open 1000ms var(--ease-in-out) 200ms forwards; }
+      .js .stage { clip-path: polygon(var(--cut) 100%, 100% 100%, 100% 100%, 0 100%, 0 100%); animation: stage-open 1000ms var(--ease-in-out) 200ms forwards; }
       .js .stage-inner { opacity: 0; transform: translateY(28px); animation: rise 900ms var(--ease-expo) 520ms forwards; }
       .js [data-reveal] { opacity: 0; transform: translateY(24px); transition: opacity 700ms var(--ease-out), transform 900ms var(--ease-expo); transition-delay: var(--d, 0ms); }
       .js [data-reveal].is-in { opacity: 1; transform: none; }
@@ -384,13 +387,11 @@
     /* One moving picture: the screenshots drift inside their frames as the page scrolls. */
     @supports (animation-timeline: view()) {
       @media (prefers-reduced-motion: no-preference) {
-        .bay-shot img { animation: drift-scale linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
-        @keyframes drift-scale { from { transform: translateX(4%); } to { transform: translateX(0); } }
       }
     }
     @keyframes line-up { to { transform: none; } }
     @keyframes rise { to { opacity: 1; transform: none; } }
-    @keyframes stage-open { to { clip-path: inset(0); } }
+    @keyframes stage-open { to { clip-path: polygon(var(--cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--cut)); } }
     @keyframes swap { from { opacity: 0; transform: translateY(.4em); filter: blur(3px); } }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { transition-duration: 1ms !important; animation-duration: 1ms !important; animation-delay: 0ms !important; }
@@ -399,7 +400,8 @@
     /* Tablet and phone: each its own composition. */
     @media (max-width: 1180px) {
       .hero-grid { grid-template-columns: minmax(0, 36fr) minmax(0, 64fr); }
-      .intake { width: 600px; }
+      .stage-inner { grid-template-columns: 260px 330px; gap: 28px; }
+      .stage .car-diagram { width: 260px; }
       .path { grid-template-columns: repeat(2, 1fr); }
       .field { min-height: 70svh; }
     }
@@ -411,12 +413,10 @@
       .hero-lead { font-size: 16px; margin-top: 20px; }
       .hero-grid { grid-template-columns: minmax(0, 1fr); }
       .hero-side { padding-right: 0; }
-      .stage { grid-column: 1; grid-row: auto; margin: 40px calc(-1 * var(--margin)) 0; padding: 16px 16px 40px; border-top-left-radius: 32px; }
-      .stage-inner { width: auto; }
-      .intake { width: auto; max-width: 420px; }
-      .intake-grid { grid-template-columns: 1fr; }
-      .diagram-box { padding: 8px 40px; }
-      .car-diagram { max-height: 380px; }
+      .stage { --cut: 64px; grid-column: 1; grid-row: auto; margin: 40px calc(-1 * var(--margin)) 0; padding: 28px 16px 40px; }
+      .stage-inner { grid-template-columns: minmax(0, 1fr); gap: 20px; width: auto; max-width: 440px; margin-inline: auto; }
+      .stage .car-diagram { width: min(100%, 250px); }
+      .stage .body-types { flex-wrap: nowrap; overflow-x: auto; margin-inline: -16px; padding-inline: 16px; }
       .offline { min-height: 86svh; }
       .offline-copy p { font-size: 16px; }
       .switch-wrap { left: -4%; top: auto; bottom: 4%; font-size: 11vw; }
@@ -427,8 +427,6 @@
       .perms li small { display: none; }
       .perms li b { font-size: 14px; }
       .perms[data-role="owner"] li.owner-only { display: grid; }
-      .bay { grid-template-columns: minmax(0, 1fr); padding-right: 0; }
-      .bay > div { padding-right: var(--margin); }
       .act { grid-template-columns: 1fr; gap: 32px; }
       .act-pin { position: static; grid-column: 1; grid-row: 2; margin-top: 0; }
       .act-steps { grid-column: 1; grid-row: 3; margin-top: 0; }
@@ -497,22 +495,18 @@
         </div>
 
       <div class="stage" id="intake">
-        <div class="stage-inner">
-          <div class="ui-panel intake" data-ui aria-label="Приёмка автомобиля: схема осмотра">
-            <div class="intake-head"><strong>Приёмка автомобиля</strong><span>Mazda 3 BL · К777КК 55</span></div>
+        <div class="stage-inner" data-ui aria-label="Приёмка автомобиля: схема осмотра">
+          <div class="stage-car">
+            <svg class="car-diagram" id="diagram" role="group" aria-label="Схема автомобиля, вид сверху"></svg>
+            <noscript><img src="img/intake.jpg" alt="Схема осмотра автомобиля с номерами элементов" width="390" height="844"></noscript>
+          </div>
+          <div class="stage-side">
+            <p class="stage-title"><strong>Приёмка</strong> · Mazda 3 BL · К777КК 55</p>
             <div class="body-types" role="radiogroup" aria-label="Тип кузова" id="body-types"></div>
-            <div class="intake-grid">
-              <div class="diagram-box">
-                <svg class="car-diagram" id="diagram" role="group" aria-label="Схема автомобиля, вид сверху"></svg>
-                <noscript><img src="img/intake.jpg" alt="Схема осмотра автомобиля с номерами элементов" width="390" height="844"></noscript>
-              </div>
-              <div>
-                <div id="editor"></div>
-                <div class="findings" aria-live="polite">
-                  <div class="findings-title"><span class="ui-label">Обнаружено при осмотре</span><b id="findings-count">0</b></div>
-                  <ol id="findings"></ol>
-                </div>
-              </div>
+            <div id="editor"></div>
+            <div class="findings" aria-live="polite">
+              <div class="findings-title"><span class="ui-label">Обнаружено при осмотре</span><b id="findings-count">0</b></div>
+              <ol id="findings"></ol>
             </div>
           </div>
         </div>
@@ -663,25 +657,16 @@
       </div>
     </section>
 
-    <section class="bay" id="bay" aria-labelledby="bay-title">
-      <div>
-        <h2 class="display" id="bay-title" data-reveal>Сделано для бокса</h2>
-        <p class="bay-lead" data-reveal style="--d:90ms">DetailFlow работает там, где моют и полируют: на телефоне в кармане или на планшете у стены.</p>
-        <dl data-reveal style="--d:160ms">
-          <div><dt>Без сети</dt><dd>Android-приложение запускается и работает без интернета. Всё сделанное в боксе отправится само, когда появится связь.</dd></div>
-          <div><dt>Планшет на стене</dt><dd>На планшете приёмка в две колонки: схема слева, салон, замечания и фото справа.</dd></div>
-          <div><dt>Под палец, а не под мышь</dt><dd>Детали схемы, чипы и кнопки крупные: попасть легко, даже когда руки заняты.</dd></div>
-        </dl>
-      </div>
-      <figure class="bay-shot" data-reveal style="--d:120ms"><img src="img/intake-tablet.jpg" alt="Приёмка на планшете: схема хэтчбека с номерами и карточка элемента 10" width="1400" height="1178" fetchpriority="low" decoding="async"></figure>
-    </section>
-
     <section class="faq frame" id="faq" aria-labelledby="faq-title">
       <h2 class="display" id="faq-title" data-reveal>Частые вопросы</h2>
       <div class="tiles">
         <details class="tile" name="faq" data-reveal>
           <summary>Нужно ли что-то устанавливать?<span class="plus" aria-hidden="true"></span></summary>
           <p>Нет. DetailFlow открывается в браузере телефона, планшета или компьютера. Для Android есть приложение, которое запускается и без интернета.</p>
+        </details>
+        <details class="tile" name="faq" data-reveal style="--d:35ms">
+          <summary>Можно работать с планшета?<span class="plus" aria-hidden="true"></span></summary>
+          <p>Да. На планшете приёмка раскладывается в две колонки: схема слева, салон, замечания и фото справа. Планшет можно держать на стене бокса.</p>
         </details>
         <details class="tile" name="faq" data-reveal style="--d:70ms">
           <summary>Что именно работает без сети?<span class="plus" aria-hidden="true"></span></summary>
