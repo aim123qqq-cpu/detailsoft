@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { normalizePhone, normalizePlate, normalizeSearch } from './domain/normalize.mjs';
 import { RolesRepository } from './roles-repository.mjs';
+import { CatalogRepository } from './catalog-repository.mjs';
 
 function mapVehicle(row) {
   return {
@@ -18,6 +19,13 @@ function mapVehicle(row) {
     tenantClass: row.tenant_class ?? null
   };
 }
+
+// Price lookup for a vehicle class (bound as ?): the class's own row, else the '*' default row.
+const OPERATION_PRICE_CLASS = `(SELECT x.tenant_class FROM service_operation_prices x
+  WHERE x.service_id = so.service_id AND x.operation_id = so.operation_id AND x.tenant_class IN (?, '*')
+  ORDER BY x.tenant_class = '*' LIMIT 1)`;
+const PACKAGE_PRICE_CLASS = `(SELECT x.tenant_class FROM service_package_prices x
+  WHERE x.package_id = p.id AND x.tenant_class IN (?, '*') ORDER BY x.tenant_class = '*' LIMIT 1)`;
 
 function formatMoney(amountMinor, prefix = '') {
   const rubles = String(Math.round(amountMinor / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
@@ -114,6 +122,7 @@ export class DetailFlowRepository {
   constructor(db) {
     this.db = db;
     this.roles = new RolesRepository(db);
+    this.catalog = new CatalogRepository(db, this);
   }
 
   getTenant(tenantId) {
@@ -865,7 +874,7 @@ export class DetailFlowRepository {
       FROM tenant_services s
       LEFT JOIN tenant_service_operations so ON so.service_id = s.id
       LEFT JOIN service_operation_prices p
-        ON p.service_id = so.service_id AND p.operation_id = so.operation_id AND p.tenant_class = ?
+        ON p.service_id = so.service_id AND p.operation_id = so.operation_id AND p.tenant_class = ${OPERATION_PRICE_CLASS}
       WHERE s.tenant_id = ? AND s.active = 1
       GROUP BY s.id
       HAVING COUNT(so.operation_id) = COUNT(p.operation_id)
@@ -890,7 +899,7 @@ export class DetailFlowRepository {
     const packages = this.db.prepare(`SELECT p.id, p.category, p.name, p.description,
         pp.amount_minor, pp.duration_minutes
       FROM service_packages p
-      JOIN service_package_prices pp ON pp.package_id = p.id AND pp.tenant_class = ?
+      JOIN service_package_prices pp ON pp.package_id = p.id AND pp.tenant_class = ${PACKAGE_PRICE_CLASS}
       WHERE p.tenant_id = ? AND p.active = 1
       ORDER BY p.category, p.name`).all(vehicle.tenant_class, tenantId).map((row) => ({
         id: row.id,
@@ -916,11 +925,14 @@ export class DetailFlowRepository {
       }
       category.items.push(item);
     }
+    const order = this.catalog.sectionOrder(tenantId);
+    categories.sort((left, right) => (order.get(left.name) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.name) ?? Number.MAX_SAFE_INTEGER));
     return { kind: 'found', vehicleClass: vehicle.tenant_class, categories };
   }
 
-  getManagedCatalog(tenantId) {
-    const vehicleClasses = this.db.prepare(`SELECT DISTINCT tenant_class
+  /** Vehicle classes that get their own price rows; '*' alone when the center has no class rules. */
+  pricingClasses(tenantId) {
+    const classes = this.db.prepare(`SELECT DISTINCT tenant_class
       FROM tenant_vehicle_class_rules WHERE tenant_id = ?`).all(tenantId)
       .map((row) => row.tenant_class)
       .sort((left, right) => {
@@ -928,6 +940,11 @@ export class DetailFlowRepository {
         const rightLatin = /^[A-Za-z]/.test(right);
         return leftLatin === rightLatin ? left.localeCompare(right, 'ru') : leftLatin ? 1 : -1;
       });
+    return classes.length ? classes : ['*'];
+  }
+
+  getManagedCatalog(tenantId) {
+    const vehicleClasses = this.pricingClasses(tenantId);
     const services = this.db.prepare(`SELECT id, category, name, description, pricing_mode, active
       FROM tenant_services WHERE tenant_id = ? ORDER BY active DESC, category, name`).all(tenantId).map((service) => ({
         id: service.id,
@@ -980,7 +997,23 @@ export class DetailFlowRepository {
         name: operation.name,
         active: Boolean(operation.active)
       }));
-    return { vehicleClasses, operationLibrary, items: [...packages, ...services] };
+    // A service of one operation is "simple": edited as name + time + base price (+ class overrides).
+    for (const service of services) {
+      service.simple = service.operations.length === 1;
+      if (!service.simple) continue;
+      const prices = service.operations[0].prices;
+      let base = prices.find((price) => price.tenantClass === '*') ?? null;
+      let classPrices = prices.filter((price) => price.tenantClass !== '*');
+      // Older services store the same price in every class row: that is one base price, not overrides.
+      const same = (left, right) => left.amountMinor === right.amountMinor && left.durationMinutes === right.durationMinutes;
+      if (!base && classPrices.length && classPrices.every((price) => same(price, classPrices[0]))) {
+        base = classPrices[0];
+        classPrices = [];
+      }
+      service.basePrice = base && { amountMinor: base.amountMinor, durationMinutes: base.durationMinutes };
+      service.classPrices = base ? classPrices.filter((price) => !same(price, base)) : classPrices;
+    }
+    return { vehicleClasses, sections: this.catalog.listSections(tenantId), operationLibrary, items: [...packages, ...services] };
   }
 
   // SQLite lower() only folds ASCII, so names are compared with the same normalizer as search.
@@ -1059,10 +1092,9 @@ export class DetailFlowRepository {
     const category = String(input.category ?? '').trim();
     const description = String(input.description ?? '').trim();
     const pricingMode = type === 'service' ? String(input.pricingMode ?? '') : 'fixed';
-    const vehicleClasses = this.db.prepare(`SELECT DISTINCT tenant_class FROM tenant_vehicle_class_rules
-      WHERE tenant_id = ?`).all(tenantId).map((row) => row.tenant_class);
+    const vehicleClasses = this.pricingClasses(tenantId);
     if (name.length < 2 || name.length > 120 || category.length < 2 || category.length > 80 ||
-      description.length > 500 || !vehicleClasses.length ||
+      description.length > 500 ||
       (type === 'service' && !['fixed', 'from', 'inspection'].includes(pricingMode))) return { kind: 'invalid' };
 
     let operationIds;
@@ -1165,8 +1197,7 @@ export class DetailFlowRepository {
         WHERE tenant_id = ? AND active = 1 AND id IN (${placeholders})`).get(tenantId, ...operationIds).count;
       if (operationCount !== operationIds.length) return { kind: 'invalid' };
     }
-    const allowedClasses = new Set(this.db.prepare(`SELECT DISTINCT tenant_class
-      FROM tenant_vehicle_class_rules WHERE tenant_id = ?`).all(tenantId).map((row) => row.tenant_class));
+    const allowedClasses = new Set([...this.pricingClasses(tenantId), '*']);
     const normalizedPrices = [];
     for (const price of prices) {
       const tenantClass = String(price?.tenantClass ?? '');
@@ -1269,7 +1300,7 @@ export class DetailFlowRepository {
     for (const selection of selections.filter((item) => item.type === 'package')) {
       const packageRow = this.db.prepare(`SELECT p.id, p.name, pp.amount_minor, pp.duration_minutes
         FROM service_packages p
-        JOIN service_package_prices pp ON pp.package_id = p.id AND pp.tenant_class = ?
+        JOIN service_package_prices pp ON pp.package_id = p.id AND pp.tenant_class = ${PACKAGE_PRICE_CLASS}
         WHERE p.id = ? AND p.tenant_id = ? AND p.active = 1`).get(vehicle.tenant_class, selection.id, tenantId);
       if (!packageRow) return { kind: 'not_found', resource: 'offering' };
       const operations = this.db.prepare(`SELECT o.id, o.name
@@ -1302,7 +1333,7 @@ export class DetailFlowRepository {
         FROM tenant_service_operations so
         JOIN service_operations o ON o.id = so.operation_id
         JOIN service_operation_prices p
-          ON p.service_id = so.service_id AND p.operation_id = so.operation_id AND p.tenant_class = ?
+          ON p.service_id = so.service_id AND p.operation_id = so.operation_id AND p.tenant_class = ${OPERATION_PRICE_CLASS}
         WHERE so.service_id = ? ORDER BY so.sequence`).all(vehicle.tenant_class, service.id);
       const expectedOperationCount = this.db.prepare('SELECT COUNT(*) count FROM tenant_service_operations WHERE service_id = ?')
         .get(service.id).count;

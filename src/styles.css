@@ -938,6 +938,29 @@ button.workspace-card:hover, button.workspace-card:focus-visible { border-color:
 .catalog-editor-form > label:not(.catalog-active-toggle), .catalog-price-row label { display: grid; gap: 6px; color: #8c99a3; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .catalog-editor-form input, .catalog-editor-form textarea, .catalog-editor-form select, .catalog-price-row input { min-height: 44px; padding: 9px 10px; border: 1px solid #35424c; border-radius: 9px; outline: 0; color: #edf1f3; background: #0c1319; font: inherit; font-size: 12px; text-transform: none; }
 .catalog-editor-form textarea { min-height: 78px; resize: vertical; }
+.simple-service-price { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.simple-service-price label { display: grid; gap: 6px; color: #8c99a3; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.simple-service-price input { font-size: 15px; font-weight: 800; }
+.catalog-hint { color: #ffb28d; font-size: 11px; font-weight: 600; text-transform: none; letter-spacing: 0; }
+.catalog-composite-link { min-height: 44px; margin-top: 10px; border: 0; color: #8fa6ff; background: transparent; font-size: 11px; font-weight: 800; cursor: pointer; }
+.catalog-create-button:disabled { opacity: .45; cursor: default; }
+.catalog-sections { display: grid; gap: 16px; }
+.catalog-section { display: grid; gap: 10px; }
+.catalog-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 2px 0; }
+.catalog-section-head > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.catalog-section-head h3 { overflow: hidden; margin: 0; font-size: 15px; letter-spacing: -.02em; text-overflow: ellipsis; white-space: nowrap; }
+.catalog-section-head small { color: #7f8c96; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.catalog-section-actions { display: flex; flex: none; gap: 4px; }
+.catalog-section-actions button { width: 40px; height: 40px; border: 1px solid #303d47; border-radius: 10px; color: #aeb8c0; background: #0f161c; font-size: 13px; cursor: pointer; }
+.catalog-section-actions button:disabled { opacity: .35; cursor: default; }
+.catalog-section-rename, .catalog-section-create { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: end; }
+.catalog-section-rename { grid-template-columns: minmax(0, 1fr) auto auto; }
+.catalog-section-rename input, .catalog-section-create input { min-height: 44px; padding: 9px 10px; border: 1px solid #35424c; border-radius: 10px; outline: 0; color: #edf1f3; background: #0c1319; font: inherit; font-size: 13px; }
+.catalog-section-rename button, .catalog-section-create button { min-height: 44px; padding: 0 12px; border: 1px solid #35424c; border-radius: 10px; color: #dfe6eb; background: #151d26; font-size: 10px; font-weight: 900; cursor: pointer; }
+.catalog-section-create { padding: 13px; border: 1px dashed #36434d; border-radius: 14px; }
+.catalog-section-create label { display: grid; gap: 6px; color: #8c99a3; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.catalog-section-add { min-height: 44px; border: 1px dashed #36434d; border-radius: 12px; color: #ff9d70; background: transparent; font-size: 11px; font-weight: 800; cursor: pointer; }
+.catalog-class-note { margin: 8px 0 0; color: #8fa6ff; font-size: 10px; }
 .catalog-active-toggle { min-height: 58px; display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 10px; background: #182129; cursor: pointer; }
 .catalog-active-toggle > span { display: grid; gap: 3px; }
 .catalog-active-toggle strong { font-size: 11px; }

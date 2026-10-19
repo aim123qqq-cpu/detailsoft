@@ -1,5 +1,5 @@
 import type { AuthProvider, CatalogOperation, LoginRequest, LoginStatus, MessengerProvider } from './types';
-import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, CenterRole, CenterSettings, Customer, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, OrderDocument, OrderDocumentContent, OrderDocumentType, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, Permission, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, TeamMember, TeamRole, Vehicle, VehicleProfile, WorkOrder } from './types';
+import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogSection, CatalogVariant, CenterRole, CenterSettings, Customer, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, OrderDocument, OrderDocumentContent, OrderDocumentType, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, Permission, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, SimpleServiceInput, TeamMember, TeamRole, Vehicle, VehicleProfile, WorkOrder } from './types';
 
 const SESSION_KEY = 'detailflow.session';
 const DEMO_CHOICE_KEY = 'detailflow.demo';
@@ -249,6 +249,24 @@ export const api = {
     return request<ManagedCatalogItem>(`/api/tenants/current/catalog/${collection}/${encodeURIComponent(item.id)}`, {
       method: 'PATCH', body: JSON.stringify(input)
     });
+  },
+  createCatalogSection(name: string) {
+    return request<CatalogSection>('/api/tenants/current/catalog/sections', { method: 'POST', body: JSON.stringify({ name }) });
+  },
+  renameCatalogSection(sectionId: string, name: string) {
+    return request<CatalogSection>(`/api/tenants/current/catalog/sections/${encodeURIComponent(sectionId)}`, { method: 'PATCH', body: JSON.stringify({ name }) });
+  },
+  reorderCatalogSections(ids: string[]) {
+    return request<{ items: CatalogSection[] }>('/api/tenants/current/catalog/sections/order', { method: 'PUT', body: JSON.stringify({ ids }) });
+  },
+  deleteCatalogSection(sectionId: string) {
+    return request<{ deleted: true }>(`/api/tenants/current/catalog/sections/${encodeURIComponent(sectionId)}`, { method: 'DELETE' });
+  },
+  createSimpleService(input: SimpleServiceInput) {
+    return request<ManagedCatalogItem>('/api/tenants/current/catalog/simple-services', { method: 'POST', body: JSON.stringify(input) });
+  },
+  updateSimpleService(serviceId: string, input: SimpleServiceInput & { active: boolean }) {
+    return request<ManagedCatalogItem>(`/api/tenants/current/catalog/simple-services/${encodeURIComponent(serviceId)}`, { method: 'PUT', body: JSON.stringify(input) });
   },
   listCatalogOperations(signal?: AbortSignal) {
     return request<{ items: CatalogOperation[] }>('/api/tenants/current/catalog/operations', { signal });

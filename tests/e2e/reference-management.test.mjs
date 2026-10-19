@@ -46,6 +46,7 @@ test('manual vehicle and catalog builder work as one mobile management complex',
     await page.getByTestId('catalog-entry').click();
     await page.getByTestId('catalog-manager').waitFor();
     await page.getByTestId('create-catalog-item').click();
+    await page.getByTestId('switch-to-composite').click();
     await page.getByTestId('catalog-create').waitFor();
     await page.getByTestId('new-catalog-name').fill('Уход за панорамной крышей');
     await page.getByTestId('new-operation-name').fill('Очистка панорамной крыши');
@@ -60,7 +61,8 @@ test('manual vehicle and catalog builder work as one mobile management complex',
     await page.getByTestId('save-new-catalog-item').click();
     await page.getByText('Уход за панорамной крышей', { exact: true }).waitFor();
     const card = page.locator('[data-testid^="catalog-card-"]', { hasText: 'Уход за панорамной крышей' });
-    assert.match(await card.innerText(), /1 операции/);
+    assert.match(await card.innerText(), /Услуга/i, 'one operation makes it a simple service');
+    assert.doesNotMatch(await card.innerText(), /Своя цена/, 'equal class prices are one base price');
     assert.match(await card.innerText(), /1\s?800/);
     await card.scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);

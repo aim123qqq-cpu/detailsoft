@@ -418,6 +418,37 @@ export function createDetailFlowServer({
           if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте данные и цены каталога' } });
         }
+        if (url.pathname.startsWith('/api/tenants/current/catalog/sections') || url.pathname.startsWith('/api/tenants/current/catalog/simple-services')) {
+          if (!capabilities.manageCatalog) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Недостаточно прав для изменения каталога' }
+          });
+          const catalog = repository.catalog;
+          const sendCatalogResult = (result, status = 200) => {
+            if (result.kind === 'created' || result.kind === 'updated') return sendJson(response, status, result.section ?? result.item ?? { items: result.sections });
+            if (result.kind === 'deleted') return sendJson(response, 200, { deleted: true });
+            if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'catalog_item_not_found', message: 'Раздел или услуга не найдены' } });
+            if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+            if (result.code === 'section_required') return sendJson(response, 422, { error: { code: 'section_required', message: 'Выберите раздел' } });
+            return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте название, время и цену' } });
+          };
+          if (request.method === 'GET' && url.pathname === '/api/tenants/current/catalog/sections') {
+            return sendJson(response, 200, { items: catalog.listSections(tenantId) });
+          }
+          if (request.method === 'POST' && url.pathname === '/api/tenants/current/catalog/sections') {
+            return sendCatalogResult(catalog.createSection(tenantId, await readJson(request)), 201);
+          }
+          if (request.method === 'PUT' && url.pathname === '/api/tenants/current/catalog/sections/order') {
+            return sendCatalogResult(catalog.reorderSections(tenantId, await readJson(request)));
+          }
+          const sectionMatch = url.pathname.match(/^\/api\/tenants\/current\/catalog\/sections\/([^/]+)$/);
+          if (sectionMatch && request.method === 'PATCH') return sendCatalogResult(catalog.renameSection(tenantId, sectionMatch[1], await readJson(request)));
+          if (sectionMatch && request.method === 'DELETE') return sendCatalogResult(catalog.deleteSection(tenantId, sectionMatch[1]));
+          if (request.method === 'POST' && url.pathname === '/api/tenants/current/catalog/simple-services') {
+            return sendCatalogResult(catalog.createSimpleService(tenantId, await readJson(request)), 201);
+          }
+          const simpleMatch = url.pathname.match(/^\/api\/tenants\/current\/catalog\/simple-services\/([^/]+)$/);
+          if (simpleMatch && request.method === 'PUT') return sendCatalogResult(catalog.updateSimpleService(tenantId, simpleMatch[1], await readJson(request)));
+        }
         if (request.method === 'GET' && url.pathname === '/api/tenants/current/catalog/operations') {
           if (!capabilities.manageCatalog) return sendJson(response, 403, {
             error: { code: 'forbidden', message: 'Каталог доступен владельцу или администратору' }

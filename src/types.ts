@@ -214,6 +214,22 @@ export type ManagedCatalogItem = {
   active: boolean;
   operations: Array<{ id: string; name: string; prices?: CatalogPrice[] }>;
   prices?: CatalogPrice[];
+  /** Services of one operation: edited as a name, a time and a base price with optional class overrides. */
+  simple?: boolean;
+  basePrice?: { amountMinor: number; durationMinutes: number } | null;
+  classPrices?: CatalogPrice[];
+};
+
+export type CatalogSection = { id: string; name: string; position: number; itemCount: number; activeCount: number };
+
+export type SimpleServiceInput = {
+  sectionId: string;
+  name: string;
+  description: string;
+  pricingMode: ManagedCatalogItem['pricingMode'];
+  basePrice: { amountMinor: number; durationMinutes: number };
+  classPrices: CatalogPrice[];
+  active?: boolean;
 };
 
 export type CatalogUsageItem = { id: string; name: string; active: boolean };
@@ -225,7 +241,9 @@ export type CatalogOperation = {
 };
 
 export type ManagedCatalog = {
+  /** Pricing classes of the center; ['*'] when it has no class rules ('*' = any car). */
   vehicleClasses: string[];
+  sections: CatalogSection[];
   operationLibrary: Array<{ id: string; name: string; active: boolean }>;
   items: ManagedCatalogItem[];
 };
