@@ -90,16 +90,18 @@
     .nav .button { min-height: 44px; padding: 0 20px; font-size: 16px; }
 
     /* Hero: headline upper left, the working intake on an orange stage with a cut corner. */
-    .hero { position: relative; min-height: max(100svh, 860px); padding-top: 150px; overflow: clip; }
-    .hero-copy { position: relative; z-index: 2; }
+    .hero { position: relative; padding-top: 150px; overflow: clip; }
+    .hero-grid { display: grid; grid-template-columns: minmax(0, 44fr) minmax(0, 56fr); align-items: start; }
+    .hero h1 { grid-column: 1 / -1; position: relative; z-index: 2; }
+    .hero-side { grid-column: 1; position: relative; z-index: 2; padding-right: 32px; }
     .hero h1 { font-size: var(--step-display); }
     .lines .line { display: block; overflow: hidden; padding-bottom: 0.1em; margin-bottom: -0.1em; white-space: nowrap; }
     .lines [data-line] { display: block; }
     .hero-lead { max-width: 40ch; margin-top: 32px; font-size: var(--step-lead); line-height: 1.55; }
     .hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 32px; }
     .hero-actions .link { font-weight: 700; }
-    .stage { position: absolute; left: 44%; right: 0; top: 40%; bottom: 0; background: var(--accent); clip-path: polygon(152px 0, 100% 0, 100% 100%, 0 100%, 0 152px); }
-    .stage-inner { position: absolute; left: 56px; top: 56px; }
+    .stage { grid-column: 2; grid-row: 2 / span 2; margin: 24px calc(-1 * var(--margin)) 0 0; padding: 56px 56px 72px; background: var(--accent); overflow: clip; clip-path: polygon(152px 0, 100% 0, 100% 100%, 0 100%, 0 152px); }
+    .stage-inner { width: max-content; }
 
     /* --- Product fragments (data-ui): the app's own conventions apply inside. --- */
     [data-ui] { font-family: var(--text); color: #dce1e5; -webkit-tap-highlight-color: transparent; }
@@ -184,13 +186,14 @@
     @keyframes finding-in { from { opacity: 0; transform: translateY(-6px); } }
 
     /* Showcase: one control at poster size; the field changes with it. */
-    .offline { position: relative; min-height: 92svh; margin-top: var(--gap-section); overflow: clip; background: var(--amber); color: var(--paper-ink); transition: background-color 360ms ease; }
+    .offline { position: relative; min-height: 92svh; margin-top: clamp(72px, 7vw, 112px); overflow: clip; background: var(--amber); color: var(--paper-ink); transition: background-color 360ms ease; }
     .offline[data-online="true"] { background: var(--ok); }
-    .offline-copy { position: relative; z-index: 2; padding-top: clamp(56px, 7vw, 96px); max-width: 600px; }
-    .offline h2 { font-size: var(--step-head); }
+    .offline-copy { position: relative; z-index: 2; padding-top: clamp(56px, 7vw, 96px); }
+    .offline h2 { white-space: nowrap; }
+    .offline h2 { font-size: var(--step-display); line-height: 1; }
     .offline h2 .swap { display: inline-block; }
     .offline-copy p { margin-top: 20px; font-size: var(--step-lead); line-height: 1.55; max-width: 44ch; }
-    .switch-wrap { position: absolute; width: max-content; left: 40%; top: 30%; font-size: clamp(44px, 9vh, 100px); }
+    .switch-wrap { position: absolute; width: max-content; left: 40%; top: 40%; font-size: clamp(44px, 9vh, 100px); }
     .switch { display: grid; grid-template-columns: auto auto; align-items: center; gap: .55em; padding: .55em .7em .55em .8em; border: 0; border-radius: 1.2em; background: rgba(22,25,28,.92); color: #fff; cursor: pointer; text-align: left; transition: transform var(--t-press) var(--ease-out); }
     .switch:active { transform: scale(0.985); }
     .switch-text b { display: block; font-size: .62em; font-weight: 800; letter-spacing: -.01em; }
@@ -213,7 +216,7 @@
     .field:nth-child(4) { background: var(--paper); color: var(--paper-ink); }
     .field h2 { font-size: var(--step-head); }
     .field .card-slot { position: absolute; left: 50%; top: 38%; translate: -50% 0; }
-    .field p { margin-top: auto; font-size: var(--step-head); line-height: 1.2; font-weight: 700; letter-spacing: -.01em; max-width: 11em; }
+    .field p { margin-top: auto; font-size: var(--step-head); line-height: 1.2; font-weight: 700; letter-spacing: -.01em; max-width: 12em; }
     .order-card { width: 260px; padding: 14px; border-radius: 14px; background: #121a21; border: 1px solid #2c3842; color: #dce1e5; font-size: 13px; transition: transform 150ms var(--ease-out); }
     .order-card .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
     .order-card .status { padding: 3px 8px; border-radius: 10px; font-size: 11px; font-weight: 800; }
@@ -229,6 +232,60 @@
     .order-card .total { font-size: 18px; font-weight: 800; color: #fff; }
     .order-card .check { color: #7fe2bf; font-weight: 800; }
     @media (hover: hover) and (pointer: fine) { .field:hover .order-card { transform: translateY(-6px); } }
+
+    /* The act: pinned while three statements fill it; it carries the findings marked in the hero. */
+    .act { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 0 48px; padding-top: var(--gap-section); }
+    .act-head { grid-column: 1 / -1; }
+    .act h2 { white-space: nowrap; }
+    .act h2 { font-size: var(--step-display); }
+    .act-lead { margin-top: 24px; max-width: 34ch; font-size: var(--step-lead); }
+    .act-steps { grid-column: 1; margin-top: 10vh; }
+    .act-step { min-height: 62vh; padding-top: 4vh; opacity: .38; transition: opacity 300ms ease; }
+    .act-step.is-current { opacity: 1; }
+    .act-step:last-child { min-height: 52vh; }
+    .act-step h3 { font-size: var(--step-head); font-weight: 700; line-height: 1.2; letter-spacing: -.01em; }
+    .act-step p { margin-top: 14px; max-width: 36ch; font-size: var(--step-lead); }
+    .act-pin { grid-column: 2; grid-row: 2; position: sticky; top: 96px; align-self: start; margin-top: 10vh; display: flex; justify-content: center; }
+    .act-paper { position: relative; width: min(100%, 470px); padding: 26px 26px 22px; border-radius: 10px; background: #f6f7f8; color: #16191c; font-size: 13px; line-height: 1.45; }
+    .act-paper header { padding-bottom: 10px; border-bottom: 2px solid #16191c; }
+    .act-paper header small { color: #5b6268; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .act-paper header strong { display: block; margin: 4px 0 2px; font-size: 19px; line-height: 1.2; }
+    .act-paper header span { color: #4c5257; font-size: 12px; }
+    .act-no { display: inline-block; font-weight: 800; color: #16191c; transition: opacity 300ms ease, transform 300ms var(--ease-out); }
+    .act-paper[data-step="1"] .act-no, .act-paper[data-step="2"] .act-no { opacity: .35; }
+    .act-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; margin: 10px 0 4px; }
+    .act-parties div { padding: 5px 0; border-bottom: 1px solid #d9d6cf; } /* taste-skill-ignore: a ruled line of the printed act (data-ui) */
+    .act-parties dt { color: #6a7075; font-size: 11px; }
+    .act-parties dd { margin: 0; font-weight: 700; }
+    .act-paper h4 { margin: 12px 0 6px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+    .act-body { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 14px; align-items: start; }
+    .act-svg { width: 150px; height: auto; }
+    .act-svg .car-shell { fill: #e7e5df; }
+    .act-svg .car-part.part-body { fill: #f1efea; stroke: #6a7075; }
+    .act-svg .car-part.part-glass { fill: #c9d3da; stroke: #6a7075; }
+    .act-svg .car-part.part-bed { fill: #d5d2cb; }
+    .act-svg .car-part.part-wheel { fill: #3a3f43; stroke: #3a3f43; }
+    .act-svg .car-part.part-mirror { fill: #bfc3c4; }
+    .act-svg .car-part.severity-low { fill: #f0d27a; }
+    .act-svg .car-part.severity-medium { fill: #f4a26f; }
+    .act-svg .car-part.severity-high { fill: #ec7b74; }
+    .act-svg .car-details { stroke: rgba(22,25,28,.35); }
+    .act-svg .car-outline { stroke: #16191c; }
+    .act-list { margin: 0; padding: 0; list-style: none; }
+    .act-list li { display: grid; grid-template-columns: 24px 1fr; gap: 8px; align-items: start; padding: 4px 0; }
+    .act-list b { min-width: 22px; height: 22px; display: grid; place-items: center; border-radius: 11px; color: #fff; background: #16191c; font-size: 11px; transition: transform 300ms var(--ease-out), background-color 300ms ease; }
+    .act-paper[data-step="1"] .act-list b { background: var(--accent); color: var(--accent-ink); transform: scale(1.12); }
+    .act-list span { font-size: 12.5px; }
+    .act-list strong { font-weight: 700; }
+    .act-more { color: #6a7075; font-size: 12px; }
+    .act-sign { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+    .act-sign div { padding-top: 6px; }
+    .act-sign svg { display: block; width: 100%; height: 44px; border-bottom: 1px solid #16191c; } /* taste-skill-ignore: a ruled line of the printed act (data-ui) */
+    .act-sign path { fill: none; stroke: #1b3a8a; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 1200ms var(--ease-in-out); }
+    .act-paper[data-step="2"] .act-sign path, .act-paper[data-step="3"] .act-sign path { stroke-dashoffset: 0; }
+    .act-sign small { display: block; margin-top: 4px; color: #6a7075; font-size: 11px; }
+    .act-stamp { position: absolute; right: 22px; top: 22px; padding: 6px 10px; border: 2px solid #1f9e72; border-radius: 6px; color: #1f9e72; font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; opacity: 0; transform: rotate(-6deg) scale(1.15); transition: opacity 240ms ease, transform 360ms var(--ease-out); }
+    .act-paper[data-step="3"] .act-stamp { opacity: 1; transform: rotate(-6deg) scale(1); }
 
     /* The bay: two real pictures of the world the product works in. */
     .bay { display: grid; grid-template-columns: minmax(0, 8fr) minmax(0, 4fr); gap: 32px; align-items: start; padding-top: var(--gap-section); }
@@ -343,7 +400,7 @@
 
     /* Tablet and phone: each its own composition. */
     @media (max-width: 1180px) {
-      .stage { left: 28%; }
+      .hero-grid { grid-template-columns: minmax(0, 36fr) minmax(0, 64fr); }
       .intake { width: 600px; }
       .path { grid-template-columns: repeat(2, 1fr); }
       .field { min-height: 70svh; }
@@ -352,12 +409,14 @@
       .nav-links { display: none; }
       .nav .button { margin-left: auto; }
       .hero { min-height: 0; padding-top: 112px; }
-      .hero h1 { font-size: 8.6vw; }
+      :root { --step-display: 8.6vw; --step-head: 24px; }
       .hero-lead { font-size: 16px; margin-top: 20px; }
-      .stage { position: relative; inset: auto; margin: 40px calc(-1 * var(--margin)) 0; height: 780px; clip-path: polygon(72px 0, 100% 0, 100% 100%, 0 100%, 0 72px); }
+      .hero-grid { grid-template-columns: minmax(0, 1fr); }
+      .hero-side { padding-right: 0; }
+      .stage { grid-column: 1; grid-row: auto; margin: 40px calc(-1 * var(--margin)) 0; padding: 16px 16px 40px; clip-path: polygon(72px 0, 100% 0, 100% 100%, 0 100%, 0 72px); }
       .js .stage { clip-path: polygon(72px 100%, 100% 100%, 100% 100%, 0 100%, 0 100%); }
       @keyframes stage-open { to { clip-path: polygon(72px 0, 100% 0, 100% 100%, 0 100%, 0 72px); } }
-      .stage-inner { left: 16px; top: 16px; right: 16px; }
+      .stage-inner { width: auto; }
       .intake { width: auto; max-width: 420px; }
       .intake-grid { grid-template-columns: 1fr; }
       .diagram-box { padding: 8px 40px; }
@@ -366,24 +425,30 @@
       .offline-copy p { font-size: 16px; }
       .switch-wrap { left: -4%; top: auto; bottom: 4%; font-size: 11vw; }
       .bay { grid-template-columns: 1fr; }
+      .act { grid-template-columns: 1fr; gap: 32px; }
+      .act-pin { position: static; grid-column: 1; grid-row: 2; margin-top: 0; }
+      .act-steps { grid-column: 1; grid-row: 3; margin-top: 0; }
+      .act-step, .act-step:last-child { min-height: 0; padding: 0 0 28px; opacity: 1; }
+      .act h2 { white-space: normal; }
+      .act-paper { padding: 20px 18px 18px; }
+      .act-body { grid-template-columns: 120px minmax(0, 1fr); }
+      .act-svg { width: 120px; }
       .path { min-height: 0; }
       .field { min-height: 0; padding: 28px 20px 44px; }
       .field .card-slot { position: static; translate: none; margin-top: 32px; }
-      .field p { order: -1; margin-top: 12px; font-size: 24px; }
-      .field h2 { order: -2; margin-bottom: 4px; font-size: 24px; }
+      .field p { order: -1; margin-top: 12px; }
+      .field h2 { order: -2; margin-bottom: 4px; }
       .more-inner { padding-left: 0; }
       .module { grid-template-columns: 1fr; gap: 16px; }
       .module + .module { margin-top: 64px; }
       .proof { width: min(100%, 460px); }
       .proof.shot { height: 220px; }
-      .module h3 { font-size: 17px; }
       .faq { grid-template-columns: 1fr; }
-      .faq h2 { position: static; font-size: 9vw; }
+      .faq h2 { position: static; }
       .tile summary { min-height: 64px; padding: 14px 20px; font-size: 18px; }
       .tile p { padding: 0 20px 20px; font-size: 16px; }
       .start { grid-template-columns: 1fr; align-content: start; gap: 32px; min-height: 84svh; padding-top: 56px; padding-bottom: 40px; }
       .start-copy { grid-column: 1; padding-bottom: 0; align-self: start; }
-      .start h2 { font-size: 10vw; }
       .start-copy p { font-size: 16px; }
       .search-dialog { grid-column: 1; width: 100%; }
       .search-dialog .button { min-height: 52px; }
@@ -417,12 +482,12 @@
 
   <main id="main">
     <section class="hero" id="top" aria-labelledby="hero-title">
-      <div class="frame">
-        <div class="hero-copy">
+      <div class="frame hero-grid">
           <h1 class="display lines" id="hero-title">
             <span class="line"><span data-line style="--i:0">Детейлинг-центр</span></span>
             <span class="line"><span data-line style="--i:1">в одном телефоне</span></span>
           </h1>
+        <div class="hero-side">
           <p class="hero-lead" data-load style="--d:440ms">DetailFlow ведёт детейлинг-центр: запись, приёмка по схеме с номерами элементов, смета, работа мастера и акты с подписью клиента. Работает и там, где в боксе нет сети.</p>
           <div class="hero-actions" data-load style="--d:520ms">
             <a class="button" href="/">Открыть DetailFlow
@@ -430,7 +495,6 @@
             <a class="link" href="#intake">Попробовать схему</a>
           </div>
         </div>
-      </div>
 
       <div class="stage" id="intake">
         <div class="stage-inner">
@@ -452,6 +516,7 @@
             </div>
           </div>
         </div>
+      </div>
       </div>
     </section>
 
@@ -509,7 +574,7 @@
             <div class="row" style="margin-top:8px"><span>Итого</span><span class="total">5 100 ₽</span></div>
           </div>
         </div>
-        <p data-reveal style="--d:340ms">Смета согласована, мастер работает.</p>
+        <p data-reveal style="--d:340ms">Смета одобрена, идут работы.</p>
       </div>
       <div class="field">
         <div class="card-slot" data-reveal style="--d:350ms">
@@ -522,6 +587,56 @@
           </div>
         </div>
         <p data-reveal style="--d:430ms">Выдача с подписью клиента.</p>
+      </div>
+    </section>
+
+    <section class="act frame" id="act" aria-labelledby="act-title">
+      <div class="act-head">
+        <h2 class="display" id="act-title" data-reveal>Акт закрывает спор</h2>
+        <p class="act-lead" data-reveal style="--d:90ms">Акт приёмки собирается из осмотра сам. В нём замечания, которые вы отметили на схеме вверху страницы.</p>
+      </div>
+        <div class="act-steps">
+          <div class="act-step" data-act-step="1">
+            <h3>Те же номера, что на схеме</h3>
+            <p>Каждое повреждение в акте стоит под номером детали. Клиент видит, о чём речь, без долгих описаний.</p>
+          </div>
+          <div class="act-step" data-act-step="2">
+            <h3>Подпись пальцем на экране</h3>
+            <p>Клиент проверяет акт и расписывается. После подписи содержимое акта больше не меняется.</p>
+          </div>
+          <div class="act-step" data-act-step="3">
+            <h3>Номер присваивается сам</h3>
+            <p>Акты нумеруются по порядку для вашего центра. Без сети акт тоже подписывается, а номер получит при синхронизации.</p>
+          </div>
+        </div>
+      <div class="act-pin">
+        <article class="act-paper" data-ui data-step="1" id="act-paper" aria-label="Акт приёмки автомобиля">
+          <header>
+            <small>DetailFlow Studio</small>
+            <strong>Акт приёмки автомобиля</strong>
+            <span>№ <span class="act-no">АП-000014</span> · 20 октября 2026</span>
+          </header>
+          <dl class="act-parties">
+            <div><dt>Клиент</dt><dd>Алексей Морозов</dd></div>
+            <div><dt>Автомобиль</dt><dd>Mazda 3 BL · К777КК 55</dd></div>
+          </dl>
+          <h4>Зафиксированные повреждения</h4>
+          <div class="act-body">
+            <svg class="car-diagram act-svg" id="act-diagram" aria-hidden="true"></svg>
+            <ol class="act-list" id="act-list"></ol>
+          </div>
+          <div class="act-sign">
+            <div>
+              <svg viewBox="0 0 200 44" aria-hidden="true"><path pathLength="1" d="M8 32c10-18 18-24 22-16s-8 18-4 14 14-26 20-22-6 22 0 20 10-16 16-14-2 12 4 12 12-14 18-12 0 10 6 10 16-18 24-16-4 14 2 14 22-6 34-10 24-4 34-6"/></svg>
+              <small>Клиент · Алексей Морозов</small>
+            </div>
+            <div>
+              <svg viewBox="0 0 200 44" aria-hidden="true"><path pathLength="1" d="M12 30c8-14 16-20 20-14s-10 16-2 14 18-22 26-18-4 18 4 16 18-12 26-12 6 8 14 6 30-12 44-10 24 6 40 2"/></svg>
+              <small>Сотрудник · Анна</small>
+            </div>
+          </div>
+          <span class="act-stamp">Подписан</span>
+        </article>
       </div>
     </section>
 
@@ -608,7 +723,7 @@
           </div>
         </article>
 
-        <article class="module">
+        <article class="module" hidden>
           <div class="proof shot tall" data-open><img src="img/act.jpg" alt="Акт приёмки со схемой и номерами повреждений" width="390" height="844" fetchpriority="low" decoding="async" style="object-position:50% 34%"></div>
           <div data-reveal style="--d:120ms">
             <h3>Акт с той же схемой и подписью</h3>
@@ -733,38 +848,45 @@
         }
       }
 
-      function renderDiagram() {
+      function renderDiagram() { drawDiagram(svg, true); drawDiagram($('#act-diagram'), false); }
+
+      function drawDiagram(svg, interactive) {
         const current = layout();
         const markMap = marks();
+        const clip = interactive ? 'df-clip' : 'df-act-clip';
         svg.textContent = '';
         svg.setAttribute('viewBox', `0 0 ${current.width} ${current.height}`);
         const defs = el('defs', {}, svg);
-        const paint = el('linearGradient', { id: 'df-paint', x1: '0', x2: '1' }, defs);
-        [['0', '#4b545b'], ['.35', '#8d969c'], ['.5', '#a7afb4'], ['.65', '#8d969c'], ['1', '#4b545b']].forEach(([offset, color]) => el('stop', { offset, 'stop-color': color }, paint));
-        const glass = el('linearGradient', { id: 'df-glass', x1: '0', y1: '0', x2: '0', y2: '1' }, defs);
-        [['0', '#2f3e49'], ['1', '#11191f']].forEach(([offset, color]) => el('stop', { offset, 'stop-color': color }, glass));
-        el('path', { d: current.outline }, el('clipPath', { id: 'df-clip' }, defs));
+        if (interactive) {
+          const paint = el('linearGradient', { id: 'df-paint', x1: '0', x2: '1' }, defs);
+          [['0', '#4b545b'], ['.35', '#8d969c'], ['.5', '#a7afb4'], ['.65', '#8d969c'], ['1', '#4b545b']].forEach(([offset, color]) => el('stop', { offset, 'stop-color': color }, paint));
+          const glass = el('linearGradient', { id: 'df-glass', x1: '0', y1: '0', x2: '0', y2: '1' }, defs);
+          [['0', '#2f3e49'], ['1', '#11191f']].forEach(([offset, color]) => el('stop', { offset, 'stop-color': color }, glass));
+        }
+        el('path', { d: current.outline }, el('clipPath', { id: clip }, defs));
         const drawn = current.elements.filter((item) => item.d);
         const part = (item, parent) => {
           const mark = markMap.get(item.name);
-          const classes = ['car-part', `part-${item.group}`, item.id === 'bed' ? 'part-bed' : '', state.selected === item.id ? 'selected' : '', mark ? `severity-${mark.severity.toLowerCase()}` : ''];
-          const node = el('path', { d: item.d, class: classes.join(' '), role: 'button', tabindex: '0', 'aria-label': `${item.number}. ${item.name}`, 'aria-pressed': String(state.selected === item.id) }, parent);
+          const selected = interactive && state.selected === item.id;
+          const classes = ['car-part', `part-${item.group}`, item.id === 'bed' ? 'part-bed' : '', selected ? 'selected' : '', mark ? `severity-${mark.severity.toLowerCase()}` : ''];
+          if (!interactive) { el('path', { d: item.d, class: classes.join(' ') }, parent); return; }
+          const node = el('path', { d: item.d, class: classes.join(' '), role: 'button', tabindex: '0', 'aria-label': `${item.number}. ${item.name}`, 'aria-pressed': String(selected) }, parent);
           node.addEventListener('click', () => select(item.id));
           node.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(item.id); } });
         };
         drawn.filter((item) => item.group === 'wheel' || item.group === 'mirror').forEach((item) => part(item, svg));
         el('path', { d: current.outline, class: 'car-shell' }, svg);
-        const clipped = el('g', { 'clip-path': 'url(#df-clip)' }, svg);
+        const clipped = el('g', { 'clip-path': `url(#${clip})` }, svg);
         drawn.filter((item) => item.group === 'body' || item.group === 'glass').forEach((item) => part(item, clipped));
-        el('path', { d: current.details, class: 'car-details', 'clip-path': 'url(#df-clip)' }, svg);
+        el('path', { d: current.details, class: 'car-details', 'clip-path': `url(#${clip})` }, svg);
         el('path', { d: current.outline, class: 'car-outline' }, svg);
         for (const item of drawn) {
           const mark = markMap.get(item.name);
           const outside = item.group === 'wheel' || item.group === 'mirror';
-          const badge = el('g', { class: ['car-badge', outside ? 'outside' : '', mark ? `severity-${mark.severity.toLowerCase()}` : '', state.selected === item.id ? 'selected' : ''].join(' '), 'aria-hidden': 'true' }, svg);
+          const badge = el('g', { class: ['car-badge', interactive && outside ? 'outside' : '', mark ? `severity-${mark.severity.toLowerCase()}` : '', interactive && state.selected === item.id ? 'selected' : ''].join(' '), 'aria-hidden': 'true' }, svg);
           el('circle', { cx: item.label.x, cy: item.label.y, r: 7 }, badge);
           el('text', { x: item.label.x, y: item.label.y + 2.7 }, badge).textContent = item.number;
-          if (outside) badge.addEventListener('click', () => select(item.id));
+          if (interactive && outside) badge.addEventListener('click', () => select(item.id));
         }
       }
 
@@ -832,7 +954,26 @@
         state.fresh = -1;
       }
 
-      function render() { renderBodyTypes(); renderDiagram(); renderEditor(); renderFindings(); }
+      function renderAct() {
+        const list = $('#act-list');
+        list.textContent = '';
+        const sorted = [...state.findings].sort((a, b) => (numberOf(a.zone) ?? 99) - (numberOf(b.zone) ?? 99));
+        if (!sorted.length) { const empty = document.createElement('li'); empty.innerHTML = '<span>Повреждений не выявлено.</span>'; list.appendChild(empty); }
+        for (const finding of sorted.slice(0, 5)) {
+          const row = document.createElement('li');
+          row.innerHTML = '<b></b><span><strong></strong> · <em></em> — <i></i></span>';
+          row.querySelector('b').textContent = numberOf(finding.zone) ?? '•';
+          row.querySelector('strong').textContent = finding.zone;
+          row.querySelector('em').textContent = SEVERITY[finding.severity].toLowerCase();
+          row.querySelector('i').textContent = finding.note;
+          row.querySelector('em').style.fontStyle = 'normal';
+          row.querySelector('i').style.fontStyle = 'normal';
+          list.appendChild(row);
+        }
+        if (sorted.length > 5) { const more = document.createElement('li'); more.className = 'act-more'; more.innerHTML = '<span></span>'; more.querySelector('span').textContent = `и ещё ${sorted.length - 5}`; list.appendChild(more); }
+      }
+
+      function render() { renderBodyTypes(); renderDiagram(); renderEditor(); renderFindings(); renderAct(); }
       render();
     }
 
@@ -849,6 +990,27 @@
       $('#net-status').textContent = online ? 'Всё отправлено' : 'Нет подключения';
       toggle.querySelectorAll('.queue em').forEach((item) => { item.textContent = online ? 'отправлено' : 'ждёт сети'; });
     });
+
+    /* ---------- The act fills as the statements pass ---------- */
+    const paper = $('#act-paper');
+    const steps = document.querySelectorAll('[data-act-step]');
+    const setStep = (value) => { paper.dataset.step = value; steps.forEach((step) => step.classList.toggle('is-current', step.dataset.actStep === value)); };
+    if (matchMedia('(max-width: 900px)').matches || !('IntersectionObserver' in window)) {
+      setStep('1');
+      const play = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        play.disconnect();
+        setTimeout(() => setStep('2'), 700);
+        setTimeout(() => setStep('3'), 2100);
+      }, { threshold: 0.6 });
+      play.observe(paper);
+    } else {
+      const watch = new IntersectionObserver((entries) => {
+        for (const entry of entries) if (entry.isIntersecting) setStep(entry.target.dataset.actStep);
+      }, { rootMargin: '-45% 0px -45% 0px' });
+      steps.forEach((step) => watch.observe(step));
+      setStep('1');
+    }
 
     /* ---------- Prices by class ---------- */
     const rows = document.querySelectorAll('#prices tr');
@@ -880,7 +1042,7 @@
     const targets = new Map(items.map((item) => [item.hasAttribute('data-open') ? item.parentElement : item, item]));
     const observer = new IntersectionObserver((entries) => {
       for (const entry of entries) if (entry.isIntersecting) { targets.get(entry.target).classList.add('is-in'); observer.unobserve(entry.target); }
-    }, { rootMargin: '0px 0px -10% 0px', threshold: 0.1 });
+    }, { rootMargin: '0px 0px -2% 0px', threshold: 0 });
     targets.forEach((_, watched) => observer.observe(watched));
   })();
   </script>

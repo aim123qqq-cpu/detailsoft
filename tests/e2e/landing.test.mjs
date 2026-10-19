@@ -29,6 +29,10 @@ test('landing22: the intake diagram works, the network switch flips, and the sea
     assert.equal(await page.locator('#findings li').count(), 3);
     assert.match(await page.locator('#findings').innerText(), /11\s+Левое заднее крыло\s+Вмятина/);
     assert.match(await page.locator('#diagram [aria-label="11. Левое заднее крыло"]').getAttribute('class'), /severity-high/);
+    assert.match(await page.locator('#act-list').innerText(), /11\s+Левое заднее крыло · сильное — Вмятина/, 'the act below carries the finding with the same number');
+    await page.locator('#act-paper').scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => document.querySelector('#act-paper')?.dataset.step === '3', null, { timeout: 5000 });
+    await page.locator('#top').scrollIntoViewIfNeeded();
     await page.locator('#body-types').getByRole('radio', { name: 'Купе' }).click();
     assert.equal(await page.locator('#diagram [aria-label="9. Левая дверь"]').count(), 1, 'a coupe has one door per side');
 
