@@ -254,6 +254,7 @@ export function createDetailFlowServer({
           });
           const result = repository.createCustomer(tenantId, await readJson(request));
           if (result.kind === 'created') return sendJson(response, 201, result.customer);
+          if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message, details: result.details ?? {} } });
           if (result.kind === 'tenant_not_found') return sendJson(response, 404, { error: { code: 'tenant_not_found', message: 'Центр не найден' } });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите имя и корректный телефон' } });
         }

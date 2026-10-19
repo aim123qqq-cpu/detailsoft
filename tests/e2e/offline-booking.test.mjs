@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { chromium } from 'playwright-core';
 import { createDetailFlowServer } from '../../server/app.mjs';
 import { chromePath } from './chrome.mjs';
+import { waitForOfflineCopy } from './offline-helpers.mjs';
 
 async function settle(page) {
   await page.evaluate(() => document.activeElement?.blur());
@@ -42,12 +43,7 @@ test('mobile offline: a booking made without the server is sent later and kept w
   try {
     // Online: the booking pack and the bookings list are kept on the phone.
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(async () => {
-      const request = indexedDB.open('detailflow-offline');
-      const db = await new Promise((done) => { request.onsuccess = () => done(request.result); });
-      const keys = await new Promise((done) => { const all = db.transaction('cache').objectStore('cache').getAllKeys(); all.onsuccess = () => done(all.result); });
-      return keys.some((key) => String(key).endsWith('/api/offline/booking-pack'));
-    }, null, { timeout: 10_000 });
+    await waitForOfflineCopy(page, ['/api/offline/booking-pack']);
     await page.getByTestId('bookings-nav').click();
     await page.getByTestId('bookings-workspace').waitFor();
 

@@ -54,8 +54,14 @@ export function buildBookingPack(repository, tenantId, { includeCustomers }) {
     }
   }
 
+  // Class rules let the phone price a vehicle added offline exactly like the server will.
+  const classRules = db.prepare(`SELECT variant_id, class_match, tenant_class, priority FROM tenant_vehicle_class_rules
+    WHERE tenant_id = ? ORDER BY priority DESC`).all(tenantId)
+    .map((rule) => ({ variantId: rule.variant_id, classMatch: rule.class_match, tenantClass: rule.tenant_class, priority: rule.priority }));
+
   return {
     generatedAt: new Date().toISOString(),
+    classRules,
     schedule,
     sectionOrder: repository.catalog.listSections(tenantId).map((section) => section.name),
     packages,

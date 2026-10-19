@@ -4,7 +4,7 @@ import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, 
 import { ApiRequestError } from './apiError';
 import { localAddPhoto, localAssignMaster, localCloseOrder, localCompleteWork, localCreateEstimate, localCreateOrder, localDecideEstimate, localSaveIntake, localSetPause, localStartWork, localUpdateOperation } from './offline/orderLocal';
 import { cachedPaths, configureSync, enqueue, flush, hasPending, markReachable, pendingBusy, readCache, tokenScope, writeCache } from './offline/sync';
-import { localAvailability, localBooking, localQuote, localSearchCustomers, localSearchVehicles, localServicesCatalog, type BookingPack } from './offline/bookingLocal';
+import { localAvailability, localBooking, localCreateCustomer, localCreateVehicle, localQuote, localSearchCustomers, localSearchVehicles, localServicesCatalog, type BookingPack } from './offline/bookingLocal';
 import { isSlotAvailable } from './shared/bookingRules';
 import { randomId } from './platform';
 
@@ -325,21 +325,54 @@ export const api = {
   searchCatalog(query: string, signal?: AbortSignal) {
     return request<{ items: CatalogVariant[] }>(`/api/vehicle-catalog/variants?q=${encodeURIComponent(query)}`, { signal });
   },
-  createCustomer(input: { name: string; phone: string }) {
-    return request<Customer>('/api/customers', { method: 'POST', body: JSON.stringify(input) });
+  async createCustomer(input: { name: string; phone: string }) {
+    if (!(await hasPending())) {
+      try {
+        const customer = await request<Customer>('/api/customers', { method: 'POST', body: JSON.stringify(input) });
+        void refreshBookingPack(true);
+        return customer;
+      } catch (error) {
+        if (!(error instanceof NetworkError)) throw error;
+      }
+    }
+    // Offline: the customer is named on the phone and checked against the saved customers; on the
+    // server the phone is checked again and a match asks "same customer?" instead of duplicating.
+    const id = `cust_${randomId()}`;
+    const { pack, customer } = localCreateCustomer(await offlinePack(), input, id);
+    await writeCache(PACK_PATH, pack);
+    await enqueue({ method: 'POST', path: '/api/customers', body: JSON.stringify({ ...input, id, checkDuplicatePhone: true }), key: randomId(),
+      label: `Новый клиент · ${customer.name}`, entity: `customer:${id}` });
+    return customer;
   },
-  createVehicle(input: {
+  /** `variant` (the picked catalog entry) lets the phone describe the vehicle when offline. */
+  async createVehicle(input: {
     customerId: string;
     catalogVariantId?: string;
     manual?: { make: string; model: string; generation?: string; bodyType: string };
     tenantClass?: string;
     plateDisplay: string;
     color: string;
-  }) {
-    return request<{ vehicle: Vehicle }>('/api/vehicles', { method: 'POST', body: JSON.stringify(input) });
+  }, variant: CatalogVariant | null = null) {
+    if (!(await hasPending())) {
+      try {
+        const result = await request<{ vehicle: Vehicle }>('/api/vehicles', { method: 'POST', body: JSON.stringify(input) });
+        void refreshBookingPack(true);
+        return result;
+      } catch (error) {
+        if (!(error instanceof NetworkError)) throw error;
+      }
+    }
+    const id = `veh_${randomId()}`;
+    const { pack, vehicle } = localCreateVehicle(await offlinePack(), input, variant, id);
+    await writeCache(PACK_PATH, pack);
+    await enqueue({ method: 'POST', path: '/api/vehicles', body: JSON.stringify({ ...input, id }), key: randomId(),
+      label: `Новый автомобиль · ${vehicle.plate}`, entity: `vehicle:${id}`, dependsOn: [`customer:${input.customerId}`] });
+    return { vehicle };
   },
   listVehicleClasses(signal?: AbortSignal) {
-    return request<{ items: string[] }>('/api/tenants/current/vehicle-classes', { signal });
+    // Offline: the classes of the center's rules, in the server's order (SQL ORDER BY, binary).
+    return withPack(() => request<{ items: string[] }>('/api/tenants/current/vehicle-classes', { signal }),
+      (pack) => ({ items: [...new Set(pack.classRules.map((rule) => rule.tenantClass))].sort() }));
   },
   getVehicleProfile(vehicleId: string, signal?: AbortSignal) {
     return request<VehicleProfile>(`/api/vehicles/${encodeURIComponent(vehicleId)}/profile`, { signal });
@@ -567,6 +600,7 @@ export const api = {
     });
     await enqueue({ method: 'POST', path: '/api/bookings', body: JSON.stringify({ ...input, id, allowSlotConflict: true }), key: idempotencyKey,
       label: `Новая запись${customer ? ` · ${customer.name}` : ''}`, entity: `booking:${id}`,
+      dependsOn: [`customer:${input.customerId}`, `vehicle:${input.vehicleId}`],
       busy: { id, startAt: input.startAt, durationMinutes: quote.totalDurationMinutes } });
     return booking;
   },
@@ -597,7 +631,8 @@ export const api = {
       const list = await readCache<{ items: OrderListItem[] }>(ORDERS_LIST);
       if (list) await writeCache(ORDERS_LIST, { ...list, items: [{ id, status: order.status, createdAt: order.createdAt, totalAmountMinor: null, masterName: null, masterMemberId: null, customer: listed.customer, vehicle: listed.vehicle }, ...list.items] });
     }
-    await enqueue({ method: 'POST', path: '/api/orders', body, key, label: `Начало приёмки${listed ? ` · ${listed.customer.name}` : ''}`, entity: `order:${id}` });
+    await enqueue({ method: 'POST', path: '/api/orders', body, key, label: `Начало приёмки${listed ? ` · ${listed.customer.name}` : ''}`, entity: `order:${id}`,
+      dependsOn: [`booking:${bookingId}`] });
     return order;
   },
   saveIntake(orderId: string, input: {

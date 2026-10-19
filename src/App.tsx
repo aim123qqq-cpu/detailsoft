@@ -553,7 +553,7 @@ function AddVehicle({ customer, onCancel, onCreated }: { customer: Customer; onC
           : { manual: { make: manualMake, model: manualModel, generation: manualGeneration, bodyType: manualBodyType }, tenantClass }),
         plateDisplay: plate,
         color
-      });
+      }, entryMode === 'catalog' ? variant : null);
       onCreated(result.vehicle);
     } catch (requestError) {
       setError((requestError as Error).message);

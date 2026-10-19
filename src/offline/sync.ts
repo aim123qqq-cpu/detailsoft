@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { storeDelete, storeEntries, storeGet, storeKeys, storeSet } from './store.ts';
+import { randomId } from '../platform.ts';
 
 /** A change made while the server was out of reach, sent later in the same order. */
 export type OutboxItem = {
@@ -16,6 +17,10 @@ export type OutboxItem = {
   createdAt: string;
   /** Set when the server refused the change; the queue waits for "retry" or "discard". */
   error?: string;
+  errorCode?: string;
+  errorDetails?: Record<string, unknown>;
+  /** Entities this change needs (a booking needs its vehicle, a vehicle its customer). */
+  dependsOn?: string[];
   /** Time a booking made or moved on this phone occupies until the server has it. */
   busy?: { id: string; startAt: string; durationMinutes: number; free?: boolean };
 };
@@ -129,7 +134,8 @@ export async function flush() {
       } else if (response.status === 401) {
         break;
       } else {
-        await storeSet('outbox', item.id, { ...item, error: payload?.error?.message ?? 'Сервер не принял изменение' });
+        await storeSet('outbox', item.id, { ...item, error: payload?.error?.message ?? 'Сервер не принял изменение',
+          errorCode: payload?.error?.code, errorDetails: payload?.error?.details });
         break;
       }
     }
@@ -165,7 +171,7 @@ export async function cachedPaths(prefix: string) {
 
 export async function retryFailed() {
   const failed = (await scopedItems()).find((item) => item.error);
-  if (failed) await storeSet('outbox', failed.id, { ...failed, error: undefined });
+  if (failed) await storeSet('outbox', failed.id, { ...failed, error: undefined, errorCode: undefined, errorDetails: undefined });
   await refreshCounts();
   await flush();
 }
@@ -178,10 +184,20 @@ export async function discardFailed() {
   const items = await scopedItems();
   const failed = items.find((item) => item.error);
   if (!failed) return 0;
-  const dropped = items.filter((item) => item.entity === failed.entity && item.id >= failed.id);
+  // Later changes made on top of it go too: the same entity, or anything that depends on a dropped one.
+  const droppedEntities = new Set([failed.entity]);
+  const dropped = [];
+  for (const item of items.filter((entry) => entry.id >= failed.id)) {
+    if (item.id === failed.id || droppedEntities.has(item.entity) || item.dependsOn?.some((entity) => droppedEntities.has(entity))) {
+      dropped.push(item);
+      droppedEntities.add(item.entity);
+    }
+  }
   for (const item of dropped) await storeDelete('outbox', item.id);
-  const path = entityPath(failed.entity);
-  if (path) await storeDelete('cache', cacheKey(path));
+  for (const entity of droppedEntities) {
+    const path = entityPath(entity);
+    if (path) await storeDelete('cache', cacheKey(path));
+  }
   await refreshCounts();
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('detailflow:synced'));
   await flush();
@@ -194,4 +210,36 @@ if (typeof window !== 'undefined') {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void flush(); });
   // The browser may report "online" while the center's server is unreachable: keep trying quietly.
   setInterval(() => { if (state.pending > 0 && !state.failed) void flush(); }, 15_000);
+}
+
+/**
+ * "It is the same customer": the refused offline customer is not created; every later change that
+ * referred to it now refers to the existing customer. Customers on the server are never merged.
+ */
+export async function linkFailedToExisting(existingId: string) {
+  const items = await scopedItems();
+  const failed = items.find((item) => item.error);
+  const localId = failed && /^customer:(.+)$/.exec(failed.entity)?.[1];
+  if (!failed || !localId) return;
+  const swap = (value: string) => value.split(localId).join(existingId);
+  await storeDelete('outbox', failed.id);
+  for (const item of items.filter((entry) => entry.id > failed.id)) {
+    await storeSet('outbox', item.id, {
+      ...item, path: swap(item.path), body: item.body && swap(item.body), entity: swap(item.entity),
+      dependsOn: item.dependsOn?.map(swap).filter((entity) => entity !== `customer:${existingId}`)
+    });
+  }
+  await refreshCounts();
+  await flush();
+}
+
+/** "It is another person": create the customer anyway, with the explicit duplicate confirmation. */
+export async function confirmFailedDuplicate() {
+  const failed = (await scopedItems()).find((item) => item.error);
+  if (!failed?.body) return;
+  // A changed request needs a new key: the server remembers its refusal under the old one.
+  await storeSet('outbox', failed.id, { ...failed, key: randomId(), body: JSON.stringify({ ...JSON.parse(failed.body), confirmDuplicate: true }),
+    error: undefined, errorCode: undefined, errorDetails: undefined });
+  await refreshCounts();
+  await flush();
 }

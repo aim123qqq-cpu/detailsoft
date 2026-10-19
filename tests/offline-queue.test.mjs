@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { configureSync, discardFailed, enqueue, flush, readCache, retryFailed, syncState, writeCache } from '../src/offline/sync.ts';
+import { configureSync, confirmFailedDuplicate, discardFailed, enqueue, flush, linkFailedToExisting, readCache, retryFailed, syncState, writeCache } from '../src/offline/sync.ts';
 
 // Node has no IndexedDB: the store keeps the queue in memory, which is enough to check the rules.
 const respond = (status, body) => ({ ok: status < 400, status, json: async () => body });
@@ -77,4 +77,62 @@ test('a change resent after a network failure keeps its idempotency key', async 
   assert.equal(syncState().pending, 0);
   assert.equal(syncState().reachable, true);
   assert.deepEqual(server.sent.map((item) => item.key), ['key-start']);
+});
+
+test('"same customer" relinks later changes to the existing customer; discarding a customer drops what depends on it', async () => {
+  const server = fakeServer('scope-customers');
+  const local = 'cust_local-1';
+  const queue = async () => {
+    await queueOffline(server, []);
+    for (const item of [
+      { label: 'customer', entity: `customer:${local}`, path: '/api/customers', body: { id: local, name: 'Ольга', phone: '+7 913 123-45-67', checkDuplicatePhone: true } },
+      { label: 'vehicle', entity: 'vehicle:veh_local-1', path: '/api/vehicles', body: { id: 'veh_local-1', customerId: local }, dependsOn: [`customer:${local}`] },
+      { label: 'booking', entity: 'booking:booking_local-1', path: '/api/bookings', body: { id: 'booking_local-1', customerId: local, vehicleId: 'veh_local-1' }, dependsOn: [`customer:${local}`, 'vehicle:veh_local-1'] },
+      { label: 'order', entity: 'order:order_local-1', path: '/api/orders', body: { bookingId: 'booking_local-1' }, dependsOn: ['booking:booking_local-1'] },
+      { label: 'intake', entity: 'order:order_local-1', path: '/api/orders/order_local-1/intake', body: {} },
+      { label: 'other', entity: 'order:order_other', path: '/api/orders/order_other/work/start', body: {} }
+    ]) await enqueue({ method: 'POST', path: item.path, body: JSON.stringify(item.body), key: `key-${item.label}`, label: item.label, entity: item.entity, dependsOn: item.dependsOn });
+    await settled();
+  };
+  server.answer = (item) => item.label === 'customer'
+    ? respond(409, { error: { code: 'customer_phone_exists', message: 'Есть', details: { customers: [{ id: 'cust_alexey', name: 'Алексей' }] } } })
+    : respond(200, {});
+
+  await queue();
+  server.online = true;
+  await flush();
+  assert.equal(syncState().failed?.errorCode, 'customer_phone_exists');
+  assert.deepEqual(syncState().failed?.errorDetails, { customers: [{ id: 'cust_alexey', name: 'Алексей' }] });
+  await linkFailedToExisting('cust_alexey');
+  await settled();
+  const sent = server.sent.filter((item) => item.label !== 'customer');
+  assert.deepEqual(sent.map((item) => item.label), ['vehicle', 'booking', 'order', 'intake', 'other'], 'the customer is not created, the rest follows');
+  assert.equal(JSON.parse(sent[0].body).customerId, 'cust_alexey');
+  assert.equal(JSON.parse(sent[1].body).customerId, 'cust_alexey');
+  assert.equal(syncState().pending, 0);
+
+  // Same queue again, this time the customer is discarded: everything built on it goes, "other" stays.
+  server.sent.length = 0;
+  await queue();
+  server.online = true;
+  await flush();
+  assert.equal(await discardFailed(), 5);
+  await settled();
+  assert.deepEqual(server.sent.map((item) => item.label), ['customer', 'other']);
+});
+
+test('"another person" resends the customer with the duplicate confirmed under a new key', async () => {
+  const server = fakeServer('scope-confirm');
+  await queueOffline(server, []);
+  await enqueue({ method: 'POST', path: '/api/customers', body: JSON.stringify({ id: 'cust_x', checkDuplicatePhone: true }), key: 'first-key', label: 'customer', entity: 'customer:cust_x' });
+  await settled();
+  server.online = true;
+  server.answer = (item) => JSON.parse(item.body).confirmDuplicate ? respond(201, {}) : respond(409, { error: { code: 'customer_phone_exists', message: 'Есть', details: {} } });
+  await flush();
+  await confirmFailedDuplicate();
+  await settled();
+  assert.equal(syncState().pending, 0);
+  const last = server.sent.at(-1);
+  assert.equal(JSON.parse(last.body).confirmDuplicate, true);
+  assert.notEqual(last.key, 'first-key');
 });

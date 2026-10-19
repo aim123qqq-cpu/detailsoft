@@ -9,6 +9,7 @@ type Prices = Record<string, Price>;
 /** GET /api/offline/booking-pack (server/offline-pack.mjs). */
 export type BookingPack = {
   generatedAt: string;
+  classRules: Array<{ variantId: string | null; classMatch: string | null; tenantClass: string; priority: number }>;
   schedule: CenterSchedule;
   sectionOrder: string[];
   packages: Array<{ id: string; category: string; name: string; description: string; prices: Prices; operations: Array<{ id: string; name: string }> }>;
@@ -113,5 +114,71 @@ export function localBooking(id: string, input: { customerId: string; vehicleId:
     startAt: input.startAt, timezone: pack.schedule.timezone, estimatedDurationMinutes: quote.totalDurationMinutes,
     status: 'CONFIRMED', preliminaryAmountMinor: quote.totalAmountMinor, resourceId: null, quoteVersion: 1, lines,
     quoteVersions: [{ version: 1, vehicleClass: quote.vehicleClass, totalAmountMinor: quote.totalAmountMinor, totalDurationMinutes: quote.totalDurationMinutes, reason: null, actorName: null, createdAt: now, lines }]
+  };
+}
+
+/**
+ * Pricing class of a vehicle added on the phone, as server getVehiclePricingContext decides it:
+ * an explicit class, else the best rule for its catalog variant or system class, else the system
+ * class, else "Стандарт".
+ */
+export function localVehicleClass(pack: BookingPack, vehicle: { catalogVariantId: string | null; systemVehicleClass: string | null; tenantClass: string | null }) {
+  if (vehicle.tenantClass) return vehicle.tenantClass;
+  const rule = [...pack.classRules].sort((left, right) => right.priority - left.priority).find((item) =>
+    item.variantId === vehicle.catalogVariantId && vehicle.catalogVariantId !== null ||
+    item.variantId === null && item.classMatch !== null && item.classMatch === vehicle.systemVehicleClass);
+  return rule?.tenantClass ?? vehicle.systemVehicleClass ?? 'Стандарт';
+}
+
+/** A customer made on the phone; refuses a phone that the saved customers already have. */
+export function localCreateCustomer(pack: BookingPack, input: { name: string; phone: string }, id: string): { pack: BookingPack; customer: Customer } {
+  const name = input.name.trim();
+  const phoneNormalized = normalizePhone(input.phone);
+  if (name.length < 2 || phoneNormalized.length < 7) throw new ApiRequestError('Укажите имя и корректный телефон', 422, 'validation_error');
+  const existing = pack.customers.find((customer) => customer.phoneNormalized === phoneNormalized);
+  if (existing) throw new ApiRequestError(`Клиент с этим телефоном уже есть: ${existing.name}`, 409, 'customer_phone_exists', { customers: [{ id: existing.id, name: existing.name, phoneDisplay: existing.phoneDisplay }] });
+  const customer: Customer = { id, name, phoneDisplay: input.phone.trim(), visitCount: 0, archived: false, vehicles: [] };
+  return { pack: { ...pack, customers: [...pack.customers, { ...customer, phoneNormalized }] }, customer };
+}
+
+type VehicleInput = {
+  customerId: string;
+  catalogVariantId?: string;
+  manual?: { make: string; model: string; generation?: string; bodyType: string; systemVehicleClass?: string };
+  tenantClass?: string;
+  plateDisplay: string;
+  color: string;
+};
+type VariantInfo = { id: string; make: string; model: string; generation?: string | null; bodyType: string; systemVehicleClass?: string | null };
+
+/** A vehicle added on the phone; the same checks as the server, including a plate already on file. */
+export function localCreateVehicle(pack: BookingPack, input: VehicleInput, variant: VariantInfo | null, id: string): { pack: BookingPack; vehicle: Vehicle } {
+  const owner = pack.customers.find((customer) => customer.id === input.customerId);
+  if (!owner) throw new ApiRequestError('Клиент не найден', 404, 'customer_not_found');
+  const model = input.catalogVariantId ? variant : input.manual ? {
+    id: null, make: input.manual.make.trim(), model: input.manual.model.trim(), generation: input.manual.generation?.trim() || null,
+    bodyType: input.manual.bodyType, systemVehicleClass: input.manual.systemVehicleClass?.trim() || null
+  } : null;
+  if (!model || (input.catalogVariantId && model.id !== input.catalogVariantId) || model.make.length < 2 || !model.model.length) {
+    throw new ApiRequestError('Проверьте госномер, цвет и модель', 422, 'validation_error');
+  }
+  const plate = normalizePlate(input.plateDisplay);
+  if (plate.length < 3 || !input.color.trim()) throw new ApiRequestError('Проверьте госномер, цвет и модель', 422, 'validation_error');
+  const matches = pack.customers.flatMap((customer) => customer.vehicles.filter((vehicle) => normalizePlate(vehicle.plate) === plate)
+    .map((vehicle) => ({ ...vehicle, customer: { id: customer.id, name: customer.name, phoneDisplay: customer.phoneDisplay } })));
+  if (matches.length) throw new ApiRequestError('Возможно, автомобиль уже существует', 409, 'possible_duplicate', { matches });
+  const tenantClass = input.tenantClass?.trim() || null;
+  const vehicle: Vehicle = {
+    id, catalogVariantId: input.catalogVariantId ?? null, make: model.make, model: model.model, generation: model.generation ?? null,
+    bodyType: model.bodyType, plate: input.plateDisplay.trim(), color: input.color.trim(), status: 'active', active: true, tenantClass
+  };
+  const vehicleClass = localVehicleClass(pack, { catalogVariantId: vehicle.catalogVariantId ?? null, systemVehicleClass: model.systemVehicleClass ?? null, tenantClass });
+  return {
+    pack: {
+      ...pack,
+      customers: pack.customers.map((customer) => customer.id === owner.id ? { ...customer, vehicles: [...customer.vehicles, vehicle] } : customer),
+      vehicleClasses: { ...pack.vehicleClasses, [id]: vehicleClass }
+    },
+    vehicle
   };
 }

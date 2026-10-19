@@ -14,14 +14,25 @@ function open(): Promise<IDBDatabase | null> {
   opening = new Promise((resolve) => {
     try {
       if (typeof indexedDB === 'undefined') return resolve(null);
-      const request = indexedDB.open(DB_NAME, 1);
-      request.onupgradeneeded = () => {
-        request.result.createObjectStore('cache');
-        request.result.createObjectStore('outbox');
+      const connect = (version?: number) => {
+        const request = version ? indexedDB.open(DB_NAME, version) : indexedDB.open(DB_NAME);
+        request.onupgradeneeded = () => {
+          for (const store of ['cache', 'outbox']) if (!request.result.objectStoreNames.contains(store)) request.result.createObjectStore(store);
+        };
+        request.onsuccess = () => {
+          const db = request.result;
+          // A database created elsewhere without our stores is upgraded once instead of failing silently.
+          if (!db.objectStoreNames.contains('cache') || !db.objectStoreNames.contains('outbox')) {
+            const next = db.version + 1;
+            db.close();
+            return version ? resolve(null) : connect(next);
+          }
+          resolve(db);
+        };
+        request.onerror = () => resolve(null);
+        request.onblocked = () => resolve(null);
       };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => resolve(null);
-      request.onblocked = () => resolve(null);
+      connect();
     } catch {
       resolve(null);
     }

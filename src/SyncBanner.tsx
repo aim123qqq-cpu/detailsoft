@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { discardFailed, retryFailed, useSyncState } from './offline/sync';
+import { confirmFailedDuplicate, discardFailed, linkFailedToExisting, retryFailed, useSyncState } from './offline/sync';
 import { pluralRu } from './format';
 
 const changes = (count: number) => `${count} ${pluralRu(count, 'изменение', 'изменения', 'изменений')}`;
@@ -14,6 +14,20 @@ export function SyncBanner({ online }: { online: boolean }) {
     return <div className="connectivity-banner" data-testid="offline-banner" role="status" aria-live="polite">
       <strong>Нет подключения</strong>
       <span>{pending ? `${changes(pending)} ${pluralRu(pending, 'сохранено', 'сохранены', 'сохранены')} на телефоне и ${pluralRu(pending, 'отправится само', 'отправятся сами', 'отправятся сами')}` : 'Показаны сохранённые данные. Работа по заказу сохранится на телефоне'}</span>
+    </div>;
+  }
+  // A customer made offline whose phone is already on file: the same person, or someone else?
+  const existing = failed?.errorCode === 'customer_phone_exists'
+    ? (failed.errorDetails?.customers as Array<{ id: string; name: string; phoneDisplay: string }> | undefined)?.[0]
+    : undefined;
+  if (failed && existing) {
+    return <div className="connectivity-banner sync-failed" data-testid="sync-duplicate-customer" role="alert">
+      <strong>Такой телефон уже есть</strong>
+      <span>Клиента <b>{failed.label.replace(/^Новый клиент · /, '')}</b> завели без сети, а на сервере с этим номером уже есть <b>{existing.name}</b> ({existing.phoneDisplay}).</span>
+      <div className="sync-actions">
+        <button disabled={busy} data-testid="sync-same-customer" onClick={() => act(() => linkFailedToExisting(existing.id))}>Это {existing.name}</button>
+        <button disabled={busy} data-testid="sync-other-customer" onClick={() => act(confirmFailedDuplicate)}>Это другой человек</button>
+      </div>
     </div>;
   }
   if (failed) {

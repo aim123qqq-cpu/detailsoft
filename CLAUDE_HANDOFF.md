@@ -264,7 +264,7 @@ pnpm test:e2e     # только E2E
 
 Последняя подтверждённая база (16 октября 2026, после четырёх комплексов):
 
-- `pnpm test`-эквивалент: **159/159 passed** (было 68; последними добавлены `offline-order-lifecycle` (2, весь цикл заказа на телефоне против сервера) и E2E `offline-lifecycle` (визит от приезда до выдачи без сети); до этого `offline-booking-local` (3, совпадение телефона с сервером), `booking-offline-sync` (2) и E2E `offline-booking`; в E2E `customer-vehicle` пакет для записи отключён, чтобы проверять путь «ошибка поиска → повторить»; до этого `idempotency` (2), `offline-order-local` (1, правила телефона против настоящего сервера), `offline-queue` (2) и E2E `offline-work`; до этого `catalog-sections` (5) и E2E `catalog-sections`, в E2E `reference-management` составная услуга открывается кнопкой «Собрать услугу из нескольких операций»; до этого `roles` (5) и E2E `roles`; в `session.test.mjs` добавлены `roleNames` и `acceptAssignments`; до этого `platform` (1, `randomId` без `crypto.randomUUID` — по `http://192.168…` его нет, и создание записи с телефона падало), `health` (1, `/api/ready`), `setup-owner` (2), до этого `role-access` (5), `backup` (4), тест `view=upcoming|overdue`, E2E `role-workspaces`). E2E с несколькими ролями открывает каждую роль в своём контексте Chrome и закрывает его перед следующей. Добавлены: `customer-profile` (8), `booking-quote-revision` (6), `order-documents` (6), `messenger-auth` (6), `messenger-adapters` (4), `share-order` (3, импортирует `src/shareOrder.ts` напрямую — Node 24 снимает типы сам), 4 новых E2E; в `session.test.mjs` обновлена форма `actor` (`memberId`, `authMethod`);
+- `pnpm test`-эквивалент: **164/164 passed** (было 68; последними добавлены `offline-customers` (2), ещё 2 теста очереди (перепривязка, каскадная отмена, подтверждение дубля) и E2E `offline-new-customer`. Найдено: `page.waitForFunction` с async-предикатом не ждёт результата — в E2E работы без сети ожидание сохранения заменено на `tests/e2e/offline-helpers.mjs` (`waitForOfflineCopy`); `src/offline/store.ts` пересоздаёт хранилища, если база открылась без них; до этого `offline-order-lifecycle` (2, весь цикл заказа на телефоне против сервера) и E2E `offline-lifecycle` (визит от приезда до выдачи без сети); до этого `offline-booking-local` (3, совпадение телефона с сервером), `booking-offline-sync` (2) и E2E `offline-booking`; в E2E `customer-vehicle` пакет для записи отключён, чтобы проверять путь «ошибка поиска → повторить»; до этого `idempotency` (2), `offline-order-local` (1, правила телефона против настоящего сервера), `offline-queue` (2) и E2E `offline-work`; до этого `catalog-sections` (5) и E2E `catalog-sections`, в E2E `reference-management` составная услуга открывается кнопкой «Собрать услугу из нескольких операций»; до этого `roles` (5) и E2E `roles`; в `session.test.mjs` добавлены `roleNames` и `acceptAssignments`; до этого `platform` (1, `randomId` без `crypto.randomUUID` — по `http://192.168…` его нет, и создание записи с телефона падало), `health` (1, `/api/ready`), `setup-owner` (2), до этого `role-access` (5), `backup` (4), тест `view=upcoming|overdue`, E2E `role-workspaces`). E2E с несколькими ролями открывает каждую роль в своём контексте Chrome и закрывает его перед следующей. Добавлены: `customer-profile` (8), `booking-quote-revision` (6), `order-documents` (6), `messenger-auth` (6), `messenger-adapters` (4), `share-order` (3, импортирует `src/shareOrder.ts` напрямую — Node 24 снимает типы сам), 4 новых E2E; в `session.test.mjs` обновлена форма `actor` (`memberId`, `authMethod`);
 - `pnpm build` (`tsc --noEmit && vite build`): успешно;
 - 7 реальных Chromium mobile E2E: основной lifecycle, история/передача автомобиля, ручной автомобиль/конструктор каталога, карточка клиента, изменение состава записи, акты и подпись, вход через мессенджер (`tests/e2e/messenger-login.test.mjs`).
 - Запуск с ограничением времени: `node --test --test-timeout=180000 "tests/**/*.test.mjs"`.
@@ -418,7 +418,17 @@ pnpm test:e2e     # только E2E
      - Записи на 2 дня и мастера сохраняются заранее.
 
      Акты (`order_documents`) без сети не выпускаются: содержимое собирает сервер.
-     **Осталось:** этап 4 — новые клиенты и авто без сети.
+     **Этап 4 выполнен 19.10.2026: клиенты и автомобили без сети.**
+     - `id` от телефона для клиента и машины. `checkDuplicatePhone` и `confirmDuplicate`.
+     - `classRules` в пакете, `localVehicleClass` повторяет `getVehiclePricingContext`.
+     - В очереди `dependsOn`: отмена каскадом снимает зависящие изменения. `linkFailedToExisting` — «это тот же клиент», `confirmFailedDuplicate` — «другой человек», с новым ключом.
+
+     Слияния клиентов нет: так требуют правила проекта, и владелец согласовал этот вариант («далее» 19.10).
+     **Оффлайн завершён.** Остающиеся ограничения:
+     - акты без сети не выпускаются;
+     - копия на телефоне не чистится;
+     - браузер без HTTPS не стартует без сервера;
+     - справочник моделей без сети доступен только по сохранённым запросам (ручной ввод работает).
      **Ограничения этапа 1:**
      - копия не чистится: заказы с фото могут занимать десятки мегабайт;
      - браузер без HTTPS не стартует без сервера (нужен service worker);

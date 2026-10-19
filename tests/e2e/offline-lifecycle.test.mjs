@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { chromium } from 'playwright-core';
 import { createDetailFlowServer } from '../../server/app.mjs';
 import { chromePath } from './chrome.mjs';
+import { waitForOfflineCopy } from './offline-helpers.mjs';
 
 async function settle(page) {
   await page.evaluate(() => document.activeElement?.blur());
@@ -44,12 +45,7 @@ test('mobile offline: from "client arrived" to handover without the server, then
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
     await page.getByTestId('bookings-nav').click();
     await page.getByTestId(`booking-card-${booking.id}`).waitFor();
-    await page.waitForFunction(async (bookingId) => {
-      const request = indexedDB.open('detailflow-offline');
-      const db = await new Promise((done) => { request.onsuccess = () => done(request.result); });
-      const keys = await new Promise((done) => { const all = db.transaction('cache').objectStore('cache').getAllKeys(); all.onsuccess = () => done(all.result.map(String)); });
-      return keys.some((key) => key.endsWith(`/api/bookings/${bookingId}`)) && keys.some((key) => key.endsWith('/api/tenants/current/masters'));
-    }, booking.id, { timeout: 10_000 });
+    await waitForOfflineCopy(page, [`/api/bookings/${booking.id}`, '/api/tenants/current/masters', '/api/offline/booking-pack']);
 
     await context.setOffline(true);
     await page.getByTestId(`booking-card-${booking.id}`).click();

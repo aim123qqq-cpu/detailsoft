@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { chromium } from 'playwright-core';
 import { createDetailFlowServer } from '../../server/app.mjs';
 import { chromePath } from './chrome.mjs';
+import { waitForOfflineCopy } from './offline-helpers.mjs';
 
 async function settle(page) {
   await page.evaluate(() => document.activeElement?.blur());
@@ -52,12 +53,7 @@ test('mobile offline: a master works on an order without the server and the chan
     // Online: the master's queue loads and unfinished orders are kept on the phone in the background.
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
     await page.getByTestId(`order-card-${order.id}`).waitFor();
-    await page.waitForFunction(async (bookingId) => {
-      const request = indexedDB.open('detailflow-offline');
-      const db = await new Promise((done) => { request.onsuccess = () => done(request.result); });
-      const keys = await new Promise((done) => { const all = db.transaction('cache').objectStore('cache').getAllKeys(); all.onsuccess = () => done(all.result); });
-      return keys.some((key) => String(key).endsWith(`/api/bookings/${bookingId}`));
-    }, booking.id, { timeout: 10_000 });
+    await waitForOfflineCopy(page, [`/api/orders/${order.id}`, `/api/bookings/${booking.id}`]);
 
     // The server is gone: the order still opens from the phone's copy.
     await context.setOffline(true);

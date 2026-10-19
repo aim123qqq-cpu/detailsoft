@@ -298,7 +298,22 @@ export class DetailFlowRepository {
     if (name.length < 2 || phoneNormalized.length < 7) return { kind: 'invalid' };
     const tenant = this.db.prepare('SELECT id FROM tenants WHERE id = ?').get(tenantId);
     if (!tenant) return { kind: 'tenant_not_found' };
-    const id = `cust_${randomUUID()}`;
+    // A customer made offline is named on the phone and must not silently duplicate a phone
+    // registered meanwhile: the phone asks "same customer?" unless the duplicate is confirmed.
+    const requestedId = clientId(input.id, 'cust');
+    if (requestedId === null) return { kind: 'invalid' };
+    if (requestedId && this.db.prepare('SELECT 1 FROM customers WHERE id = ?').get(requestedId)) {
+      return { kind: 'conflict', code: 'customer_exists', message: 'Клиент с таким номером карточки уже есть' };
+    }
+    if (input.checkDuplicatePhone === true && input.confirmDuplicate !== true) {
+      const existing = this.db.prepare(`SELECT id, name, phone_display FROM customers
+        WHERE tenant_id = ? AND phone_normalized = ? AND archived_at IS NULL ORDER BY created_at LIMIT 3`).all(tenantId, phoneNormalized);
+      if (existing.length) return {
+        kind: 'conflict', code: 'customer_phone_exists', message: `Клиент с этим телефоном уже есть: ${existing[0].name}`,
+        details: { customers: existing.map((row) => ({ id: row.id, name: row.name, phoneDisplay: row.phone_display })) }
+      };
+    }
+    const id = requestedId ?? `cust_${randomUUID()}`;
     this.db.prepare(`INSERT INTO customers
       (id, tenant_id, name, phone_display, phone_normalized)
       VALUES (?, ?, ?, ?, ?)`).run(id, tenantId, name, phoneDisplay, phoneNormalized);
@@ -645,7 +660,10 @@ export class DetailFlowRepository {
       .filter((vehicle) => normalizePlate(vehicle.plate) === plateNormalized);
     if (matches.length) return { kind: 'duplicate', matches };
 
-    const vehicleId = `veh_${randomUUID()}`;
+    const requestedId = clientId(input.id, 'veh');
+    if (requestedId === null) return { kind: 'invalid' };
+    if (requestedId && this.db.prepare('SELECT 1 FROM vehicles WHERE id = ?').get(requestedId)) return { kind: 'invalid' };
+    const vehicleId = requestedId ?? `veh_${randomUUID()}`;
     const linkId = `link_${randomUUID()}`;
     this.db.exec('BEGIN');
     try {
