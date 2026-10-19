@@ -2090,8 +2090,9 @@ export class DetailFlowRepository {
       const insertOperation = this.db.prepare(`INSERT INTO order_work_operations
         (id, tenant_id, order_id, estimate_line_id, source, sequence, name, amount_minor)
         VALUES (?, ?, ?, ?, 'estimate', ?, ?, ?)`);
+      // Derived from the estimate line, so a phone that started work offline knows the ids too.
       lines.forEach((line, index) => insertOperation.run(
-        `work_operation_${randomUUID()}`, tenantId, orderId, line.id, index + 1, line.name, line.amount_minor
+        `work_operation_${line.id}`, tenantId, orderId, line.id, index + 1, line.name, line.amount_minor
       ));
       this.db.prepare(`UPDATE orders SET status = 'IN_PROGRESS' WHERE id = ? AND tenant_id = ?`).run(orderId, tenantId);
       this.insertOrderAudit(tenantId, orderId, 'WORK_STARTED', { masterName: order.master_name });

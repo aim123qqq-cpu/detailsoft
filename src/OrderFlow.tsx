@@ -140,6 +140,15 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId =
       .finally(() => setLoading(false));
   }, [booking.id, orderId]);
 
+  // Changes made offline were just accepted: show the server's version (real photo ids, times).
+  const loadedOrderId = order?.id;
+  useEffect(() => {
+    if (!loadedOrderId) return;
+    const reload = () => { api.getOrder(loadedOrderId).then(setOrder).catch(() => {}); };
+    window.addEventListener('detailflow:synced', reload);
+    return () => window.removeEventListener('detailflow:synced', reload);
+  }, [loadedOrderId]);
+
   // Masters come from the team (active members with the master role), least loaded first.
   const needsMaster = order?.status === 'APPROVED' && !order.assignment;
   useEffect(() => {

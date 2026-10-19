@@ -1,6 +1,13 @@
 import type { AuthProvider, CatalogOperation, LoginRequest, LoginStatus, MessengerProvider } from './types';
 import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogSection, CatalogVariant, CenterRole, CenterSettings, Customer, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, OrderDocument, OrderDocumentContent, OrderDocumentType, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, Permission, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, SimpleServiceInput, TeamMember, TeamRole, Vehicle, VehicleProfile, WorkOrder } from './types';
 
+import { ApiRequestError } from './apiError';
+import { localAddPhoto, localCompleteWork, localSaveIntake, localSetPause, localStartWork, localUpdateOperation } from './offline/orderLocal';
+import { configureSync, enqueue, flush, hasPending, markReachable, readCache, tokenScope, writeCache } from './offline/sync';
+import { randomId } from './platform';
+
+export { ApiRequestError };
+
 const SESSION_KEY = 'detailflow.session';
 const DEMO_CHOICE_KEY = 'detailflow.demo';
 /** Demo tokens stay available in local builds unless VITE_DEMO_AUTH=false. */
@@ -35,41 +42,61 @@ function currentToken() {
   return authSession.token() ?? (demoAuthEnabled ? 'demo-session-token' : null);
 }
 
-/** Keeps the API error code and details so screens can react to specific conflicts. */
-export class ApiRequestError extends Error {
-  readonly status: number;
-  readonly code: string;
-  readonly details: Record<string, unknown>;
-
-  constructor(message: string, status: number, code: string, details: Record<string, unknown> = {}) {
-    super(message);
-    this.name = 'ApiRequestError';
-    this.status = status;
-    this.code = code;
-    this.details = details;
+/** The server could not be reached at all (as opposed to an answer with an error). */
+export class NetworkError extends Error {
+  constructor() {
+    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+    super(offline
+      ? 'Нет подключения к интернету. Данные формы сохранены.'
+      : 'Не удалось связаться с сервером. Данные формы сохранены — повторите запрос.');
+    this.name = 'NetworkError';
   }
 }
 
+function send(path: string, init?: RequestInit) {
+  const token = currentToken();
+  return fetch(path, {
+    ...init,
+    headers: {
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(init?.body ? { 'content-type': 'application/json' } : {}),
+      ...init?.headers
+    }
+  });
+}
+
+configureSync({
+  scope: () => tokenScope(currentToken()),
+  send: (item) => send(item.path, { method: item.method, body: item.body ?? undefined, headers: { 'idempotency-key': item.key } })
+});
+
+// Sign-in polling is live state and is never served from the offline copy.
+const cacheable = (path: string) => !path.startsWith('/api/auth/login-requests');
+const orderPath = (path: string) => /^\/api\/orders\/([^/?]+)$/.exec(path)?.[1] ?? null;
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = init?.method ?? 'GET';
+  // An order with unsent changes is shown from the phone's copy until the queue reaches the server.
+  const pendingOrder = method === 'GET' ? orderPath(path) : null;
+  if (pendingOrder && await hasPending(`order:${pendingOrder}`)) {
+    const local = await readCache<T>(path);
+    if (local !== undefined) { void flush(); return local; }
+  }
   let response: Response;
   try {
-    const token = currentToken();
-    response = await fetch(path, {
-      ...init,
-      headers: {
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-        ...(init?.body ? { 'content-type': 'application/json' } : {}),
-        ...init?.headers
-      }
-    });
+    response = await send(path, init);
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
-    const offline = typeof navigator !== 'undefined' && !navigator.onLine;
-    throw new Error(offline
-      ? 'Нет подключения к интернету. Данные формы сохранены.'
-      : 'Не удалось связаться с сервером. Данные формы сохранены — повторите запрос.');
+    markReachable(false);
+    if (method === 'GET' && cacheable(path)) {
+      const cached = await readCache<T>(path);
+      if (cached !== undefined) return cached;
+    }
+    throw new NetworkError();
   }
+  markReachable(true);
   const payload = await response.json();
+  if (response.ok && method === 'GET' && cacheable(path)) void writeCache(path, payload);
   if (response.status === 401 && !path.startsWith('/api/auth/login-requests')) {
     // An expired or revoked session must lead to the sign-in screen, never silently to demo access.
     if (authSession.token()) authSession.clear();
@@ -80,6 +107,57 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   );
   return payload;
 }
+
+const nowIso = () => new Date().toISOString();
+const ORDERS_LIST = '/api/orders?limit=20';
+const prefetched = new Map<string, number>();
+
+/**
+ * Keeps unfinished orders on the phone so a master can work on them without the server.
+ * Runs in the background after the list loads; each order is refreshed at most every 2 minutes.
+ */
+async function prefetchOrders(items: OrderListItem[]) {
+  const due = items.filter((item) => item.status !== 'CLOSED' && Date.now() - (prefetched.get(item.id) ?? 0) > 120_000).slice(0, 30);
+  for (const item of due) {
+    if (await hasPending(`order:${item.id}`)) continue;
+    prefetched.set(item.id, Date.now());
+    try {
+      const order = await request<WorkOrder>(`/api/orders/${encodeURIComponent(item.id)}`);
+      // The order workspace opens through its booking.
+      if (order.bookingId) await request<Booking>(`/api/bookings/${encodeURIComponent(order.bookingId)}`);
+    } catch { return; }
+  }
+}
+
+/**
+ * An order change that also works without the server: sent directly when possible, otherwise
+ * applied to the phone's copy of the order (same rules as the server) and queued. Queued changes
+ * keep their order, so once anything is waiting every next change waits too.
+ */
+async function orderChange<T>(orderId: string, label: string, method: string, path: string, body: unknown,
+  local: (order: WorkOrder) => { order: WorkOrder; result: T }): Promise<T> {
+  const key = randomId();
+  const init = { method, body: JSON.stringify(body), headers: { 'idempotency-key': key } };
+  if (!(await hasPending())) {
+    try {
+      const result = await request<T>(path, init);
+      if (result && typeof result === 'object' && 'estimateVersions' in result) await writeCache(`/api/orders/${orderId}`, result);
+      return result;
+    } catch (error) {
+      if (!(error instanceof NetworkError)) throw error;
+    }
+  }
+  const cached = await readCache<WorkOrder>(`/api/orders/${orderId}`);
+  if (!cached) throw new Error('Заказ не сохранён на телефоне. Откройте его, когда будет связь с сервером');
+  const { order, result } = local(cached);
+  await writeCache(`/api/orders/${orderId}`, order);
+  const list = await readCache<{ items: OrderListItem[] }>(ORDERS_LIST);
+  if (list) await writeCache(ORDERS_LIST, { ...list, items: list.items.map((item) => item.id === orderId ? { ...item, status: order.status } : item) });
+  await enqueue({ method, path, body: init.body, key, label, entity: `order:${orderId}` });
+  return result;
+}
+
+const orderUrl = (orderId: string, suffix: string) => `/api/orders/${encodeURIComponent(orderId)}${suffix}`;
 
 export const api = {
   getAuthProviders(signal?: AbortSignal) {
@@ -131,8 +209,10 @@ export const api = {
       method: 'PATCH', body: JSON.stringify({ status })
     });
   },
-  listOrders(signal?: AbortSignal) {
-    return request<{ items: OrderListItem[] }>('/api/orders?limit=20', { signal });
+  async listOrders(signal?: AbortSignal) {
+    const result = await request<{ items: OrderListItem[] }>(ORDERS_LIST, { signal });
+    void prefetchOrders(result.items);
+    return result;
   },
   getAnalyticsOverview(from: string, to: string, signal?: AbortSignal) {
     return request<AnalyticsOverview>(`/api/analytics/overview?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, { signal });
@@ -341,14 +421,18 @@ export const api = {
     findings: IntakeFinding[];
     recommendations: OrderRecommendation[];
   }) {
-    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/intake`, {
-      method: 'PUT', body: JSON.stringify(input)
+    return orderChange(orderId, 'Приёмка автомобиля', 'PUT', orderUrl(orderId, '/intake'), input, (order) => {
+      const next = localSaveIntake(order, input, nowIso(), randomId);
+      return { order: next, result: next };
     });
   },
-  uploadOrderPhoto(orderId: string, input: { phase?: 'intake' | 'result'; kind: 'intake' | 'defect'; zone: string; dataUrl: string }) {
-    return request<PhotoAsset>(`/api/orders/${encodeURIComponent(orderId)}/photos`, {
-      method: 'POST', body: JSON.stringify(input)
-    });
+  async uploadOrderPhoto(orderId: string, input: { phase?: 'intake' | 'result'; kind: 'intake' | 'defect'; zone: string; dataUrl: string }) {
+    const photo = await orderChange<PhotoAsset>(orderId, input.phase === 'result' ? 'Фото результата' : 'Фото приёмки', 'POST', orderUrl(orderId, '/photos'), input,
+      (order) => { const local = localAddPhoto(order, input, nowIso(), randomId); return { order: local.order, result: local.photo }; });
+    // Sent directly: keep the phone's copy of the order in step with the new photo.
+    const cached = await readCache<WorkOrder>(`/api/orders/${orderId}`);
+    if (cached && !cached.photos.some((item) => item.id === photo.id)) await writeCache(`/api/orders/${orderId}`, { ...cached, photos: [...cached.photos, photo] });
+    return photo;
   },
   createEstimate(orderId: string, lines: EstimateLineInput[]) {
     return request<EstimateVersion>(`/api/orders/${encodeURIComponent(orderId)}/estimates`, {
@@ -375,28 +459,34 @@ export const api = {
     });
   },
   startWork(orderId: string) {
-    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/work/start`, {
-      method: 'POST', body: JSON.stringify({})
+    return orderChange(orderId, 'Начало работ', 'POST', orderUrl(orderId, '/work/start'), {}, (order) => {
+      const next = localStartWork(order, nowIso());
+      return { order: next, result: next };
     });
   },
   updateWorkOperation(orderId: string, operationId: string, status: 'PENDING' | 'DONE' | 'BLOCKED', note = '') {
-    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/work/operations/${encodeURIComponent(operationId)}`, {
-      method: 'PATCH', body: JSON.stringify({ status, note })
-    });
+    return orderChange(orderId, status === 'DONE' ? 'Операция выполнена' : 'Отметка операции', 'PATCH',
+      orderUrl(orderId, `/work/operations/${encodeURIComponent(operationId)}`), { status, note }, (order) => {
+        const next = localUpdateOperation(order, operationId, status, note, nowIso());
+        return { order: next, result: next };
+      });
   },
   pauseWork(orderId: string, note: string) {
-    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/work/pause`, {
-      method: 'POST', body: JSON.stringify({ note })
+    return orderChange(orderId, 'Пауза работ', 'POST', orderUrl(orderId, '/work/pause'), { note }, (order) => {
+      const next = localSetPause(order, true, note, nowIso());
+      return { order: next, result: next };
     });
   },
   resumeWork(orderId: string) {
-    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/work/resume`, {
-      method: 'POST', body: JSON.stringify({})
+    return orderChange(orderId, 'Возобновление работ', 'POST', orderUrl(orderId, '/work/resume'), {}, (order) => {
+      const next = localSetPause(order, false, '', nowIso());
+      return { order: next, result: next };
     });
   },
   completeWork(orderId: string) {
-    return request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}/work/complete`, {
-      method: 'POST', body: JSON.stringify({})
+    return orderChange(orderId, 'Завершение работ', 'POST', orderUrl(orderId, '/work/complete'), {}, (order) => {
+      const next = localCompleteWork(order, nowIso());
+      return { order: next, result: next };
     });
   },
   submitQualityControl(orderId: string, input: {

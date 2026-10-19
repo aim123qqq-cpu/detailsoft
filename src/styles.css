@@ -27,6 +27,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .connectivity-banner { position: fixed; z-index: 90; top: max(10px, env(safe-area-inset-top)); left: 50%; width: min(calc(100% - 24px), calc(var(--app-width) - 24px)); display: flex; align-items: center; gap: 9px; padding: 11px 13px; border: 1px solid rgba(242,189,102,.45); border-radius: 12px; color: #d7c49e; background: rgba(39,31,20,.97); box-shadow: 0 12px 30px rgba(0,0,0,.38); transform: translateX(-50%); }
 .connectivity-banner strong { flex: 0 0 auto; color: #ffd58a; font-size: 12px; }
 .connectivity-banner span { min-width: 0; font-size: 10px; line-height: 1.35; }
+.connectivity-banner.sync-pending { border-color: rgba(143,166,255,.45); color: #c8d2f5; background: rgba(22,28,44,.97); }
+.connectivity-banner.sync-pending strong { color: #b9c8ff; }
+.connectivity-banner.sync-failed { flex-wrap: wrap; border-color: rgba(255,121,90,.55); color: #f1c7bb; background: rgba(46,22,18,.97); }
+.connectivity-banner.sync-failed strong { color: #ff9d82; }
+.connectivity-banner.sync-failed > span { flex: 1 1 60%; }
+.sync-actions { display: flex; flex: 1 1 100%; gap: 6px; }
+.sync-actions button { flex: 1; min-height: 40px; border: 1px solid rgba(255,157,130,.4); border-radius: 9px; color: #ffd9cd; background: rgba(0,0,0,.25); font-size: 10px; font-weight: 800; cursor: pointer; }
 
 .app-shell { width: min(100%, var(--app-width)); min-height: 100dvh; margin: 0 auto; background: linear-gradient(180deg, rgba(20,28,36,.98), var(--bg) 28%); box-shadow: 0 0 80px #000; position: relative; padding-bottom: 96px; overflow: hidden; }
 .app-header { position: sticky; top: 0; z-index: 20; display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 10px; padding: max(16px, env(safe-area-inset-top)) 18px 14px; background: rgba(11,16,22,.88); backdrop-filter: blur(18px); border-bottom: 1px solid rgba(255,255,255,.06); }

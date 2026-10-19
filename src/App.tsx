@@ -5,6 +5,7 @@ import { visitsLabel } from './format';
 import { NoAccess, SessionInfo } from './session';
 import { ScheduleStep, ServicesStep } from './BookingFlow';
 import { OrderFlow } from './OrderFlow';
+import { SyncBanner } from './SyncBanner';
 import { BookingsWorkspace, OrdersWorkspace } from './WorkspaceScreens';
 import { AnalyticsScreen } from './AnalyticsScreen';
 import { ProfileScreen } from './ProfileScreen';
@@ -332,7 +333,7 @@ export function App() {
     <SessionInfo.Provider value={session}>
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Перейти к содержимому</a>
-      {!online && <div className="connectivity-banner" data-testid="offline-banner" role="status" aria-live="polite"><strong>Нет подключения</strong><span>Можно продолжить ввод — данные формы не пропадут</span></div>}
+      <SyncBanner online={online}/>
       <Header step={step} workspace={workspace} orderTitle={orderHeader} overlayTitle={overlay ? overlay.kind === 'customer' ? 'Карточка клиента' : overlay.kind === 'vehicle' ? 'Карточка автомобиля' : orderHeader : undefined}
         overlayEyebrow={overlay?.kind === 'order' ? 'Рабочий заказ' : undefined} onBack={() => overlay ? closeOverlay() : workspace !== 'new' ? startNewBooking() : profileVehicleId ? setProfileVehicleId(null) : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
       <main id="main-content" tabIndex={-1}>

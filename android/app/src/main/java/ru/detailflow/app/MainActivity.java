@@ -57,11 +57,13 @@ public class MainActivity extends Activity {
     private Uri cameraUri;
     private AlertDialog serverDialog;
     private long lastBackPress;
+    private ShellCache shell;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        shell = new ShellCache(new java.io.File(getFilesDir(), "shell"));
         // Debug builds can be inspected and driven from desktop Chrome / Playwright over adb.
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true);
 
@@ -181,6 +183,15 @@ public class MainActivity extends Activity {
             if (isServerUrl(request.getUrl())) return false;
             openExternal(request.getUrl());
             return true;
+        }
+
+        /** Interface files go through the saved copy so the app starts without the server. */
+        @Override
+        public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+            Uri url = request.getUrl();
+            String path = url.getPath() == null ? "" : url.getPath();
+            if (!"GET".equals(request.getMethod()) || !isServerUrl(url) || path.startsWith("/api/")) return null;
+            return shell.fetch(url);
         }
 
         @Override

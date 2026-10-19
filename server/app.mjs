@@ -6,6 +6,7 @@ import { DetailFlowRepository } from './repository.mjs';
 import { AuthRepository, MESSENGER_PROVIDERS } from './auth-repository.mjs';
 import { createBotDialog } from './messenger/bot-dialog.mjs';
 import { PERMISSIONS } from './roles-repository.mjs';
+import { createIdempotency } from './idempotency.mjs';
 
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -16,7 +17,8 @@ const contentTypes = {
 };
 
 function sendJson(response, status, payload) {
-  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
+  // API data must never come from an HTTP cache: the app keeps its own offline copy.
+  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   response.end(JSON.stringify(payload));
 }
 
@@ -66,6 +68,7 @@ export function createDetailFlowServer({
   const readyProviders = new Set();
   const botDialog = createBotDialog({ auth, adapters });
   const allowLoginRequest = createRateLimiter(20, 60_000);
+  const idempotency = createIdempotency(db);
   for (const adapter of adapters.values()) {
     adapter.start(botDialog)
       .then(() => readyProviders.add(adapter.provider))
@@ -178,6 +181,14 @@ export function createDetailFlowServer({
           : request.method === 'POST' && url.pathname === '/api/bookings/quote-preview' ? capabilities.manageBookings
           : true;
         if (!readAllowed) return sendJson(response, 403, { error: { code: 'forbidden', message: 'Раздел недоступен для вашей роли' } });
+
+        // A retried change (offline queue, lost answer) gets the stored answer instead of running twice.
+        // Booking creation keeps its own key handling.
+        const idempotencyKey = request.headers['idempotency-key'];
+        if (request.method !== 'GET' && typeof idempotencyKey === 'string' && idempotencyKey &&
+          !(request.method === 'POST' && url.pathname === '/api/bookings')) {
+          if (await idempotency({ request, response, tenantId, key: idempotencyKey, pathname: url.pathname }) !== 'proceed') return;
+        }
 
         if (request.method === 'POST' && url.pathname === '/api/auth/logout') {
           return sendJson(response, 200, { revoked: auth.revokeSession(token) });
@@ -887,11 +898,15 @@ export function createDetailFlowServer({
         try {
           const filePath = resolve(staticDir, safePath);
           const body = await readFile(filePath);
-          response.writeHead(200, { 'content-type': contentTypes[extname(filePath)] ?? 'application/octet-stream' });
+          // Hashed build assets never change; index.html is revalidated but kept for offline start.
+          response.writeHead(200, {
+            'content-type': contentTypes[extname(filePath)] ?? 'application/octet-stream',
+            'cache-control': safePath.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'no-cache'
+          });
           return response.end(body);
         } catch {
           const body = await readFile(resolve(staticDir, 'index.html'));
-          response.writeHead(200, { 'content-type': contentTypes['.html'] });
+          response.writeHead(200, { 'content-type': contentTypes['.html'], 'cache-control': 'no-cache' });
           return response.end(body);
         }
       }
