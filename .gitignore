@@ -16,3 +16,7 @@ android/local.properties
 
 .taste-skill/
 site/
+android/keystore.properties
+*.jks
+*.keystore
+*.aab

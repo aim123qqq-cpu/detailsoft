@@ -108,6 +108,17 @@ $env:HOST = "0.0.0.0"; pnpm start
 
 Установка: `adb install -r app-debug.apk` по USB с включённой отладкой или передайте файл на телефон и разрешите установку из этого источника. Сборка debug подписана отладочным ключом и предназначена только для проверки.
 
+Релиз для Google Play подписывается ключом загрузки. Ключ и пароли лежат вне git: `android/keystore.properties` (путь к `.jks`, пароли, `keyAlias`). Файл `.jks` хранится вне проекта, на машине владельца — в `C:\Users\USER\.detailflow\`. Сохраните резервную копию обоих файлов: без них следующую версию не загрузить (ключ загрузки можно сбросить только через поддержку Google Play).
+
+```powershell
+cd android
+$env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
+.\gradlew.bat bundleRelease     # AAB для Google Play: android\app\build\outputs\bundle\release\app-release.aab
+.\gradlew.bat assembleRelease   # подписанный APK: android\app\build\outputs\apk\release\app-release.apk
+```
+
+Перед каждой новой версией увеличьте `versionCode` (и при необходимости `versionName`) в `android/app/build.gradle`. Без `keystore.properties` релиз собирается неподписанным. Картинки для страницы в Google Play — `android/store/` (значок 512×512, обложка 1024×500), их рисует `node scripts/store-assets.mjs`.
+
 Проверка на эмуляторе или телефоне: откройте приложение, подключитесь к серверу и выполните `node tests/android/smoke.mjs`. Скрипт через Playwright управляет настоящим WebView: создаёт запись в демо-центре, проверяет «Сервер» в профиле и системное меню «Поделиться».
 
 ### Резервные копии

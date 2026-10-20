@@ -1,12 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- "D" mark inside the 66dp safe zone of the 108dp adaptive icon. -->
+<!-- The DetailFlow car mark (the same glyph as the app header and the landing), centred in the
+     66dp safe zone of the 108dp adaptive icon. Source: a 24-unit icon scaled 2.5x at (24, 24). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FF7939"
-        android:fillType="evenOdd"
-        android:pathData="M38,34 L53,34 A20,20 0 0 1 53,74 L38,74 Z M46,42 L52,42 A12,12 0 0 1 52,66 L46,66 Z" />
+    <group
+        android:translateX="24"
+        android:translateY="24"
+        android:scaleX="2.5"
+        android:scaleY="2.5">
+        <path
+            android:pathData="M4,15v-4l2,-5h12l2,5v4"
+            android:strokeColor="#FF7939"
+            android:strokeWidth="1.9"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M4,13h16M7,13v2m10,-2v2M6,18h1m10,0h1"
+            android:strokeColor="#FF7939"
+            android:strokeWidth="1.9"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
 </vector>
