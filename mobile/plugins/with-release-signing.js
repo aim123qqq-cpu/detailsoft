@@ -26,8 +26,9 @@ module.exports = function withReleaseSigning(config) {
     if (gradle.includes('dfKeystoreFile')) return mod;
     gradle = gradle.replace(/^android\s*\{/m, (match) => `${HEADER}\n${match}`);
     gradle = gradle.replace(/signingConfigs\s*\{/, (match) => `${match}${UPLOAD}`);
-    gradle = gradle.replace(/(release\s*\{[\s\S]*?)signingConfig signingConfigs\.debug/, '$1signingConfig dfKeystoreFile.exists() ? signingConfigs.upload : signingConfigs.debug');
-    if (!gradle.includes('signingConfigs.upload : signingConfigs.debug')) throw new Error('with-release-signing: the release signing line was not found in app/build.gradle');
+    // DF_UNSIGNED=1 (the cloud build): no signature at all, so the owner signs the result locally with the upload key.
+    gradle = gradle.replace(/(release\s*\{[\s\S]*?)signingConfig signingConfigs\.debug/, "$1signingConfig dfKeystoreFile.exists() ? signingConfigs.upload : (System.getenv('DF_UNSIGNED') ? null : signingConfigs.debug)");
+    if (!gradle.includes('signingConfigs.upload : (System.getenv')) throw new Error('with-release-signing: the release signing line was not found in app/build.gradle');
     mod.modResults.contents = gradle;
     return mod;
   });
