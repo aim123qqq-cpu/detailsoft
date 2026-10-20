@@ -1,7 +1,7 @@
 import { randomUUID } from 'expo-crypto';
 import type {
-  AuthProvider, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, Customer, CustomerProfile, IntakeFinding, LoginRequest, LoginStatus,
-  OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, Vehicle, WorkOrder
+  AuthProvider, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, Customer, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, LoginRequest, LoginStatus,
+  OrderDocument, OrderDocumentContent, OrderDocumentType, OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, Vehicle, WorkOrder
 } from '@df/types';
 
 /** An answer from the server with an error: the message is the server's own, ready for the user. */
@@ -99,6 +99,18 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
       change(orderId, 'PUT', '/intake', input),
     addPhoto: (orderId: string, input: { phase: 'intake' | 'result'; kind: 'intake' | 'defect'; zone: string; dataUrl: string }) =>
       request<PhotoAsset>(`/api/orders/${encodeURIComponent(orderId)}/photos`, { method: 'POST', body: input, headers: { 'idempotency-key': randomUUID() } }),
+    createEstimate: (orderId: string, lines: EstimateLineInput[]) =>
+      request<EstimateVersion>(`/api/orders/${encodeURIComponent(orderId)}/estimates`, { method: 'POST', body: { lines }, headers: { 'idempotency-key': randomUUID() } }),
+    decideEstimate: (orderId: string, input: { estimateVersionId: string; decision: 'APPROVED' | 'REJECTED'; method: 'in_person' | 'phone' | 'messenger'; responsible: string }) =>
+      change(orderId, 'POST', '/estimate-approvals', { ...input, source: 'native_app' }),
+    closeOrder: (orderId: string, input: { responsible: string; note: string; customerAccepted: boolean; completenessChecked: boolean }) =>
+      change(orderId, 'POST', '/handover', input),
+    previewDocument: (orderId: string, type: OrderDocumentType, signal?: AbortSignal) =>
+      request<{ type: OrderDocumentType; content: OrderDocumentContent }>(`/api/orders/${encodeURIComponent(orderId)}/documents/preview?type=${type}`, { signal }),
+    getDocument: (orderId: string, documentId: string, signal?: AbortSignal) =>
+      request<OrderDocument>(`/api/orders/${encodeURIComponent(orderId)}/documents/${encodeURIComponent(documentId)}`, { signal }),
+    issueDocument: (orderId: string, input: { type: OrderDocumentType; signerName?: string; signatureDataUrl?: string }) =>
+      request<OrderDocument>(`/api/orders/${encodeURIComponent(orderId)}/documents`, { method: 'POST', body: input, headers: { 'idempotency-key': randomUUID() } }),
     /** Starts intake: the order of a booking (the server returns the existing one on a repeat). */
     createOrder: (bookingId: string) => request<WorkOrder>('/api/orders', { method: 'POST', body: { bookingId }, headers: { 'idempotency-key': randomUUID() } }),
 

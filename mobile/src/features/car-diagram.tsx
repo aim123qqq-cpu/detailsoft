@@ -29,17 +29,27 @@ export function findingMarks(findings: { zone: string; severity: Severity }[]): 
 
 const SELECTED = 'rgba(255,121,57,.9)';
 
+/** The car in the app (dark, metallic) and on a printed act (light, as in the web act). */
+export const PALETTES = {
+  dark: { shell: '#6f787e', wheel: '#262d32', mirror: '#5a6369', bed: '#2c3439', stroke: '#252d33', glassStroke: '#6f7a82', wheelStroke: '#7a848b',
+    details: 'rgba(20,26,30,.55)', outline: '#cdd2d5', marks: { LOW: SEVERITY.LOW.part, MEDIUM: SEVERITY.MEDIUM.part, HIGH: SEVERITY.HIGH.part } },
+  paper: { shell: '#e7e5df', wheel: '#3a3f43', mirror: '#bfc3c4', bed: '#d5d2cb', stroke: '#6a7075', glassStroke: '#6a7075', wheelStroke: '#6a7075',
+    details: 'rgba(22,25,28,.35)', outline: '#16191c', marks: { LOW: '#f0d27a', MEDIUM: '#f4a26f', HIGH: '#ec7b74' } }
+} as const;
+
 /**
  * Top view of the car with every element numbered (the web diagram drawn with native SVG).
  * With `onSelect` a tap on a panel or its number selects it; without, it is a static picture.
  */
-export function CarDiagram({ layout, marks, selected, onSelect, width = 290 }: {
+export function CarDiagram({ layout, marks, selected, onSelect, width = 290, palette = 'dark' }: {
   layout: CarLayout;
   marks: Marks;
   selected?: string | null;
   onSelect?: (element: LayoutElement) => void;
   width?: number;
+  palette?: keyof typeof PALETTES;
 }) {
+  const tone = PALETTES[palette];
   const id = useId().replace(/[^a-zA-Z0-9]/g, '');
   const drawn = layout.elements.filter((element) => element.d);
   const outside = drawn.filter((element) => element.group === 'wheel' || element.group === 'mirror');
@@ -49,16 +59,16 @@ export function CarDiagram({ layout, marks, selected, onSelect, width = 290 }: {
   const fill = (element: LayoutElement) => {
     if (selected === element.id) return SELECTED;
     const mark = marks.get(element.name);
-    if (mark) return SEVERITY[mark.severity].part;
-    if (element.group === 'glass') return `url(#${id}glass)`;
-    if (element.group === 'wheel') return '#262d32';
-    if (element.group === 'mirror') return '#5a6369';
-    return element.id === 'bed' ? '#2c3439' : `url(#${id}paint)`;
+    if (mark) return tone.marks[mark.severity];
+    if (element.group === 'glass') return palette === 'paper' ? '#c9d3da' : `url(#${id}glass)`;
+    if (element.group === 'wheel') return tone.wheel;
+    if (element.group === 'mirror') return tone.mirror;
+    return element.id === 'bed' ? tone.bed : palette === 'paper' ? '#f1efea' : `url(#${id}paint)`;
   };
   const part = (element: LayoutElement) => {
     const glass = element.group === 'glass' || element.group === 'wheel';
     return <Path key={element.id} d={element.d!} fill={fill(element)} onPress={press(element)}
-      stroke={selected === element.id ? '#ffd2bb' : glass ? (element.group === 'wheel' ? '#7a848b' : '#6f7a82') : '#252d33'}
+      stroke={selected === element.id ? '#ffd2bb' : glass ? (element.group === 'wheel' ? tone.wheelStroke : tone.glassStroke) : tone.stroke}
       strokeWidth={selected === element.id ? 1.4 : 0.8} strokeLinejoin="round"/>;
   };
 
@@ -73,10 +83,10 @@ export function CarDiagram({ layout, marks, selected, onSelect, width = 290 }: {
         <ClipPath id={`${id}clip`}><Path d={layout.outline}/></ClipPath>
       </Defs>
       {outside.map(part)}
-      <Path d={layout.outline} fill="#6f787e"/>
+      <Path d={layout.outline} fill={tone.shell}/>
       <G clipPath={`url(#${id}clip)`}>{panels.map(part)}</G>
-      <Path d={layout.details} fill="none" stroke="rgba(20,26,30,.55)" strokeWidth={0.7} strokeLinecap="round" clipPath={`url(#${id}clip)`}/>
-      <Path d={layout.outline} fill="none" stroke="#cdd2d5" strokeWidth={1.1}/>
+      <Path d={layout.details} fill="none" stroke={tone.details} strokeWidth={0.7} strokeLinecap="round" clipPath={`url(#${id}clip)`}/>
+      <Path d={layout.outline} fill="none" stroke={tone.outline} strokeWidth={1.1}/>
       {drawn.map((element) => {
         const mark = marks.get(element.name);
         const { x, y } = element.label!;

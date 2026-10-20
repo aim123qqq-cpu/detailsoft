@@ -60,6 +60,13 @@ try {
   await tap('Подключиться');
 
   step('sign-in offers the messenger, an access code and the demo');
+  // Just after a cold boot the emulator's network may not be up yet: try again, as a person would.
+  for (let attempt = 0; ; attempt += 1) {
+    const node = await waitFor(/^Вход в DetailFlow$|^По этому адресу сервер DetailFlow не отвечает/, { timeout: 30_000 });
+    if (node.text === 'Вход в DetailFlow' || attempt === 2) break;
+    await sleep(3000);
+    await tap('Подключиться');
+  }
   await waitFor('Вход в DetailFlow');
   screenshot(resolve(out, '02-login.png'));
   await tap('Демо-режим');
@@ -240,6 +247,83 @@ try {
   await sleep(1200);
   screenshot(resolve(out, '20-day.png'));
   await tap('Заказы');
+  await waitFor(/^Все$/);
+
+  step('stage 5: estimate, approval, the signed intake act, handover and the handover act');
+  const order5 = intakeOrder.id;
+  await tap('Заказы');
+  await tapNode(await scrollTo(/А123АА 55, Смета$/));
+  await tapNode(await scrollTo('Составить смету'));
+  await waitFor('Бережная мойка', { timeout: 20_000 });
+  await tapNode(await scrollTo('Например, удаление битума'));
+  await type('Bitum removal');
+  back();
+  await tapNode(await scrollTo(/^0$/));
+  await type('500');
+  back();
+  await tapNode(await scrollTo('Добавить'));
+  await waitFor('добавлено вручную');
+  screenshot(resolve(out, '21-estimate.png'));
+  await tapNode(await scrollTo('Выпустить смету'));
+  await tapNode(await scrollTo('Клиент согласовал', { swipes: 10 }));
+  await waitFor(/^Согласовано лично/, { timeout: 20_000 });
+  let state5 = await (await api(`/api/orders/${order5}`)).json();
+  assert.equal(state5.status, 'APPROVED');
+  assert.equal(state5.estimateVersions[0].totalAmountMinor, 190000, 'wash 1 400 ₽ + own line 500 ₽');
+
+  await tapNode(await scrollTo('Оформить и подписать', { swipes: 12 }));
+  await waitFor('Акт приёмки автомобиля', { timeout: 20_000 });
+  const pad = await scrollTo('Поле для подписи клиента пальцем', { swipes: 12 });
+  const { x1, x2, y1, y2 } = pad.bounds;
+  adb('shell', 'input', 'swipe', String(x1 + 60), String(y2 - 50), String(x2 - 60), String(y1 + 50), '600');
+  await waitFor('Подпись поставлена');
+  screenshot(resolve(out, '22-signature.png'));
+  await tapNode(await scrollTo('Подписать и сохранить'));
+  await waitFor(/^Акт приёмки № /, { timeout: 20_000 }); // the issued act, with its number
+  await scrollTo('Сотрудник центра');
+  screenshot(resolve(out, '23-intake-act.png')); // the signature on the act
+  state5 = await (await api(`/api/orders/${order5}`)).json();
+  const act = state5.documents.find((document) => document.type === 'intake_act');
+  assert.ok(act?.signed, 'the intake act is signed');
+  const full = await (await api(`/api/orders/${order5}/documents/${act.id}`)).json();
+  assert.ok(full.signatureDataUrl.startsWith('data:image/png;base64,iVBORw0KGgo'), 'the signature is a PNG');
+  await tapNode(await scrollTo('PDF — отправить или распечатать'));
+  // The PDF is made on the phone and handed to the system share sheet.
+  await sleep(6000);
+  screenshot(resolve(out, '24-pdf-share.png'));
+  console.log('  share sheet:', find(/./).map((node) => node.text || node.desc).filter(Boolean).slice(0, 12).join(' | '));
+  back(); // close the share sheet
+  await sleep(1200);
+  await tapNode(await scrollTo('Готово'));
+
+  // The master's part was checked in stage 2; here it is done through the API.
+  const [master] = (await (await api('/api/tenants/current/masters')).json()).items;
+  const change5 = (path, method, body) => api(`/api/orders/${order5}${path}`, { method, body: JSON.stringify(body), headers: { 'idempotency-key': `s5-${path}-${Date.now()}` } });
+  await change5('/assignment', 'PUT', { memberId: master.id });
+  await change5('/work/start', 'POST', {});
+  for (const operation of (await (await api(`/api/orders/${order5}`)).json()).work.operations) await change5(`/work/operations/${operation.id}`, 'PATCH', { status: 'DONE', note: '' });
+  await change5('/work/complete', 'POST', {});
+  assert.equal((await (await api(`/api/orders/${order5}`)).json()).status, 'READY');
+
+  back(); // to the list and into the order again: it is ready now
+  await tapNode(await scrollTo(/А123АА 55, Готов к выдаче$/));
+  await tapNode(await scrollTo('Выдать автомобиль', { swipes: 12 }));
+  await tap('Снять результат', { timeout: 20_000 });
+  await shoot();
+  await waitFor('Фото после работ', { timeout: 30_000 });
+  await tap('Клиент осмотрел результат работ');
+  await tap('Комплектность автомобиля проверена');
+  screenshot(resolve(out, '25-handover.png'));
+  await tapNode(await scrollTo('Выдать автомобиль и закрыть заказ'));
+  const shareButton = await scrollTo('Поделиться заказ-нарядом', { swipes: 14 }); // shown once the order is closed
+  assert.equal((await (await api(`/api/orders/${order5}`)).json()).status, 'CLOSED');
+  screenshot(resolve(out, '27-closed.png'));
+  await tapNode(shareButton);
+  await sleep(3000);
+  screenshot(resolve(out, '26-share.png'));
+  back();
+  await sleep(800);
+  back();
   await waitFor(/^Все$/);
 
   step('profile: demo sign-out returns to sign-in');
