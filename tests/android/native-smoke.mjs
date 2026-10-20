@@ -6,7 +6,7 @@ import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createDetailFlowServer } from '../../server/app.mjs';
 import { carLayout } from '../../src/shared/carLayouts.ts';
-import { back, find, launch, screenshot, scrollTo, sleep, tap, tapAt, tapNode, type, waitFor } from './native-ui.mjs';
+import { adb, back, find, launch, screenshot, scrollTo, sleep, tap, tapAt, tapNode, type, waitFor } from './native-ui.mjs';
 
 const PORT = 4180;
 const out = resolve('artifacts/native');
@@ -147,6 +147,99 @@ try {
   assert.equal(finished.status, 'READY', 'the order goes to handover');
   assert.equal(finished.work.operations.every((operation) => operation.status === 'DONE'), true);
   back();
+  await waitFor(/^Все$/);
+
+  step('stage 4: a booking for a known customer by phone');
+  const bookingsOf = async (customerId) => (await (await api('/api/bookings?view=upcoming&limit=50')).json()).items.filter((item) => item.customer.id === customerId);
+  await tap('Новая');
+  await tap('+7 999 000-00-00');
+  await type('79131234567');
+  await waitFor('Алексей Морозов', { timeout: 20_000 });
+  back(); // hide the keyboard
+  await tap(/^В476РЕ 155,/);
+  await waitFor('Бережная мойка', { timeout: 20_000 });
+  adb('shell', 'input', 'swipe', '540', '1500', '540', '900', '400'); // above the price dock
+  await sleep(600);
+  await tap('Бережная мойка');
+  await waitFor(/^[\d ]+ ₽ · /, { timeout: 20_000 }); // the preliminary total in the dock
+  screenshot(resolve(out, '14-services.png'));
+  await tap('Выбрать время');
+  await tap('16:00', { timeout: 20_000 });
+  screenshot(resolve(out, '15-schedule.png'));
+  await tapNode(await scrollTo('Записать на 16:00'));
+  await waitFor('Запись подтверждена', { timeout: 20_000 });
+  screenshot(resolve(out, '16-booked.png'));
+  const [booked] = (await bookingsOf('cust_alexey')).filter((item) => item.startAt.endsWith('T16:00:00+03:00'));
+  assert.ok(booked, 'the booking is on the server at 16:00');
+  await tap('Новая запись');
+
+  step('stage 4: a new customer with a car typed in by hand, then intake right away');
+  await tap('+7 999 000-00-00');
+  await type('79990001122');
+  await waitFor('Клиент не найден', { timeout: 20_000 });
+  await tap('Например, Иван Петров');
+  await type('Ivan Petrov');
+  back();
+  await tap('Создать клиента');
+  await tap('Вручную', { timeout: 20_000 });
+  await tap('Zeekr'); await type('Zeekr');
+  await tap('001'); await type('001');
+  back();
+  await tap('Кроссовер');
+  await tapNode(await scrollTo('А123АА 55'));
+  await type('A777AA 77');
+  back(); // the keyboard covers the colour field
+  await tapNode(await scrollTo('графит')); await type('grey');
+  back();
+  await tapNode(await scrollTo('Сохранить и выбрать услуги'));
+  await waitFor('Бережная мойка', { timeout: 20_000 });
+  adb('shell', 'input', 'swipe', '540', '1500', '540', '900', '400'); // above the price dock
+  await sleep(600);
+  await tap('Бережная мойка');
+  await waitFor(/^[\d ]+ ₽ · /, { timeout: 20_000 });
+  await tap('Выбрать время');
+  await tap('18:00', { timeout: 20_000 });
+  await tapNode(await scrollTo('Записать на 18:00'));
+  await waitFor('Запись подтверждена', { timeout: 20_000 });
+  await tapNode(await scrollTo('Клиент на месте — начать приёмку'));
+  await waitFor('Тип кузова', { timeout: 20_000 });
+  await sleep(600);
+  screenshot(resolve(out, '17-intake-from-booking.png'));
+  const newCustomer = (await (await api('/api/customers?phone=79990001122')).json()).items[0];
+  assert.equal(newCustomer.name, 'Ivan Petrov');
+  assert.equal(newCustomer.vehicles[0].bodyType, 'suv');
+  assert.equal(newCustomer.vehicles[0].plate, 'A777AA 77');
+  const intakeOrders = (await (await api('/api/orders?limit=50')).json()).items.filter((item) => item.vehicle.plate === 'A777AA 77');
+  assert.equal(intakeOrders.length, 1, 'the booking has its order');
+  assert.equal(intakeOrders[0].status, 'INTAKE');
+  back();
+  await waitFor(/^Все$/, { timeout: 20_000 });
+
+  step('stage 4: the schedule, moving and cancelling a booking, the customer card');
+  await tap('Записи');
+  await tap(/^16:00, Алексей Морозов/, { timeout: 20_000 });
+  await tap('Перенести');
+  await waitFor('Новое время');
+  await tapNode(await scrollTo('17:00'));
+  await tapNode(await scrollTo('Перенести запись'));
+  await waitFor('Отменить запись', { timeout: 20_000 });
+  assert.ok((await (await api(`/api/bookings/${booked.id}`)).json()).startAt.endsWith('T17:00:00+03:00'), 'moved to 17:00');
+  screenshot(resolve(out, '18-booking.png'));
+  await tapNode(await scrollTo('Отменить запись'));
+  await waitFor('Отменить запись?');
+  await tapNode(find(/^Отменить запись$/i).at(-1));
+  await waitFor('Отменена', { timeout: 20_000 });
+  assert.equal((await (await api(`/api/bookings/${booked.id}`)).json()).status, 'CANCELLED');
+  for (let swipe = 0; swipe < 3; swipe += 1) adb('shell', 'input', 'swipe', '540', '900', '540', '1900', '300'); // back to the top
+  await tap('Карточка клиента');
+  await waitFor('Автомобили', { timeout: 20_000 });
+  screenshot(resolve(out, '19-customer.png'));
+  back();
+  back();
+  await tap('По дням', { timeout: 20_000 });
+  await sleep(1200);
+  screenshot(resolve(out, '20-day.png'));
+  await tap('Заказы');
   await waitFor(/^Все$/);
 
   step('profile: demo sign-out returns to sign-in');

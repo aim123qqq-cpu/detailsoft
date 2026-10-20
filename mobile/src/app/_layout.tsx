@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { BookingDraftProvider } from '@/lib/booking-draft';
 import { SessionProvider, useSession } from '@/lib/session';
 import { colors, navigationTheme } from '@/lib/theme';
 
@@ -11,7 +12,9 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={navigationTheme}>
       <SessionProvider>
-        <RootNavigator/>
+        <BookingDraftProvider>
+          <RootNavigator/>
+        </BookingDraftProvider>
       </SessionProvider>
       <StatusBar style="light"/>
     </ThemeProvider>
@@ -28,6 +31,7 @@ function RootNavigator() {
     <Stack screenOptions={{ headerStyle: { backgroundColor: colors.ground }, headerTintColor: colors.text, headerShadowVisible: false, contentStyle: { backgroundColor: colors.ground } }}>
       <Stack.Protected guard={state.phase === 'signed-in'}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }}/>
+        <Stack.Screen name="customer/[id]" options={{ title: 'Клиент' }}/>
       </Stack.Protected>
       <Stack.Protected guard={state.phase === 'signed-out'}>
         <Stack.Screen name="login" options={{ headerShown: false }}/>

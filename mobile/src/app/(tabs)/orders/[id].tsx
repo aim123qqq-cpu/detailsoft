@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import { RefreshControl, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { carLayout, findLayoutElement } from '@df/shared/carLayouts';
@@ -18,10 +18,9 @@ export default function OrderScreen() {
   const { api } = useSession();
   const session = useSignedIn();
   const { width } = useWindowDimensions();
-  const { data: order, error, reload, refreshing, replace } = useResource(useCallback((signal: AbortSignal) => api.getOrder(id, signal), [api, id]));
+  const { data: order, error, reload, refresh, refreshing, replace } = useResource(useCallback((signal: AbortSignal) => api.getOrder(id, signal), [api, id]));
   // Back from intake (or another screen): show what changed.
-  const seen = useRef(false);
-  useFocusEffect(useCallback(() => { if (seen.current) reload(); seen.current = true; }, [reload]));
+  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
   const layout = order?.intake ? carLayout(order.intake.bodyType ?? bodyType) : null;
   const marks = findingMarks(order?.intake?.findings ?? []);
 

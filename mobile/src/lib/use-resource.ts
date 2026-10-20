@@ -20,6 +20,8 @@ export function useResource<T>(fetcher: (signal: AbortSignal) => Promise<T>) {
   }, [fetcher, version]);
 
   const reload = useCallback(() => { setRefreshing(true); setVersion((value) => value + 1); }, []);
+  /** Loads again without the pull-to-refresh spinner (a screen coming back into view). */
+  const refresh = useCallback(() => setVersion((value) => value + 1), []);
   // After a change the server answers with the new state: show it without another request.
-  return { data, error, reload, refreshing, replace: setData };
+  return { data, error, reload, refresh, refreshing, replace: setData };
 }

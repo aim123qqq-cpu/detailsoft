@@ -1,5 +1,8 @@
 import { randomUUID } from 'expo-crypto';
-import type { AuthProvider, IntakeFinding, LoginRequest, LoginStatus, OrderListItem, OrderRecommendation, PhotoAsset, SessionContext, WorkOrder } from '@df/types';
+import type {
+  AuthProvider, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, Customer, CustomerProfile, IntakeFinding, LoginRequest, LoginStatus,
+  OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, Vehicle, WorkOrder
+} from '@df/types';
 
 /** An answer from the server with an error: the message is the server's own, ready for the user. */
 export class ApiError extends Error {
@@ -95,7 +98,33 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
     saveIntake: (orderId: string, input: { conditionSummary: string; findings: IntakeFinding[]; recommendations: OrderRecommendation[]; bodyType: string }) =>
       change(orderId, 'PUT', '/intake', input),
     addPhoto: (orderId: string, input: { phase: 'intake' | 'result'; kind: 'intake' | 'defect'; zone: string; dataUrl: string }) =>
-      request<PhotoAsset>(`/api/orders/${encodeURIComponent(orderId)}/photos`, { method: 'POST', body: input, headers: { 'idempotency-key': randomUUID() } })
+      request<PhotoAsset>(`/api/orders/${encodeURIComponent(orderId)}/photos`, { method: 'POST', body: input, headers: { 'idempotency-key': randomUUID() } }),
+    /** Starts intake: the order of a booking (the server returns the existing one on a repeat). */
+    createOrder: (bookingId: string) => request<WorkOrder>('/api/orders', { method: 'POST', body: { bookingId }, headers: { 'idempotency-key': randomUUID() } }),
+
+    listBookings: (view: 'upcoming' | 'overdue', signal?: AbortSignal) => request<{ items: BookingListItem[] }>(`/api/bookings?view=${view}&limit=50`, { signal }),
+    bookingCalendar: (from: string, to: string, signal?: AbortSignal) =>
+      request<{ items: BookingListItem[] }>(`/api/bookings?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=50`, { signal }),
+    getBooking: (bookingId: string, signal?: AbortSignal) => request<Booking>(`/api/bookings/${encodeURIComponent(bookingId)}`, { signal }),
+    updateBooking: (bookingId: string, input: { startAt: string } | { status: 'CANCELLED' | 'NO_SHOW' }) =>
+      request<Booking>(`/api/bookings/${encodeURIComponent(bookingId)}`, { method: 'PATCH', body: input, headers: { 'idempotency-key': randomUUID() } }),
+    availability: (date: string, durationMinutes: number, excludeBookingId?: string, signal?: AbortSignal) =>
+      request<BookingAvailability>(`/api/bookings/availability?date=${encodeURIComponent(date)}&durationMinutes=${durationMinutes}${excludeBookingId ? `&excludeBookingId=${encodeURIComponent(excludeBookingId)}` : ''}`, { signal }),
+    createBooking: (input: { customerId: string; vehicleId: string; channel: string; startAt: string; selections: QuoteSelection[] }, idempotencyKey: string) =>
+      request<Booking>('/api/bookings', { method: 'POST', body: input, headers: { 'idempotency-key': idempotencyKey } }),
+
+    // Archived matches are returned too, so a returning customer is brought back instead of duplicated.
+    searchCustomers: (phone: string, signal?: AbortSignal) => request<{ items: Customer[] }>(`/api/customers?phone=${encodeURIComponent(phone)}&includeArchived=true`, { signal }),
+    searchVehicles: (plate: string, signal?: AbortSignal) => request<{ items: (Vehicle & { customer: Pick<Customer, 'id' | 'name' | 'phoneDisplay'> | null })[] }>(`/api/vehicles?plate=${encodeURIComponent(plate)}`, { signal }),
+    createCustomer: (input: { name: string; phone: string }) => request<Customer>('/api/customers', { method: 'POST', body: input }),
+    customerProfile: (customerId: string, signal?: AbortSignal) => request<CustomerProfile>(`/api/customers/${encodeURIComponent(customerId)}/profile`, { signal }),
+    searchCatalog: (query: string, signal?: AbortSignal) => request<{ items: CatalogVariant[] }>(`/api/vehicle-catalog/variants?q=${encodeURIComponent(query)}`, { signal }),
+    vehicleClasses: (signal?: AbortSignal) => request<{ items: string[] }>('/api/tenants/current/vehicle-classes', { signal }),
+    createVehicle: (input: { customerId: string; catalogVariantId?: string; manual?: { make: string; model: string; generation?: string; bodyType: string }; tenantClass?: string; plateDisplay: string; color: string }) =>
+      request<{ vehicle: Vehicle }>('/api/vehicles', { method: 'POST', body: input }),
+    services: (vehicleId: string, signal?: AbortSignal) => request<ServiceCatalog>(`/api/tenants/current/services?vehicleId=${encodeURIComponent(vehicleId)}`, { signal }),
+    previewQuote: (vehicleId: string, selections: QuoteSelection[], signal?: AbortSignal) =>
+      request<BookingQuote>('/api/bookings/quote-preview', { method: 'POST', body: { vehicleId, selections }, signal })
   };
 }
 

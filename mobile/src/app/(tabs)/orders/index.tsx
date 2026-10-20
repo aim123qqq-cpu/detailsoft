@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import type { OrderListItem } from '@df/types';
 import { money, orderStatuses, shortDate, vehicleName } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
@@ -17,8 +17,10 @@ export default function OrdersScreen() {
   // An order executor without front-desk rights starts on their own queue, as in the web app.
   const [filter, setFilter] = useState<Filter>(isExecutor && !session.capabilities.manageBookings ? 'mine' : 'all');
 
-  const { data, error, reload, refreshing } = useResource(useCallback((signal: AbortSignal) => api.listOrders(signal), [api]));
+  const { data, error, reload, refresh, refreshing } = useResource(useCallback((signal: AbortSignal) => api.listOrders(signal), [api]));
   const items = data?.items ?? null;
+  // Each time the tab comes into view (back from an order, intake, a booking turned into an order): a fresh list.
+  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
   const isMine = useCallback((item: OrderListItem) => session.actor.memberId ? item.masterMemberId === session.actor.memberId : item.masterName === session.actor.displayName, [session]);
   const visible = useMemo(() => (items ?? []).filter((item) =>
