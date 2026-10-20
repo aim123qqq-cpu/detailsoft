@@ -20,5 +20,6 @@ export function useResource<T>(fetcher: (signal: AbortSignal) => Promise<T>) {
   }, [fetcher, version]);
 
   const reload = useCallback(() => { setRefreshing(true); setVersion((value) => value + 1); }, []);
-  return { data, error, reload, refreshing };
+  // After a change the server answers with the new state: show it without another request.
+  return { data, error, reload, refreshing, replace: setData };
 }

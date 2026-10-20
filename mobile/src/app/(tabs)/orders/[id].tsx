@@ -5,6 +5,7 @@ import { findLayoutElement } from '@df/shared/carLayouts';
 import { money, orderStatuses, shortDate } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { useResource } from '@/lib/use-resource';
+import { WorkPanel } from '@/features/work-panel';
 import { colors, space } from '@/lib/theme';
 import { Body, Button, Card, Label, Loading, Notice, Pill, Screen } from '@/ui';
 
@@ -12,11 +13,11 @@ const severity = { LOW: 'лёгкое', MEDIUM: 'среднее', HIGH: 'сил�
 const severityColor = { LOW: '#8f7220', MEDIUM: '#b9561d', HIGH: '#b8302a' } as const;
 const approvalMethod = { in_person: 'лично', phone: 'по телефону', messenger: 'в мессенджере' } as const;
 
-/** Order summary. Actions (work, intake, estimate, handover) arrive in the next stages of the native app. */
+/** An order: the master's work panel while it is in work, then intake, estimate, handover and documents. */
 export default function OrderScreen() {
   const { id, title, subtitle } = useLocalSearchParams<{ id: string; title?: string; subtitle?: string }>();
   const { api } = useSession();
-  const { data: order, error, reload, refreshing } = useResource(useCallback((signal: AbortSignal) => api.getOrder(id, signal), [api, id]));
+  const { data: order, error, reload, refreshing, replace } = useResource(useCallback((signal: AbortSignal) => api.getOrder(id, signal), [api, id]));
 
   if (!order && !error) return <Loading label="Загружаем заказ…"/>;
   if (!order) return <Screen><Notice>{error}</Notice><Button title="Повторить" tone="secondary" onPress={reload}/></Screen>;
@@ -32,6 +33,8 @@ export default function OrderScreen() {
       <Stack.Screen options={{ title: title || 'Заказ' }}/>
       {subtitle ? <Body muted>{subtitle}</Body> : null}
       <View style={styles.row}><Pill label={status.label} tone={status.group === 'ready' ? 'ok' : status.group === 'closed' ? 'neutral' : 'accent'}/><Text style={styles.meta}>Открыт {shortDate(order.createdAt)}</Text></View>
+
+      {(order.status === 'APPROVED' || order.status === 'IN_PROGRESS') && <WorkPanel order={order} onChanged={replace}/>}
 
       <Card>
         <Label>Приёмка</Label>
@@ -57,7 +60,7 @@ export default function OrderScreen() {
         {order.approval ? <Body muted>{order.approval.decision === 'APPROVED' ? 'Согласовано' : 'Отклонено'} {approvalMethod[order.approval.method]} · {order.approval.responsible}</Body> : <Body muted>Ждёт решения клиента.</Body>}
       </Card>}
 
-      {(order.assignment || order.work) && <Card>
+      {order.status !== 'APPROVED' && order.status !== 'IN_PROGRESS' && (order.assignment || order.work) && <Card>
         <Label>Работы</Label>
         {order.assignment ? <Body>Мастер: {order.assignment.masterName}</Body> : null}
         {order.work ? <>
@@ -73,7 +76,7 @@ export default function OrderScreen() {
         {order.documents.map((document) => <Body key={document.id}>{document.type === 'intake_act' ? 'Акт приёмки' : 'Акт выдачи'} {document.number}{document.signed ? ' · подписан' : ''}</Body>)}
       </Card>}
 
-      <Notice tone="info">Действия по заказу (приёмка, работы, смета, выдача) появятся в следующих версиях нативного приложения. Пока они в веб-версии.</Notice>
+      <Notice tone="info">Приёмка, смета и выдача появятся в следующих версиях нативного приложения. Пока они в веб-версии.</Notice>
     </Screen>
   );
 }

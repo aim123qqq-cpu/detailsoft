@@ -42,6 +42,12 @@ export async function tap(matcher, options) {
   return node;
 }
 
+/** Taps an element already found (e.g. the last of several with the same text: a dialog's button). */
+export async function tapNode(node) {
+  adb('shell', 'input', 'tap', String(node.x), String(node.y));
+  await sleep(400);
+}
+
 /** Types into the focused field; adb input needs spaces escaped and works for ASCII. */
 export async function type(text) {
   adb('shell', 'input', 'text', text.replace(/ /g, '%s'));

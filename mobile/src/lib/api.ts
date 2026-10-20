@@ -1,3 +1,4 @@
+import { randomUUID } from 'expo-crypto';
 import type { AuthProvider, LoginRequest, LoginStatus, OrderListItem, SessionContext, WorkOrder } from '@df/types';
 
 /** An answer from the server with an error: the message is the server's own, ready for the user. */
@@ -60,6 +61,10 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
     return payload as T;
   }
 
+  // Every change carries its own idempotency key, as in the web app: a retry never applies it twice.
+  const change = (orderId: string, method: string, path: string, body: unknown) =>
+    request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}${path}`, { method, body, headers: { 'idempotency-key': randomUUID() } });
+
   return {
     authProviders: (signal?: AbortSignal) => request<{ items: AuthProvider[]; demo: boolean }>('/api/auth/providers', { signal }),
     createLoginRequest: (provider: AuthProvider['provider']) => request<LoginRequest>('/api/auth/login-requests', { method: 'POST', body: { provider } }),
@@ -73,7 +78,15 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
     logout: () => request<{ revoked: boolean }>('/api/auth/logout', { method: 'POST', body: {} }),
     deleteAccount: () => request<{ deleted: true }>('/api/me', { method: 'DELETE' }),
     listOrders: (signal?: AbortSignal) => request<{ items: OrderListItem[] }>('/api/orders?limit=50', { signal }),
-    getOrder: (orderId: string, signal?: AbortSignal) => request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}`, { signal })
+    getOrder: (orderId: string, signal?: AbortSignal) => request<WorkOrder>(`/api/orders/${encodeURIComponent(orderId)}`, { signal }),
+    listMasters: (signal?: AbortSignal) => request<{ items: { id: string; displayName: string; activeOrders: number }[] }>('/api/tenants/current/masters', { signal }),
+    assignMaster: (orderId: string, memberId: string) => change(orderId, 'PUT', '/assignment', { memberId }),
+    startWork: (orderId: string) => change(orderId, 'POST', '/work/start', {}),
+    updateOperation: (orderId: string, operationId: string, status: 'PENDING' | 'DONE' | 'BLOCKED', note = '') =>
+      change(orderId, 'PATCH', `/work/operations/${encodeURIComponent(operationId)}`, { status, note }),
+    pauseWork: (orderId: string, note: string) => change(orderId, 'POST', '/work/pause', { note }),
+    resumeWork: (orderId: string) => change(orderId, 'POST', '/work/resume', {}),
+    completeWork: (orderId: string) => change(orderId, 'POST', '/work/complete', {})
   };
 }
 
