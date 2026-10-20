@@ -1,5 +1,5 @@
 import { randomUUID } from 'expo-crypto';
-import type { AuthProvider, LoginRequest, LoginStatus, OrderListItem, SessionContext, WorkOrder } from '@df/types';
+import type { AuthProvider, IntakeFinding, LoginRequest, LoginStatus, OrderListItem, OrderRecommendation, PhotoAsset, SessionContext, WorkOrder } from '@df/types';
 
 /** An answer from the server with an error: the message is the server's own, ready for the user. */
 export class ApiError extends Error {
@@ -24,11 +24,16 @@ export function normalizeServerUrl(input: string) {
 
 /** True when a DetailFlow server answers at this address. */
 export async function probeServer(url: string) {
+  // An address that swallows packets would otherwise keep the button spinning forever.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
   try {
-    const response = await fetch(`${url}/api/ready`, { headers: { accept: 'application/json' } });
+    const response = await fetch(`${url}/api/ready`, { headers: { accept: 'application/json' }, signal: controller.signal });
     return response.ok;
   } catch {
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -86,7 +91,11 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
       change(orderId, 'PATCH', `/work/operations/${encodeURIComponent(operationId)}`, { status, note }),
     pauseWork: (orderId: string, note: string) => change(orderId, 'POST', '/work/pause', { note }),
     resumeWork: (orderId: string) => change(orderId, 'POST', '/work/resume', {}),
-    completeWork: (orderId: string) => change(orderId, 'POST', '/work/complete', {})
+    completeWork: (orderId: string) => change(orderId, 'POST', '/work/complete', {}),
+    saveIntake: (orderId: string, input: { conditionSummary: string; findings: IntakeFinding[]; recommendations: OrderRecommendation[]; bodyType: string }) =>
+      change(orderId, 'PUT', '/intake', input),
+    addPhoto: (orderId: string, input: { phase: 'intake' | 'result'; kind: 'intake' | 'defect'; zone: string; dataUrl: string }) =>
+      request<PhotoAsset>(`/api/orders/${encodeURIComponent(orderId)}/photos`, { method: 'POST', body: input, headers: { 'idempotency-key': randomUUID() } })
   };
 }
 

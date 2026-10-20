@@ -1,23 +1,29 @@
-import { useCallback } from 'react';
-import { RefreshControl, StyleSheet, Text, View } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
-import { findLayoutElement } from '@df/shared/carLayouts';
+import { useCallback, useRef } from 'react';
+import { RefreshControl, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { carLayout, findLayoutElement } from '@df/shared/carLayouts';
 import { money, orderStatuses, shortDate } from '@/lib/format';
-import { useSession } from '@/lib/session';
+import { useSession, useSignedIn } from '@/lib/session';
 import { useResource } from '@/lib/use-resource';
 import { WorkPanel } from '@/features/work-panel';
+import { CarDiagram, SEVERITY, findingMarks } from '@/features/car-diagram';
 import { colors, space } from '@/lib/theme';
 import { Body, Button, Card, Label, Loading, Notice, Pill, Screen } from '@/ui';
 
-const severity = { LOW: 'лёгкое', MEDIUM: 'среднее', HIGH: 'сильное' } as const;
-const severityColor = { LOW: '#8f7220', MEDIUM: '#b9561d', HIGH: '#b8302a' } as const;
 const approvalMethod = { in_person: 'лично', phone: 'по телефону', messenger: 'в мессенджере' } as const;
 
 /** An order: the master's work panel while it is in work, then intake, estimate, handover and documents. */
 export default function OrderScreen() {
-  const { id, title, subtitle } = useLocalSearchParams<{ id: string; title?: string; subtitle?: string }>();
+  const { id, title, subtitle, bodyType } = useLocalSearchParams<{ id: string; title?: string; subtitle?: string; bodyType?: string }>();
   const { api } = useSession();
+  const session = useSignedIn();
+  const { width } = useWindowDimensions();
   const { data: order, error, reload, refreshing, replace } = useResource(useCallback((signal: AbortSignal) => api.getOrder(id, signal), [api, id]));
+  // Back from intake (or another screen): show what changed.
+  const seen = useRef(false);
+  useFocusEffect(useCallback(() => { if (seen.current) reload(); seen.current = true; }, [reload]));
+  const layout = order?.intake ? carLayout(order.intake.bodyType ?? bodyType) : null;
+  const marks = findingMarks(order?.intake?.findings ?? []);
 
   if (!order && !error) return <Loading label="Загружаем заказ…"/>;
   if (!order) return <Screen><Notice>{error}</Notice><Button title="Повторить" tone="secondary" onPress={reload}/></Screen>;
@@ -26,6 +32,9 @@ export default function OrderScreen() {
   const operations = order.work?.operations ?? [];
   const done = operations.filter((operation) => operation.status === 'DONE').length;
   const status = orderStatuses[order.status];
+  // Intake can be done or corrected until an estimate is issued.
+  const canIntake = session.capabilities.manageIntake && (order.status === 'INTAKE' || (order.status === 'ESTIMATE_DRAFT' && !order.estimateVersions.length));
+  const openIntake = () => router.push({ pathname: '/orders/intake/[id]', params: { id: order.id, title: title ?? '', bodyType: bodyType ?? '' } });
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.primary} colors={[colors.primary]} progressBackgroundColor={colors.surface}
@@ -40,17 +49,19 @@ export default function OrderScreen() {
         <Label>Приёмка</Label>
         {order.intake ? <>
           <Body>{order.intake.conditionSummary}</Body>
+          {layout && order.intake.findings.length ? <View style={styles.diagram}><CarDiagram layout={layout} marks={marks} width={Math.min(width - 96, 220)}/></View> : null}
           {order.intake.findings.length ? order.intake.findings.map((finding, index) => {
             const number = findLayoutElement(order.intake?.bodyType, finding.zone)?.number;
             return (
               <View key={`${finding.zone}-${index}`} style={styles.finding}>
-                <View style={[styles.badge, { backgroundColor: severityColor[finding.severity] }]}><Text style={styles.badgeText}>{number ?? '•'}</Text></View>
-                <View style={{ flex: 1 }}><Text style={styles.findingTitle}>{finding.zone}</Text><Text style={styles.meta}>{severity[finding.severity]} — {finding.note}</Text></View>
+                <View style={[styles.badge, { backgroundColor: SEVERITY[finding.severity].badge }]}><Text style={styles.badgeText}>{number ?? '•'}</Text></View>
+                <View style={{ flex: 1 }}><Text style={styles.findingTitle}>{finding.zone}</Text><Text style={styles.meta}>{SEVERITY[finding.severity].label} · {finding.note}</Text></View>
               </View>
             );
           }) : <Body muted>Повреждений не выявлено.</Body>}
           {order.photos.some((photo) => photo.phase === 'intake') ? <Body muted>Фото при приёмке: {order.photos.filter((photo) => photo.phase === 'intake').length}</Body> : null}
         </> : <Body muted>Приёмка ещё не проведена.</Body>}
+        {canIntake && <Button title={order.intake ? 'Изменить приёмку' : 'Провести приёмку'} tone={order.intake ? 'secondary' : 'primary'} onPress={openIntake}/>}
       </Card>
 
       {estimate && <Card>
@@ -76,12 +87,13 @@ export default function OrderScreen() {
         {order.documents.map((document) => <Body key={document.id}>{document.type === 'intake_act' ? 'Акт приёмки' : 'Акт выдачи'} {document.number}{document.signed ? ' · подписан' : ''}</Body>)}
       </Card>}
 
-      <Notice tone="info">Приёмка, смета и выдача появятся в следующих версиях нативного приложения. Пока они в веб-версии.</Notice>
+      {order.status !== 'CLOSED' && <Notice tone="info">Смета, согласование и выдача появятся в следующих версиях нативного приложения. Пока они в веб-версии.</Notice>}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  diagram: { alignItems: 'center', paddingVertical: space.s },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.m },
   meta: { color: colors.muted, fontSize: 14, lineHeight: 20 },
   finding: { flexDirection: 'row', gap: space.m, alignItems: 'flex-start', paddingVertical: 4 },

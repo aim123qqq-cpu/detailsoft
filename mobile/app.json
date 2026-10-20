@@ -2,7 +2,7 @@
   "expo": {
     "name": "DetailFlow",
     "slug": "detailflow",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "detailflow",
@@ -14,7 +14,7 @@
     },
     "android": {
       "package": "ru.detailflow.app",
-      "versionCode": 4,
+      "versionCode": 5,
       "adaptiveIcon": {
         "backgroundColor": "#0b1016",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -34,6 +34,14 @@
         }
       ],
       "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "DetailFlow снимает автомобиль при приёмке и фото повреждений.",
+          "photosPermission": "DetailFlow прикладывает фото из галереи к приёмке автомобиля.",
+          "microphonePermission": false
+        }
+      ],
       "./plugins/with-release-signing.js",
       "./plugins/with-cleartext-traffic.js"
     ],

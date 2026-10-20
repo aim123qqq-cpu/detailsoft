@@ -59,7 +59,7 @@ function OrderRow({ item, mine }: { item: OrderListItem; mine: boolean }) {
   const status = orderStatuses[item.status];
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`${vehicleName(item.vehicle)}, ${item.vehicle.plate}, ${status.label}`}
-      onPress={() => router.push({ pathname: '/orders/[id]', params: { id: item.id, title: item.vehicle.plate, subtitle: `${vehicleName(item.vehicle)} · ${item.customer.name}` } })}
+      onPress={() => router.push({ pathname: '/orders/[id]', params: { id: item.id, title: item.vehicle.plate, bodyType: item.vehicle.bodyType ?? '', subtitle: `${vehicleName(item.vehicle)} · ${item.customer.name}` } })}
       android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.row} testID={`order-${item.id}`}>
       <View style={styles.rowTop}>
         <Text style={styles.plate}>{item.vehicle.plate}</Text>

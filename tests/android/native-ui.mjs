@@ -10,9 +10,9 @@ const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 /** The screen's hierarchy; empty while uiautomator cannot read it (start-up, an animation in progress). */
 export function dump() {
   try {
-    adb('shell', 'rm', '-f', '/sdcard/df-ui.xml');
-    adb('shell', 'uiautomator', 'dump', '/sdcard/df-ui.xml');
-    return adb('shell', 'cat', '/sdcard/df-ui.xml').toString('utf8');
+    adb('shell', 'rm', '-f', '/data/local/tmp/df-ui.xml');
+    adb('shell', 'uiautomator', 'dump', '/data/local/tmp/df-ui.xml');
+    return adb('shell', 'cat', '/data/local/tmp/df-ui.xml').toString('utf8');
   } catch {
     return '';
   }
@@ -25,7 +25,7 @@ export function find(matcher, xml = dump()) {
   const nodes = [...xml.matchAll(/<node [^>]*>/g)].map(([tag]) => {
     const attr = (name) => decode(tag.match(new RegExp(`${name}="([^"]*)"`))?.[1] ?? '');
     const [x1, y1, x2, y2] = attr('bounds').match(/\d+/g)?.map(Number) ?? [0, 0, 0, 0];
-    return { text: attr('text'), desc: attr('content-desc'), id: attr('resource-id'), x: Math.round((x1 + x2) / 2), y: Math.round((y1 + y2) / 2), enabled: attr('enabled') === 'true' };
+    return { text: attr('text'), desc: attr('content-desc'), id: attr('resource-id'), x: Math.round((x1 + x2) / 2), y: Math.round((y1 + y2) / 2), bounds: { x1, y1, x2, y2 }, enabled: attr('enabled') === 'true' };
   });
   const test = (value) => typeof matcher === 'string' ? value === matcher : matcher.test(value);
   return nodes.filter((node) => test(node.text) || test(node.desc) || test(node.id));
@@ -61,7 +61,11 @@ export async function scrollTo(matcher, { swipes = 8 } = {}) {
 
 /** Taps an element already found (e.g. the last of several with the same text: a dialog's button). */
 export async function tapNode(node) {
-  adb('shell', 'input', 'tap', String(node.x), String(node.y));
+  await tapAt(node.x, node.y);
+}
+
+export async function tapAt(x, y) {
+  adb('shell', 'input', 'tap', String(Math.round(x)), String(Math.round(y)));
   await sleep(400);
 }
 

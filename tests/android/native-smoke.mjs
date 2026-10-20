@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createDetailFlowServer } from '../../server/app.mjs';
-import { back, find, launch, screenshot, scrollTo, sleep, tap, tapNode, type, waitFor } from './native-ui.mjs';
+import { carLayout } from '../../src/shared/carLayouts.ts';
+import { back, find, launch, screenshot, scrollTo, sleep, tap, tapAt, tapNode, type, waitFor } from './native-ui.mjs';
 
 const PORT = 4180;
 const out = resolve('artifacts/native');
@@ -14,6 +15,22 @@ const server = createDetailFlowServer({ databasePath: ':memory:', seed: true, st
 await new Promise((done) => server.listen(PORT, '0.0.0.0', done));
 const api = (path, init = {}) => fetch(`http://127.0.0.1:${PORT}${path}`, { ...init, headers: { authorization: 'Bearer demo-session-token', 'content-type': 'application/json', ...init.headers } });
 const step = (name) => console.log(`· ${name}`);
+
+async function newOrder(vehicleId, hour) {
+  const booking = await (await api('/api/bookings', { method: 'POST', headers: { 'idempotency-key': `native-smoke-${vehicleId}-${Date.now()}` }, body: JSON.stringify({
+    customerId: 'cust_alexey', vehicleId, channel: 'in_person', startAt: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10) + `T${hour}:00:00+03:00`, selections: [{ type: 'service', id: 'service_wash' }]
+  }) })).json();
+  return (await api('/api/orders', { method: 'POST', body: JSON.stringify({ bookingId: booking.id }) })).json();
+}
+
+/** Takes a picture with the emulator's camera app (asks for the permission the first time). */
+async function shoot() {
+  const first = await waitFor(/^Shutter$|^While using the app$|^При использовании приложения$/, { timeout: 20_000 });
+  if (first.desc !== 'Shutter') await tapNode(first);
+  await sleep(1500);
+  await tap('Shutter', { timeout: 20_000 });
+  await tap('Done', { timeout: 20_000 });
+}
 
 // An approved order waiting for a master (the same steps as the server tests).
 async function approvedOrder() {
@@ -32,6 +49,7 @@ async function approvedOrder() {
 
 try {
   const workOrderId = await approvedOrder();
+  const intakeOrder = await newOrder('veh_mazda', 15);
 
   step('first launch asks for the server');
   await launch('ru.detailflow.app', { clear: true });
@@ -62,6 +80,46 @@ try {
     back();
     await waitFor(/^Все$/);
   }
+
+  step('stage 3: intake on the diagram, findings, photos from the camera');
+  await tap(/Приёмка$/);
+  await tap('Провести приёмку');
+  await waitFor('Тип кузова');
+  await tap('Кроссовер');
+  await sleep(600);
+  const [diagram] = find('Схема автомобиля, вид сверху');
+  const scale = (diagram.bounds.x2 - diagram.bounds.x1) / 200;
+  const hood = carLayout('suv').elements.find((element) => element.id === 'hood');
+  await tapAt(diagram.bounds.x1 + hood.label.x * scale, diagram.bounds.y1 + hood.label.y * scale);
+  await waitFor('Капот');
+  await tap('Скол ЛКП');
+  await tap('Сильное');
+  await tap('Фото');
+  await shoot();
+  await waitFor('Фото: Капот', { timeout: 30_000 });
+  screenshot(resolve(out, '11-element.png'));
+  await tap('Добавить замечание');
+  await tapNode(await scrollTo('Передние сиденья'));
+  await tap('Пятно');
+  await tap('Добавить замечание');
+  await tapNode(await scrollTo('Снять общий вид'));
+  await shoot();
+  await waitFor('2 из 19', { timeout: 30_000 });
+  screenshot(resolve(out, '12-intake.png'));
+  await tapNode(await scrollTo('Сохранить приёмку'));
+  await waitFor(/^Смета$/, { timeout: 20_000 });
+  await scrollTo('Изменить приёмку');
+  await sleep(800);
+  screenshot(resolve(out, '13-intake-saved.png'));
+  const inspected = await (await api(`/api/orders/${intakeOrder.id}`)).json();
+  assert.equal(inspected.status, 'ESTIMATE_DRAFT');
+  assert.equal(inspected.intake.bodyType, 'suv');
+  assert.deepEqual(inspected.intake.findings.map(({ zone, severity, note }) => [zone, severity, note]).sort(),
+    [['Капот', 'HIGH', 'Скол ЛКП'], ['Передние сиденья', 'MEDIUM', 'Пятно']]);
+  assert.deepEqual(inspected.photos.map((photo) => photo.zone).sort(), ['Капот', 'Общий вид']);
+  assert.ok(inspected.photos.every((photo) => photo.dataUrl.startsWith('data:image/jpeg;base64,')));
+  back();
+  await waitFor(/^Все$/);
 
   step('stage 2: assign a master, start, tick, pause, resume, complete');
   await tap(/Согласован$/);
