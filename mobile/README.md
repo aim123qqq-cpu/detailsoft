@@ -16,6 +16,10 @@ node scripts/build-mobile.mjs aab   # artifacts\DetailFlow-<версия>.aab д
 
 Нужны JDK из Android Studio и Android SDK (пути по умолчанию; можно задать `JAVA_HOME`, `ANDROID_HOME`, `DF_BUILD_DIR`).
 
+Один раз на машине: включить длинные пути Windows (`LongPathsEnabled = 1`, от администратора, затем перезагрузка) и поставить CMake 3.31.6 из Android SDK (`sdkmanager "cmake;3.31.6"`): в нём ninja 1.12, который работает с длинными путями. Скрипт сам указывает Gradle этот CMake.
+
+Без этого (или на другой машине) приложение собирает GitHub Actions — workflow «Mobile» выкладывает неподписанные APK и AAB в предварительный релиз `mobile-ci`, а `node scripts/sign-mobile.mjs` подписывает их ключом загрузки локально.
+
 Подпись — ключ загрузки из `android/keystore.properties` в корне репозитория (`plugins/with-release-signing.js`), тот же, что у WebView-оболочки: нативная версия ставится поверх неё как обновление.
 
 ## Проверка

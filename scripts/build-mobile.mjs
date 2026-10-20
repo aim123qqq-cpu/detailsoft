@@ -3,7 +3,8 @@
 //   node scripts/build-mobile.mjs [apk|aab] [--abis arm64-v8a,x86_64]
 // The result is copied to artifacts/: DetailFlow-<version>.apk or .aab.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const kind = process.argv[2] === 'aab' ? 'aab' : 'apk';
@@ -31,8 +32,19 @@ mirror(resolve(root, 'src', 'shared'), `${work}\\src\\shared`);
 mkdirSync(`${work}\\src`, { recursive: true });
 copyFileSync(resolve(root, 'src', 'types.ts'), `${work}\\src\\types.ts`);
 
-if (!existsSync(`${work}\\mobile\\node_modules`)) run('npm', ['ci', '--no-audit', '--no-fund'], `${work}\\mobile`);
+// Dependencies are reinstalled whenever package-lock.json changes (a new Expo module, an update).
+const lock = createHash('sha256').update(readFileSync(resolve(root, 'mobile', 'package-lock.json'))).digest('hex');
+const lockMark = `${work}\\mobile\\node_modules\\.df-lock`;
+if (!existsSync(lockMark) || readFileSync(lockMark, 'utf8') !== lock) {
+  run('npm', ['ci', '--no-audit', '--no-fund'], `${work}\\mobile`);
+  writeFileSync(lockMark, lock);
+}
 run('npx', ['expo', 'prebuild', '--platform', 'android', '--clean', '--no-install'], `${work}\\mobile`);
+// The SDK's CMake 3.31.6 ships ninja 1.12, which handles long Windows paths (with LongPathsEnabled);
+// the default 3.22 does not. Install it once: sdkmanager "cmake;3.31.6".
+const cmake = resolve(env.ANDROID_HOME, 'cmake', '3.31.6');
+const slash = (path) => path.replace(/\\/g, '/');
+writeFileSync(`${work}\\mobile\\android\\local.properties`, `sdk.dir=${slash(env.ANDROID_HOME)}\n${existsSync(cmake) ? `cmake.dir=${slash(cmake)}\n` : ''}`);
 run(`${work}\\mobile\\android\\gradlew.bat`, ['--console=plain', kind === 'aab' ? 'bundleRelease' : 'assembleRelease', `-PreactNativeArchitectures=${abis}`], `${work}\\mobile\\android`);
 
 const version = JSON.parse(readFileSync(resolve(root, 'mobile', 'app.json'), 'utf8')).expo.version;

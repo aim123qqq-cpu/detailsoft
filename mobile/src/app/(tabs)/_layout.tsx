@@ -7,7 +7,7 @@ export const unstable_settings = { initialRouteName: 'orders' };
 export default function TabsLayout() {
   return (
     <NativeTabs backgroundColor={colors.ground} tintColor={colors.primary} iconColor={{ default: colors.muted, selected: colors.primary }}
-      labelStyle={{ default: { color: colors.muted }, selected: { color: colors.primary } }} indicatorColor="rgba(255,121,57,.16)">
+      labelStyle={{ default: { color: colors.muted }, selected: { color: colors.primary } }} indicatorColor="rgba(255,121,57,.16)" labelVisibilityMode="labeled">
       <NativeTabs.Trigger name="analytics">
         <NativeTabs.Trigger.Icon sf="chart.bar" md="bar_chart"/>
         <NativeTabs.Trigger.Label>Статистика</NativeTabs.Trigger.Label>

@@ -7,9 +7,15 @@ const ADB = process.env.ADB ?? `${process.env.LOCALAPPDATA}\\Android\\Sdk\\platf
 export const adb = (...args) => execFileSync(ADB, args, { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 });
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
+/** The screen's hierarchy; empty while uiautomator cannot read it (start-up, an animation in progress). */
 export function dump() {
-  adb('shell', 'uiautomator', 'dump', '/sdcard/df-ui.xml');
-  return adb('shell', 'cat', '/sdcard/df-ui.xml').toString('utf8');
+  try {
+    adb('shell', 'rm', '-f', '/sdcard/df-ui.xml');
+    adb('shell', 'uiautomator', 'dump', '/sdcard/df-ui.xml');
+    return adb('shell', 'cat', '/sdcard/df-ui.xml').toString('utf8');
+  } catch {
+    return '';
+  }
 }
 
 const decode = (value) => value.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#10;/g, '\n');
@@ -40,6 +46,17 @@ export async function tap(matcher, options) {
   adb('shell', 'input', 'tap', String(node.x), String(node.y));
   await sleep(400);
   return node;
+}
+
+/** Scrolls the screen up until the element shows (uiautomator only sees what is on screen). */
+export async function scrollTo(matcher, { swipes = 8 } = {}) {
+  for (let attempt = 0; attempt <= swipes; attempt += 1) {
+    const [node] = find(matcher);
+    if (node) return node;
+    adb('shell', 'input', 'swipe', '540', '1800', '540', '900', '350');
+    await sleep(600);
+  }
+  throw new Error(`Not found after scrolling: ${matcher}`);
 }
 
 /** Taps an element already found (e.g. the last of several with the same text: a dialog's button). */

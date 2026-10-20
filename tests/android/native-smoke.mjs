@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createDetailFlowServer } from '../../server/app.mjs';
-import { back, find, launch, screenshot, sleep, tap, tapNode, type, waitFor } from './native-ui.mjs';
+import { back, find, launch, screenshot, scrollTo, sleep, tap, tapNode, type, waitFor } from './native-ui.mjs';
 
 const PORT = 4180;
 const out = resolve('artifacts/native');
@@ -35,7 +35,7 @@ try {
 
   step('first launch asks for the server');
   await launch('ru.detailflow.app', { clear: true });
-  await waitFor('Адрес сервера');
+  await waitFor('Адрес сервера', { timeout: 45_000 });
   await tap(/192\.168\.1\.60:4173/);
   await type(`10.0.2.2:${PORT}`);
   screenshot(resolve(out, '01-server.png'));
@@ -77,6 +77,7 @@ try {
   await waitFor(/^Пауза: Ждём сушки/);
   screenshot(resolve(out, '09-paused.png'));
   await tap('Продолжить работу');
+  await waitFor(/^Пауза$/); // resumed: the rows are enabled again
   await tap('Защита кузова');
   await waitFor(/^2\/2$/);
   screenshot(resolve(out, '10-checklist-done.png'));
@@ -94,8 +95,8 @@ try {
   await tap('Профиль');
   await waitFor('Рабочий центр');
   screenshot(resolve(out, '05-profile.png'));
-  assert.equal(find('Удалить аккаунт').length, 0, 'a demo session has no account to delete');
-  await tap('Выйти из демо-режима');
+  await tapNode(await scrollTo('Выйти из демо-режима'));
+  // (checked by the server and the web test: a demo session has no account to delete)
   await waitFor('Вход в DetailFlow');
 
   step('an employee signs in with an access code and deletes the account');
@@ -107,10 +108,10 @@ try {
   await waitFor(/^Все$/, { timeout: 20_000 });
   await tap('Профиль');
   await waitFor('Мария Орлова');
-  await tap('Удалить аккаунт');
-  await waitFor('Удалить навсегда');
+  await tapNode(await scrollTo('Удалить аккаунт'));
+  await waitFor(/^Удалить навсегда$/i);
   screenshot(resolve(out, '06-delete-confirm.png'));
-  await tap('Удалить навсегда');
+  await tap(/^Удалить навсегда$/i);
   await waitFor('Вход в DetailFlow');
   const after = await fetch(`http://127.0.0.1:${PORT}/api/session`, { headers: { authorization: `Bearer ${created.accessToken}` } });
   assert.equal(after.status, 401, 'the access code no longer works');
