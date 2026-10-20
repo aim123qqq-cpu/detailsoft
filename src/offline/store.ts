@@ -85,3 +85,20 @@ export async function storeKeys(store: StoreName): Promise<string[]> {
   if (!(await open())) return [...memory[store].keys()];
   return ((await run<IDBValidKey[]>(store, 'readonly', (objects) => objects.getAllKeys())) ?? []).map(String);
 }
+
+/** Erases the whole offline copy and queue on this device (after the account is deleted). */
+export async function wipeOfflineData(): Promise<void> {
+  for (const store of STORES) memory[store].clear();
+  const db = await open();
+  db?.close();
+  opening = null;
+  if (typeof indexedDB === 'undefined') return;
+  await new Promise<void>((resolve) => {
+    try {
+      const request = indexedDB.deleteDatabase(DB_NAME);
+      request.onsuccess = request.onerror = request.onblocked = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}

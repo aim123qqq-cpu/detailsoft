@@ -277,6 +277,9 @@ export const api = {
       method: 'POST', headers: { 'x-login-secret': pollSecret }, body: JSON.stringify(tenantId ? { tenantId } : {})
     });
   },
+  deleteAccount() {
+    return request<{ deleted: true }>('/api/me', { method: 'DELETE' });
+  },
   logout() {
     return request<{ revoked: boolean }>('/api/auth/logout', { method: 'POST', body: JSON.stringify({}) });
   },

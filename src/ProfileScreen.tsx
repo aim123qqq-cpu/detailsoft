@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, authSession } from './api';
 import { CatalogScreen } from './CatalogScreen';
 import { CenterSettingsScreen } from './CenterSettingsScreen';
+import { wipeOfflineData } from './offline/store';
 import { androidApp } from './platform';
 import { TeamScreen } from './TeamScreen';
 import type { SessionContext } from './types';
@@ -47,6 +48,9 @@ export function ProfileScreen({ onSignIn }: { onSignIn: () => void }) {
   const [showCatalog, setShowCatalog] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTeam, setShowTeam] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
     const controller = new AbortController();
@@ -138,7 +142,35 @@ export function ProfileScreen({ onSignIn }: { onSignIn: () => void }) {
         <button onClick={() => androidApp()!.changeServer()}>Сменить</button>
       </section>}
 
-      <p className="profile-version">DetailFlow · локальная рабочая версия</p>
+      {session.actor.memberId && <section className="profile-account" data-testid="profile-account" aria-label="Аккаунт">
+        {!confirmDelete
+          ? <button className="profile-delete-link" data-testid="delete-account" onClick={() => { setDeleteError(''); setConfirmDelete(true); }}>Удалить аккаунт</button>
+          : <div className="profile-delete-confirm" role="alertdialog" aria-labelledby="delete-account-title" aria-describedby="delete-account-text">
+              <h3 id="delete-account-title">Удалить аккаунт в «{session.tenant.name}»?</h3>
+              <div id="delete-account-text">
+                <p>Удалим ваше имя, привязку к Telegram или MAX, коды доступа и все входы. Войти в этот центр снова будет нельзя.</p>
+                <p>Заказы, акты и история работ останутся у центра: это его рабочие документы. На этом устройстве удалится сохранённая копия данных.</p>
+              </div>
+              {deleteError && <p className="inline-error" role="alert">{deleteError}</p>}
+              <div className="profile-delete-actions">
+                <button className="secondary-button" disabled={deleting} onClick={() => setConfirmDelete(false)}>Отмена</button>
+                <button className="danger-button" data-testid="confirm-delete-account" disabled={deleting} onClick={async () => {
+                  setDeleting(true); setDeleteError('');
+                  try {
+                    await api.deleteAccount();
+                    await wipeOfflineData();
+                    authSession.clear();
+                    window.location.reload();
+                  } catch (requestError) {
+                    setDeleteError((requestError as Error).message);
+                    setDeleting(false);
+                  }
+                }}>{deleting ? 'Удаляем…' : 'Удалить навсегда'}</button>
+              </div>
+            </div>}
+      </section>}
+
+      <p className="profile-version"><a href="/privacy/" target="_blank" rel="noopener" data-testid="privacy-link">Политика конфиденциальности</a> · DetailFlow</p>
     </section>
   );
 }

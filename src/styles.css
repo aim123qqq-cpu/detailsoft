@@ -863,7 +863,18 @@ button.workspace-card:hover, button.workspace-card:focus-visible { border-color:
 .profile-settings-entry i { color: #b9f2dd; background: rgba(54,201,150,.16); }
 .profile-team-entry { margin-top: 8px; border-color: #34414b; background: linear-gradient(135deg, rgba(111,145,255,.09), #121920 58%); }
 .profile-team-entry i { color: #c8d5ff; background: rgba(111,145,255,.15); font-size: 14px; }
-.profile-version { margin: 18px 0 0; color: #53606b; font-size: 9px; text-align: center; }
+.profile-version { margin: 18px 0 0; color: #6b7883; font-size: 11px; text-align: center; }
+.profile-version a { color: #a3aeb7; text-underline-offset: 3px; }
+.profile-account { margin-top: 14px; }
+.profile-delete-link { width: 100%; min-height: 44px; border: 0; background: transparent; color: #e98a8a; font-size: 12px; font-weight: 700; cursor: pointer; }
+.profile-delete-confirm { padding: 16px; border: 1px solid rgba(233,93,93,.35); border-radius: 14px; background: rgba(233,93,93,.06); }
+.profile-delete-confirm h3 { margin: 0 0 8px; font-size: 15px; }
+.profile-delete-confirm p { margin: 0 0 8px; color: #b9c3ca; font-size: 12px; line-height: 1.5; }
+.profile-delete-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.profile-delete-actions button { min-height: 46px; border-radius: 11px; font-size: 12px; font-weight: 800; cursor: pointer; }
+.profile-delete-actions .secondary-button { border: 1px solid #34414b; color: #c3ccd2; background: #121920; }
+.danger-button { border: 0; color: #fff; background: #d94740; }
+.danger-button:disabled, .profile-delete-actions .secondary-button:disabled { opacity: .55; cursor: default; }
 
 .team-screen { padding-bottom: 120px; }
 .team-hero { margin-top: 10px; padding: 17px; border: 1px solid #34414b; border-radius: 17px; background: radial-gradient(circle at 100% 0, rgba(111,145,255,.18), transparent 48%), #151e25; }

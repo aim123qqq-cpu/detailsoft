@@ -174,6 +174,41 @@ export class AuthRepository {
       }));
   }
 
+  /**
+   * An employee deletes their own account in this center (stores require it). Access ends and personal data
+   * goes: the name, messenger links (account id and name), pending sign-ins, invites, access codes, sessions.
+   * Orders, acts and audit records stay: they are the center's business records. The only owner of a
+   * center cannot leave it without a manager.
+   */
+  deleteOwnAccount(tenantId, memberId) {
+    const member = this.db.prepare(`SELECT roles_json FROM tenant_members WHERE id = ? AND tenant_id = ? AND status = 'active'`).get(memberId, tenantId);
+    if (!member) return { kind: 'not_found' };
+    if (JSON.parse(member.roles_json).includes('owner')) {
+      const owners = this.db.prepare(`SELECT roles_json FROM tenant_members WHERE tenant_id = ? AND status = 'active' AND id <> ?`).all(tenantId, memberId)
+        .filter((row) => JSON.parse(row.roles_json).includes('owner'));
+      if (!owners.length) return { kind: 'last_owner' };
+    }
+    const now = nowSql();
+    this.db.exec('BEGIN');
+    try {
+      const externalIds = this.db.prepare('SELECT provider, external_user_id FROM member_messenger_links WHERE tenant_id = ? AND member_id = ?').all(tenantId, memberId);
+      for (const link of externalIds) {
+        this.db.prepare('DELETE FROM login_requests WHERE provider = ? AND external_user_id = ?').run(link.provider, link.external_user_id);
+      }
+      this.db.prepare('DELETE FROM member_messenger_links WHERE tenant_id = ? AND member_id = ?').run(tenantId, memberId);
+      this.db.prepare('DELETE FROM messenger_invites WHERE tenant_id = ? AND member_id = ?').run(tenantId, memberId);
+      this.db.prepare('DELETE FROM tenant_member_tokens WHERE tenant_id = ? AND member_id = ?').run(tenantId, memberId);
+      this.db.prepare('UPDATE auth_sessions SET revoked_at = ? WHERE tenant_id = ? AND member_id = ? AND revoked_at IS NULL').run(now, tenantId, memberId);
+      this.db.prepare(`UPDATE tenant_members SET display_name = 'Удалённый сотрудник', roles_json = '[]', status = 'blocked', updated_at = ?
+        WHERE id = ? AND tenant_id = ?`).run(now, memberId, tenantId);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'deleted' };
+  }
+
   /** Unlinking also ends the member's sessions opened through that messenger. */
   removeMessengerLink(tenantId, memberId, linkId) {
     const link = this.db.prepare('SELECT provider FROM member_messenger_links WHERE id = ? AND tenant_id = ? AND member_id = ?')

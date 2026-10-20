@@ -193,6 +193,14 @@ export function createDetailFlowServer({
           if (await idempotency({ request, response, tenantId, key: idempotencyKey, pathname: url.pathname }) !== 'proceed') return;
         }
 
+        if (request.method === 'DELETE' && url.pathname === '/api/me') {
+          const memberId = typeof session === 'object' ? session?.memberId : null;
+          if (!memberId) return sendJson(response, 409, { error: { code: 'no_account', message: 'В демо-режиме нет личного аккаунта для удаления' } });
+          const result = auth.deleteOwnAccount(tenantId, memberId);
+          if (result.kind === 'deleted') return sendJson(response, 200, { deleted: true });
+          if (result.kind === 'last_owner') return sendJson(response, 409, { error: { code: 'last_owner', message: 'Вы единственный владелец центра. Сначала назначьте владельцем другого сотрудника.' } });
+          return sendJson(response, 404, { error: { code: 'member_not_found', message: 'Аккаунт не найден' } });
+        }
         if (request.method === 'POST' && url.pathname === '/api/auth/logout') {
           return sendJson(response, 200, { revoked: auth.revokeSession(token) });
         }

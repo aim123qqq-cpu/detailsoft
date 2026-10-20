@@ -5,12 +5,13 @@ export const centerMethods = {
   authenticateTeamToken(token) {
     if (!token) return null;
     const tokenHash = createHash('sha256').update(token).digest('hex');
-    const row = this.db.prepare(`SELECT member.tenant_id, member.display_name, member.roles_json
+    const row = this.db.prepare(`SELECT member.id, member.tenant_id, member.display_name, member.roles_json
       FROM tenant_member_tokens token
       JOIN tenant_members member ON member.id = token.member_id AND member.tenant_id = token.tenant_id
       WHERE token.token_hash = ? AND member.status = 'active'`).get(tokenHash);
     return row ? {
       tenantId: row.tenant_id,
+      memberId: row.id,
       displayName: row.display_name,
       roles: JSON.parse(row.roles_json)
     } : null;
