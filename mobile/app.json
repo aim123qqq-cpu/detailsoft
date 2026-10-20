@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "DetailFlow",
+    "slug": "detailflow",
+    "version": "0.4.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "detailflow",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0b1016",
+    "ios": {
+      "bundleIdentifier": "ru.detailflow.app",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "ru.detailflow.app",
+      "versionCode": 4,
+      "adaptiveIcon": {
+        "backgroundColor": "#0b1016",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": true,
+      "softwareKeyboardLayoutMode": "resize"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0b1016",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 96
+        }
+      ],
+      "expo-secure-store",
+      "./plugins/with-release-signing.js",
+      "./plugins/with-cleartext-traffic.js"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

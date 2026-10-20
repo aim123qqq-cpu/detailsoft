@@ -1,0 +1,95 @@
+import { useCallback } from 'react';
+import { RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Stack, useLocalSearchParams } from 'expo-router';
+import { findLayoutElement } from '@df/shared/carLayouts';
+import { money, orderStatuses, shortDate } from '@/lib/format';
+import { useSession } from '@/lib/session';
+import { useResource } from '@/lib/use-resource';
+import { colors, space } from '@/lib/theme';
+import { Body, Button, Card, Label, Loading, Notice, Pill, Screen } from '@/ui';
+
+const severity = { LOW: 'лёгкое', MEDIUM: 'среднее', HIGH: 'сильное' } as const;
+const severityColor = { LOW: '#8f7220', MEDIUM: '#b9561d', HIGH: '#b8302a' } as const;
+const approvalMethod = { in_person: 'лично', phone: 'по телефону', messenger: 'в мессенджере' } as const;
+
+/** Order summary. Actions (work, intake, estimate, handover) arrive in the next stages of the native app. */
+export default function OrderScreen() {
+  const { id, title, subtitle } = useLocalSearchParams<{ id: string; title?: string; subtitle?: string }>();
+  const { api } = useSession();
+  const { data: order, error, reload, refreshing } = useResource(useCallback((signal: AbortSignal) => api.getOrder(id, signal), [api, id]));
+
+  if (!order && !error) return <Loading label="Загружаем заказ…"/>;
+  if (!order) return <Screen><Notice>{error}</Notice><Button title="Повторить" tone="secondary" onPress={reload}/></Screen>;
+
+  const estimate = order.estimateVersions.find((item) => item.id === (order.approval?.estimateVersionId ?? order.currentEstimateVersionId)) ?? null;
+  const operations = order.work?.operations ?? [];
+  const done = operations.filter((operation) => operation.status === 'DONE').length;
+  const status = orderStatuses[order.status];
+
+  return (
+    <Screen refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.primary} colors={[colors.primary]} progressBackgroundColor={colors.surface}
+      onRefresh={reload}/>}>
+      <Stack.Screen options={{ title: title || 'Заказ' }}/>
+      {subtitle ? <Body muted>{subtitle}</Body> : null}
+      <View style={styles.row}><Pill label={status.label} tone={status.group === 'ready' ? 'ok' : status.group === 'closed' ? 'neutral' : 'accent'}/><Text style={styles.meta}>Открыт {shortDate(order.createdAt)}</Text></View>
+
+      <Card>
+        <Label>Приёмка</Label>
+        {order.intake ? <>
+          <Body>{order.intake.conditionSummary}</Body>
+          {order.intake.findings.length ? order.intake.findings.map((finding, index) => {
+            const number = findLayoutElement(order.intake?.bodyType, finding.zone)?.number;
+            return (
+              <View key={`${finding.zone}-${index}`} style={styles.finding}>
+                <View style={[styles.badge, { backgroundColor: severityColor[finding.severity] }]}><Text style={styles.badgeText}>{number ?? '•'}</Text></View>
+                <View style={{ flex: 1 }}><Text style={styles.findingTitle}>{finding.zone}</Text><Text style={styles.meta}>{severity[finding.severity]} — {finding.note}</Text></View>
+              </View>
+            );
+          }) : <Body muted>Повреждений не выявлено.</Body>}
+          {order.photos.some((photo) => photo.phase === 'intake') ? <Body muted>Фото при приёмке: {order.photos.filter((photo) => photo.phase === 'intake').length}</Body> : null}
+        </> : <Body muted>Приёмка ещё не проведена.</Body>}
+      </Card>
+
+      {estimate && <Card>
+        <Label>Смета v{estimate.version}</Label>
+        {estimate.lines.map((line) => <View key={line.id} style={styles.line}><Text style={styles.lineName}>{line.name}</Text><Text style={styles.lineAmount}>{money(line.amountMinor)}</Text></View>)}
+        <View style={[styles.line, styles.totalRow]}><Text style={styles.lineName}>Итого</Text><Text style={styles.total}>{money(estimate.totalAmountMinor)}</Text></View>
+        {order.approval ? <Body muted>{order.approval.decision === 'APPROVED' ? 'Согласовано' : 'Отклонено'} {approvalMethod[order.approval.method]} · {order.approval.responsible}</Body> : <Body muted>Ждёт решения клиента.</Body>}
+      </Card>}
+
+      {(order.assignment || order.work) && <Card>
+        <Label>Работы</Label>
+        {order.assignment ? <Body>Мастер: {order.assignment.masterName}</Body> : null}
+        {order.work ? <>
+          <Body muted>Выполнено {done} из {operations.length}{order.work.status === 'PAUSED' ? ` · пауза: ${order.work.pauseNote ?? ''}` : ''}</Body>
+          {operations.map((operation) => <Text key={operation.id} style={[styles.operation, operation.status === 'DONE' && styles.operationDone]}>{operation.status === 'DONE' ? '✓ ' : '○ '}{operation.name}</Text>)}
+        </> : null}
+      </Card>}
+
+      {order.handover && <Card><Label>Выдача</Label><Body>{order.handover.note}</Body><Body muted>{order.handover.responsible} · {shortDate(order.handover.handedOverAt)}</Body></Card>}
+
+      {order.documents.length > 0 && <Card>
+        <Label>Документы</Label>
+        {order.documents.map((document) => <Body key={document.id}>{document.type === 'intake_act' ? 'Акт приёмки' : 'Акт выдачи'} {document.number}{document.signed ? ' · подписан' : ''}</Body>)}
+      </Card>}
+
+      <Notice tone="info">Действия по заказу (приёмка, работы, смета, выдача) появятся в следующих версиях нативного приложения. Пока они в веб-версии.</Notice>
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.m },
+  meta: { color: colors.muted, fontSize: 14, lineHeight: 20 },
+  finding: { flexDirection: 'row', gap: space.m, alignItems: 'flex-start', paddingVertical: 4 },
+  badge: { minWidth: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  badgeText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  findingTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  line: { flexDirection: 'row', justifyContent: 'space-between', gap: space.m, paddingVertical: 4 },
+  lineName: { color: colors.text, fontSize: 16, flex: 1 },
+  lineAmount: { color: colors.text, fontSize: 16, fontVariant: ['tabular-nums'] },
+  totalRow: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, marginTop: 4, paddingTop: space.s },
+  total: { color: colors.text, fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  operation: { color: colors.muted, fontSize: 16, paddingVertical: 2 },
+  operationDone: { color: colors.text }
+});
