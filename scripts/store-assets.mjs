@@ -1,4 +1,4 @@
-// Google Play listing images, drawn from the same car mark as the app icon:
+// Google Play listing images and the web app icons (public/icons), drawn from the same car mark as the app icon:
 // android/store/icon-512.png (512x512, Play masks the corners) and feature-1024x500.png.
 // Run: node scripts/store-assets.mjs
 import { mkdir } from 'node:fs/promises';
@@ -20,13 +20,25 @@ const pages = {
     <div style="margin-top:20px;font-size:30px;font-weight:700;line-height:1.25">CRM детейлинг-центра<br>в одном телефоне</div>
     <div style="margin-top:16px;font-size:22px;color:#A9B4BD">Приёмка по схеме · смета · мастер · акты · без сети</div></div></body>`]
 };
+// Web app icons (public/icons): the same tile; the maskable one keeps the mark inside the 80% safe circle.
+const tile = (size, share) => `<body style="margin:0;width:${size}px;height:${size}px;display:grid;place-items:center;background:#0B1016">${mark(Math.round(size * share))}</body>`;
+const webIcons = {
+  'icon-192.png': [192, 192, tile(192, 0.56)],
+  'icon-512.png': [512, 512, tile(512, 0.56)],
+  'maskable-512.png': [512, 512, tile(512, 0.42)],
+  'apple-touch-icon.png': [180, 180, tile(180, 0.5)]
+};
 
+const webOut = resolve('public/icons');
+await mkdir(webOut, { recursive: true });
 const browser = await chromium.launch({ executablePath: chromePath, headless: true });
-for (const [name, [width, height, html]] of Object.entries(pages)) {
-  const page = await browser.newPage({ viewport: { width, height } });
-  await page.setContent(html, { waitUntil: 'networkidle' });
-  await page.evaluate(() => document.fonts.ready);
-  await page.screenshot({ path: resolve(out, name) });
-  console.log('saved', name);
+for (const [folder, set] of [[out, pages], [webOut, webIcons]]) {
+  for (const [name, [width, height, html]] of Object.entries(set)) {
+    const page = await browser.newPage({ viewport: { width, height } });
+    await page.setContent(html, { waitUntil: 'networkidle' });
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({ path: resolve(folder, name) });
+    console.log('saved', name);
+  }
 }
 await browser.close();
