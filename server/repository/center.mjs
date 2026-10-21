@@ -123,5 +123,16 @@ export const centerMethods = {
           tenantId, JSON.stringify(workingDays), openTime, closeTime, slotStepMinutes, simultaneousCapacity
         );
     return { kind: 'updated', settings: this.getCenterSettings(tenantId) };
+  },
+
+  /** How far a new center has got: services to book, a team besides the owner, a first booking. */
+  getCenterSetup(tenantId) {
+    const count = (sql) => this.db.prepare(sql).get(tenantId).count;
+    return {
+      services: count(`SELECT (SELECT COUNT(*) FROM tenant_services WHERE tenant_id = ?1 AND active = 1)
+        + (SELECT COUNT(*) FROM service_packages WHERE tenant_id = ?1 AND active = 1) AS count`),
+      members: count(`SELECT COUNT(*) AS count FROM tenant_members WHERE tenant_id = ? AND status = 'active'`),
+      bookings: count('SELECT COUNT(*) AS count FROM bookings WHERE tenant_id = ?')
+    };
   }
 };

@@ -418,6 +418,7 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
     updateSimpleService: (serviceId: string, input: SimpleServiceInput & { active: boolean }) =>
       request<ManagedCatalogItem>(`/api/tenants/current/catalog/simple-services/${encodeURIComponent(serviceId)}`, { method: 'PUT', body: input }),
     settings: (signal?: AbortSignal) => request<CenterSettings>('/api/tenants/current/settings', { signal }),
+    centerSetup: (signal?: AbortSignal) => request<{ services: number; members: number; bookings: number }>('/api/tenants/current/setup', { signal }),
     updateSettings: (input: Omit<CenterSettings, 'timezone'>) => request<CenterSettings>('/api/tenants/current/settings', { method: 'PATCH', body: input }),
     team: (signal?: AbortSignal) => request<{ items: TeamMember[] }>('/api/tenants/current/team', { signal }),
     createMember: (input: { displayName: string; roles: string[] }) =>

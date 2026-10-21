@@ -153,6 +153,10 @@ export function ServicesStep({
       </div>
       {loading && <div className="catalog-loading"><span className="spinner"/> Загружаем каталог центра</div>}
       {error && <div className="inline-error">{error}</div>}
+      {catalog && !catalog.categories.some((category) => category.items.length) && <div className="login-note" role="note" data-testid="no-services">
+        <strong>Услуг пока нет</strong>
+        <span>Добавьте услуги центра — название, время и цену — в «Профиль → Каталог услуг» и вернитесь к записи.</span>
+      </div>}
       {catalog?.categories.map((category) => (
         <div className="catalog-category" key={category.name}>
           <div className="category-heading"><h3>{category.name}</h3><span>{category.items.length}</span></div>

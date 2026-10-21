@@ -514,6 +514,12 @@ export function createDetailFlowServer({
             ? sendJson(response, 200, settings)
             : sendJson(response, 404, { error: { code: 'tenant_not_found', message: 'Центр не найден' } });
         }
+        if (request.method === 'GET' && url.pathname === '/api/tenants/current/setup') {
+          if (!capabilities.manageSettings) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Первые шаги видны владельцу или администратору' }
+          });
+          return sendJson(response, 200, repository.getCenterSetup(tenantId));
+        }
         if (request.method === 'PATCH' && url.pathname === '/api/tenants/current/settings') {
           if (!capabilities.manageSettings) return sendJson(response, 403, {
             error: { code: 'forbidden', message: 'Недостаточно прав для изменения настроек' }

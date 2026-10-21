@@ -132,6 +132,7 @@ test('a fresh center works without price classes: a car typed in by hand is book
     return payload;
   };
   assert.deepEqual((await call('/api/tenants/current/vehicle-classes')).items, [], 'no price classes yet');
+  assert.deepEqual(await call('/api/tenants/current/setup'), { services: 0, members: 1, bookings: 0 }, 'first steps: nothing done but the owner');
   const section = await call('/api/tenants/current/catalog/sections', 'POST', { name: 'Мойка' });
   const service = await call('/api/tenants/current/catalog/simple-services', 'POST', {
     sectionId: section.id, name: 'Мойка кузова', description: '', pricingMode: 'fixed', basePrice: { amountMinor: 120000, durationMinutes: 30 }, classPrices: []
@@ -145,4 +146,5 @@ test('a fresh center works without price classes: a car typed in by hand is book
   const slot = (await call(`/api/bookings/availability?date=${date}&durationMinutes=30`)).slots.find((item) => item.available);
   const booking = await call('/api/bookings', 'POST', { customerId: customer.id, vehicleId: vehicle.id, channel: 'call', startAt: slot.startAt, selections }, { 'idempotency-key': 'fresh-center-booking' });
   assert.equal(booking.preliminaryAmountMinor, 120000);
+  assert.deepEqual(await call('/api/tenants/current/setup'), { services: 1, members: 1, bookings: 1 });
 });

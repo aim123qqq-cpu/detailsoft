@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BookingQuote, QuoteSelection, ServiceOffering } from '@df/types';
 import { useBookingDraft } from '@/lib/booking-draft';
 import { duration, money, vehicleName } from '@/lib/format';
-import { useSession } from '@/lib/session';
+import { useSession, useSignedIn } from '@/lib/session';
 import { colors, radius, space } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Card, Label, Loading, Notice, Screen } from '@/ui';
@@ -16,6 +16,7 @@ const keyOf = (selections: QuoteSelection[]) => selections.map((item) => `${item
 /** Step 2: services and packages of the center for this car's class, with the preliminary price. */
 export default function ServicesScreen() {
   const { api } = useSession();
+  const canEditCatalog = useSignedIn().capabilities.manageCatalog;
   const { draft, update } = useBookingDraft();
   const insets = useSafeAreaInsets();
   const vehicleId = draft.vehicle?.id ?? '';
@@ -54,6 +55,11 @@ export default function ServicesScreen() {
           <Text style={styles.meta}>{draft.customer.name}{catalog.data ? ` · класс «${catalog.data.vehicleClass}»` : ''}</Text>
         </Card>
         {catalog.error ? <><Notice>{catalog.error}</Notice><Button title="Повторить" tone="secondary" onPress={catalog.reload}/></> : null}
+        {catalog.data && !catalog.data.categories.some((category) => category.items.length) ? <Card>
+          <Label>Услуг пока нет</Label>
+          <Body muted>{canEditCatalog ? 'Добавьте услуги центра — название, время и цену, — и вернитесь к записи.' : 'Попросите владельца центра добавить услуги в каталог.'}</Body>
+          {canEditCatalog ? <Button title="Открыть каталог услуг" tone="secondary" onPress={() => router.push('/profile/catalog')}/> : null}
+        </Card> : null}
         {catalog.data?.categories.map((category) => (
           <View key={category.name} style={styles.category}>
             <Label>{category.name}</Label>

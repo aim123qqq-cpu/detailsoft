@@ -528,10 +528,16 @@ try {
   back();
   await tapNode(await scrollTo('Создать центр'));
   await waitFor(/^Все$/, { timeout: 20_000 });
+  // The new center is empty: the owner is told what to do first, and a booking without services says where they go.
+  await waitFor('Первые шаги', { timeout: 20_000 });
+  screenshot(resolve(out, '35-first-steps.png'));
+  await tap('Добавьте услуги');
+  await waitFor('＋ Услуга', { timeout: 20_000 });
+  back();
   await tap('Профиль');
   await waitFor('Detailing Test', { timeout: 20_000 });
   await waitFor('Управление центром');
-  screenshot(resolve(out, '35-new-center-owner.png'));
+  screenshot(resolve(out, '36-new-center-owner.png'));
   console.log('native smoke: ok');
 } finally {
   await network.down().catch(() => {});
