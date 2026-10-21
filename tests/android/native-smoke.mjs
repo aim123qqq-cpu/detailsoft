@@ -12,7 +12,16 @@ import { adb, back, find, launch, screenshot, scrollTo, sleep, tap, tapAt, tapNo
 const PORT = 4180;
 const out = resolve('artifacts/native');
 mkdirSync(out, { recursive: true });
-const server = createDetailFlowServer({ databasePath: ':memory:', seed: true, staticDir: resolve('dist') });
+// A stand-in for the Telegram bot: the test plays the person pressing its buttons.
+const telegram = {
+  provider: 'telegram', title: 'Telegram', botName: 'detailflow_test_bot', sent: [], handler: null, lastStart: null,
+  deepLink(payload) { this.lastStart = payload; return `https://bots.example/detailflow_test_bot?start=${payload}`; },
+  async start(handler) { this.handler = handler; },
+  stop() {},
+  async sendMessage(userId, text, buttons) { this.sent.push({ userId, text, buttons }); },
+  async answerCallback() {}
+};
+const server = createDetailFlowServer({ databasePath: ':memory:', seed: true, staticDir: resolve('dist'), messengers: [telegram] });
 // The app reaches the server through a proxy on PORT; switching the proxy off is the phone losing the network.
 const SERVER_PORT = PORT + 1;
 await new Promise((done) => server.listen(SERVER_PORT, '127.0.0.1', done));
@@ -69,7 +78,9 @@ try {
   step('first launch asks for the server');
   await launch('ru.detailflow.app', { clear: true });
   await waitFor('Адрес сервера', { timeout: 45_000 });
-  await tap(/192\.168\.1\.60:4173/);
+  // The field offers the public server; the test types its own address instead.
+  await tap(/^detailflow\.ru$/);
+  adb('shell', 'input', 'keyevent', 'KEYCODE_MOVE_END', ...Array(20).fill('KEYCODE_DEL'));
   await type(`10.0.2.2:${PORT}`);
   screenshot(resolve(out, '01-server.png'));
   await tap('Подключиться');
@@ -489,6 +500,32 @@ try {
   const after = await fetch(`http://127.0.0.1:${SERVER_PORT}/api/session`, { headers: { authorization: `Bearer ${created.accessToken}` } });
   assert.equal(after.status, 401, 'the access code no longer works');
   screenshot(resolve(out, '07-after-delete.png'));
+
+  step('a new owner creates a center from the sign-in screen through Telegram');
+  await tap('Создать свой центр');
+  await waitFor('Новый центр');
+  await tap('Продолжить через Telegram');
+  await sleep(2500);
+  // The bot link opens a browser (no Telegram on the emulator): come back to the app.
+  for (let attempt = 0; attempt < 3 && !find(/^Отмена$/).length; attempt += 1) { back(); await sleep(1500); }
+  assert.ok(telegram.lastStart, 'the app asked for a bot link');
+  // The person starts the bot and confirms; the app is polling meanwhile.
+  await telegram.handler({ provider: 'telegram', kind: 'start', userId: '880001', displayName: 'Nikita', payload: telegram.lastStart });
+  const prompt = telegram.sent.at(-1);
+  assert.match(prompt.text, /Создание центра/);
+  await telegram.handler({ provider: 'telegram', kind: 'callback', userId: '880001', payload: prompt.buttons[0][0].payload, callbackId: 'signup' });
+  await tapNode(await scrollTo('Например, Детейлинг Север'));
+  await type('Detailing Test');
+  back();
+  await tapNode(await scrollTo('Имя Фамилия'));
+  await type('Nikita Owner');
+  back();
+  await tapNode(await scrollTo('Создать центр'));
+  await waitFor(/^Все$/, { timeout: 20_000 });
+  await tap('Профиль');
+  await waitFor('Detailing Test', { timeout: 20_000 });
+  await waitFor('Управление центром');
+  screenshot(resolve(out, '35-new-center-owner.png'));
   console.log('native smoke: ok');
 } finally {
   await network.down().catch(() => {});

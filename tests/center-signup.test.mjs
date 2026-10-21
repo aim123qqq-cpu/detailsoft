@@ -120,3 +120,29 @@ test('one messenger account creates a limited number of centers', async () => {
   assert.equal(choose.status, 409);
   assert.equal((await choose.json()).error.details.memberships.length, CENTERS_PER_ACCOUNT);
 });
+
+test('a fresh center works without price classes: a car typed in by hand is booked at the base price', async () => {
+  const signup = await request('signup');
+  await confirm(signup, '7004');
+  const { token } = await (await createCenter(signup, { centerName: 'Мойка у дома', ownerName: 'Ирина' })).json();
+  const call = async (path, method = 'GET', body, headers = {}) => {
+    const response = await api(path, { token, method, body, headers });
+    const payload = await response.json();
+    assert.ok(response.ok, `${method} ${path}: ${response.status} ${JSON.stringify(payload)}`);
+    return payload;
+  };
+  assert.deepEqual((await call('/api/tenants/current/vehicle-classes')).items, [], 'no price classes yet');
+  const section = await call('/api/tenants/current/catalog/sections', 'POST', { name: 'Мойка' });
+  const service = await call('/api/tenants/current/catalog/simple-services', 'POST', {
+    sectionId: section.id, name: 'Мойка кузова', description: '', pricingMode: 'fixed', basePrice: { amountMinor: 120000, durationMinutes: 30 }, classPrices: []
+  });
+  const customer = await call('/api/customers', 'POST', { name: 'Пётр', phone: '+7 900 111-22-33' });
+  const { vehicle } = await call('/api/vehicles', 'POST', { customerId: customer.id, manual: { make: 'Lada', model: 'Vesta', bodyType: 'sedan' }, plateDisplay: 'М123ММ 77', color: 'серый' });
+  const selections = [{ type: 'service', id: service.id }];
+  const quote = await call('/api/bookings/quote-preview', 'POST', { vehicleId: vehicle.id, selections });
+  assert.equal(quote.totalAmountMinor, 120000);
+  const date = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+  const slot = (await call(`/api/bookings/availability?date=${date}&durationMinutes=30`)).slots.find((item) => item.available);
+  const booking = await call('/api/bookings', 'POST', { customerId: customer.id, vehicleId: vehicle.id, channel: 'call', startAt: slot.startAt, selections }, { 'idempotency-key': 'fresh-center-booking' });
+  assert.equal(booking.preliminaryAmountMinor, 120000);
+});

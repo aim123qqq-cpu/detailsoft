@@ -2,10 +2,11 @@
 //   node scripts/deploy.mjs setup    first installation on a fresh Ubuntu server (deploy/setup.sh)
 //   node scripts/deploy.mjs          update to the latest main and restart (deploy/update.sh)
 //   node scripts/deploy.mjs status   service state, readiness and the last log lines
+//   node scripts/deploy.mjs backup   a fresh copy of the server's database to ~/.detailflow/server-backups
 // The server is described in ~/.detailflow/server.json: { "host": "<ip>", "user": "<login>", "domain": "<domain>" }.
 // The SSH key is ~/.ssh/detailflow_yc (override with DF_SSH_KEY). Nothing secret is stored in the repository.
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -56,6 +57,16 @@ if (command === 'setup') {
     'sudo systemctl start detailflow'
   ].join(' && '));
   await ready();
+} else if (command === 'backup') {
+  // A copy of the server's database on this computer: if the server is lost, the data is not.
+  const made = execFileSync('ssh', [...sshOptions, target,
+    "sudo -u detailflow sh -c 'cd /opt/detailflow && node --env-file-if-exists=.env scripts/backup.mjs'"], { encoding: 'utf8' });
+  const remote = made.match(/(\/opt\/detailflow\/\S+\.db)/)?.[1];
+  if (!remote) throw new Error(`The server did not make a copy: ${made}`);
+  const folder = join(homedir(), '.detailflow', 'server-backups');
+  mkdirSync(folder, { recursive: true });
+  execFileSync('scp', [...sshOptions, `${target}:${remote}`, join(folder, remote.split('/').at(-1))], { stdio: 'inherit' });
+  console.log(`✓ ${join(folder, remote.split('/').at(-1))}`);
 } else if (command === 'status') {
   ssh('sudo systemctl status detailflow --no-pager -l | head -15; curl -s http://127.0.0.1:4173/api/ready; echo; sudo journalctl -u detailflow -n 20 --no-pager');
 } else {

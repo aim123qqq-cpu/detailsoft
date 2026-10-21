@@ -29,11 +29,19 @@ export class NetworkError extends Error {
 /** A refusal from the server or from the same rules applied on the phone (offline): both are shown as is. */
 export const isRefusal = (error: unknown) => error instanceof ApiError || error instanceof ApiRequestError;
 
-/** "192.168.1.60:4173" → "http://192.168.1.60:4173"; no trailing slash. */
+/** The public DetailFlow server: offered on first launch. */
+export const DEFAULT_SERVER = 'detailflow.ru';
+
+/**
+ * "detailflow.ru" → "https://detailflow.ru"; a center's own machine ("192.168.1.60:4173", "localhost",
+ * any address with a port) → "http://…". No trailing slash.
+ */
 export function normalizeServerUrl(input: string) {
   const trimmed = input.trim().replace(/\/+$/, '');
   if (!trimmed) return '';
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  const local = /^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(trimmed) || /^localhost(:\d+)?$/i.test(trimmed) || /:\d+$/.test(trimmed);
+  return `${local ? 'http' : 'https'}://${trimmed}`;
 }
 
 /** True when a DetailFlow server answers at this address. */

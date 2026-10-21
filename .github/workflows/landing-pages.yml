@@ -2,7 +2,7 @@ name: Landing on GitHub Pages
 
 # Publishes public/landing22 to the gh-pages branch, which GitHub Pages serves at
 # https://<owner>.github.io/<repo>/. The repository variable LANDING_APP_URL, when set,
-# is where the page's "Открыть DetailFlow" buttons lead; without it they stay on the page's demo.
+# is where the page's "Открыть DetailFlow" buttons lead; by default they lead to https://detailflow.ru.
 on:
   push:
     branches: [main]
@@ -31,7 +31,7 @@ jobs:
           node-version: 24
       - name: Build the public copy
         env:
-          APP_URL: ${{ vars.LANDING_APP_URL }}
+          APP_URL: ${{ vars.LANDING_APP_URL || 'https://detailflow.ru' }}
         run: node scripts/build-landing-pages.mjs site
       - name: Publish to gh-pages
         working-directory: site

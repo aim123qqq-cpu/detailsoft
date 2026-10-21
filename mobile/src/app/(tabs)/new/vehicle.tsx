@@ -42,11 +42,13 @@ export default function NewVehicleScreen() {
   }, [api, modelQuery]);
   const variants = found && found.query === modelQuery ? found.items : [];
   const chosenClass = tenantClass || classes.data?.items[0] || '';
+  // A new center has no price classes yet: its prices then apply to every car and no class is asked.
+  const classless = classes.data !== null && classes.data.items.length === 0;
 
   if (!draft.customer) return <Screen><Body muted>Сначала выберите клиента.</Body><Button title="К поиску" onPress={() => router.back()}/></Screen>;
   const customer = draft.customer;
 
-  const ready = (entry === 'catalog' ? Boolean(variant) : make.trim().length >= 2 && Boolean(model.trim()) && Boolean(chosenClass))
+  const ready = (entry === 'catalog' ? Boolean(variant) : make.trim().length >= 2 && Boolean(model.trim()) && (classless || Boolean(chosenClass)))
     && plate.replace(/\s/g, '').length >= 3 && color.trim().length >= 2;
   const save = async () => {
     setSaving(true); setError('');
@@ -55,7 +57,7 @@ export default function NewVehicleScreen() {
         customerId: customer.id,
         ...(entry === 'catalog'
           ? { catalogVariantId: variant!.id }
-          : { manual: { make: make.trim(), model: model.trim(), generation: generation.trim(), bodyType }, tenantClass: chosenClass }),
+          : { manual: { make: make.trim(), model: model.trim(), generation: generation.trim(), bodyType }, ...(chosenClass ? { tenantClass: chosenClass } : {}) }),
         plateDisplay: plate.trim(),
         color: color.trim()
       });
@@ -92,9 +94,9 @@ export default function NewVehicleScreen() {
             {BODY_TYPES.map((item) => <Chip key={item.code} label={item.label} selected={bodyType === item.code} onPress={() => setBodyType(item.code)}/>)}
           </ScrollView>
         </View>
-        <View><Label>Класс цены</Label>
+        {classless ? null : <View><Label>Класс цены</Label>
           <View style={styles.wrap}>{(classes.data?.items ?? []).map((value) => <Chip key={value} label={value} selected={chosenClass === value} onPress={() => setTenantClass(value)}/>)}</View>
-        </View>
+        </View>}
       </>}
       <View style={styles.pair}>
         <View style={styles.half}><Field label="Госномер" value={plate} onChangeText={(value) => setPlate(value.toLocaleUpperCase('ru-RU'))} autoCapitalize="characters" autoCorrect={false} placeholder="А123АА 55"/></View>

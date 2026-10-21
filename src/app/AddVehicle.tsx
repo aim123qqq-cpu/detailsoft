@@ -55,7 +55,7 @@ export function AddVehicle({ customer, onCancel, onCreated }: { customer: Custom
         customerId: customer.id,
         ...(entryMode === 'catalog'
           ? { catalogVariantId: variant!.id }
-          : { manual: { make: manualMake, model: manualModel, generation: manualGeneration, bodyType: manualBodyType }, tenantClass }),
+          : { manual: { make: manualMake, model: manualModel, generation: manualGeneration, bodyType: manualBodyType }, ...(tenantClass ? { tenantClass } : {}) }),
         plateDisplay: plate,
         color
       }, entryMode === 'catalog' ? variant : null);
@@ -89,7 +89,7 @@ export function AddVehicle({ customer, onCancel, onCreated }: { customer: Custom
       </div> : <div className="manual-vehicle-form" data-testid="manual-vehicle-form">
         <div className="form-row"><div className="form-group"><label>Марка</label><input data-testid="manual-make" value={manualMake} onChange={(event) => setManualMake(event.target.value)} placeholder="Zeekr"/></div><div className="form-group"><label>Модель</label><input data-testid="manual-model" value={manualModel} onChange={(event) => setManualModel(event.target.value)} placeholder="001"/></div></div>
         <div className="form-group"><label>Поколение <small>необязательно</small></label><input value={manualGeneration} onChange={(event) => setManualGeneration(event.target.value)} placeholder="Например, 1 поколение"/></div>
-        <div className="form-row"><div className="form-group"><label>Тип кузова</label><select data-testid="manual-body" value={manualBodyType} onChange={(event) => setManualBodyType(event.target.value)}>{Object.entries(bodyLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div><div className="form-group"><label>Класс цены</label><select data-testid="manual-class" value={tenantClass} onChange={(event) => setTenantClass(event.target.value)}>{vehicleClasses.map((value) => <option key={value}>{value}</option>)}</select></div></div>
+        <div className="form-row"><div className="form-group"><label>Тип кузова</label><select data-testid="manual-body" value={manualBodyType} onChange={(event) => setManualBodyType(event.target.value)}>{Object.entries(bodyLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>{vehicleClasses.length > 0 && <div className="form-group"><label>Класс цены</label><select data-testid="manual-class" value={tenantClass} onChange={(event) => setTenantClass(event.target.value)}>{vehicleClasses.map((value) => <option key={value}>{value}</option>)}</select></div>}</div>
         <p className="manual-vehicle-note"><Icon name="spark" size={16}/> Модель сохранится без дубля глобального справочника. Класс действует только в этом центре.</p>
       </div>}
       <div className="form-row">
@@ -98,7 +98,7 @@ export function AddVehicle({ customer, onCancel, onCreated }: { customer: Custom
       </div>
       {entryMode === 'catalog' && chosenSummary && <div className="auto-summary"><Icon name="check"/><span><small>Определено по справочнику</small><strong>{chosenSummary}</strong></span></div>}
       {error && <p className="form-error">{error}</p>}
-      <button className="primary-button sticky-cta" data-testid="save-vehicle" onClick={submit} disabled={(entryMode === 'catalog' ? !variant : manualMake.trim().length < 2 || !manualModel.trim() || !tenantClass) || plate.trim().length < 3 || color.trim().length < 2 || loading}>
+      <button className="primary-button sticky-cta" data-testid="save-vehicle" onClick={submit} disabled={(entryMode === 'catalog' ? !variant : manualMake.trim().length < 2 || !manualModel.trim() || (vehicleClasses.length > 0 && !tenantClass)) || plate.trim().length < 3 || color.trim().length < 2 || loading}>
         {loading ? <span className="spinner light"/> : <>Сохранить и выбрать <span>→</span></>}
       </button>
     </section>

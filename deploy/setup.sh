@@ -85,6 +85,10 @@ $DOMAIN {
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:4173
 }
+
+www.$DOMAIN {
+	redir https://$DOMAIN{uri} permanent
+}
 CADDY
 sudo systemctl reload caddy || sudo systemctl restart caddy
 
