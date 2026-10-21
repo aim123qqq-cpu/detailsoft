@@ -33,6 +33,13 @@ test('iPhone browser: how to add to the home screen, and fields that do not zoom
     const small = await page.evaluate(() => [...document.querySelectorAll('input, textarea, select')]
       .filter((field) => parseFloat(getComputedStyle(field).fontSize) < 16).map((field) => field.outerHTML.slice(0, 80)));
     assert.deepEqual(small, []);
+
+    // "+" with a number nobody has: the keyboard covers the lower half, so the name field takes the focus
+    // (the phone scrolls to it) instead of "not found" waiting unseen below the search.
+    await page.getByTestId('main-search').tap();
+    await page.keyboard.type('9007775533', { delay: 40 });
+    await page.getByTestId('create-customer').waitFor();
+    await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Имя клиента');
   } finally {
     await browser.close();
     await new Promise((done) => server.close(done));

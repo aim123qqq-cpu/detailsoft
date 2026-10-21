@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, authSession, demoAuthEnabled } from './api';
 import { LoginScreen } from './LoginScreen';
 import { visitsLabel } from './format';
@@ -74,6 +74,7 @@ export function App() {
   const [online, setOnline] = useState(() => navigator.onLine);
   const [searchRetryKey, setSearchRetryKey] = useState(0);
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
+  const createCustomerCard = useRef<HTMLDivElement>(null);
   const [newCustomerName, setNewCustomerName] = useState('');
   const [profileVehicleId, setProfileVehicleId] = useState<string | null>(null);
   const [overlays, setOverlays] = useState<ProfileOverlay[]>([]);
@@ -207,6 +208,16 @@ export function App() {
     }, 320);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [query, mode, workspace, searchRetryKey]);
+
+  // On a phone the keyboard covers the lower half of the screen, and "not found" appears below the search:
+  // a full number moves on to the name (the phone scrolls to it), a partial one only brings the card into view.
+  useEffect(() => {
+    if (!showCreateCustomer) return;
+    const card = createCustomerCard.current;
+    card?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (query.replace(/\D/g, '').length >= 11) card?.querySelector('input')?.focus({ preventScroll: true });
+    // Only when the card appears: typing more digits must not pull the focus away.
+  }, [showCreateCustomer]);
 
   const startNewBooking = () => {
     setWorkspace('new');
@@ -397,7 +408,7 @@ export function App() {
             ))}
 
             {mode === 'phone' && showCreateCustomer && (
-              <div className="empty-state">
+              <div className="empty-state" ref={createCustomerCard} data-testid="create-customer">
                 <span className="empty-icon"><Icon name="user"/></span>
                 <strong>Клиент не найден</strong>
                 <p>Номер сохранён — добавьте имя, чтобы продолжить.</p>
