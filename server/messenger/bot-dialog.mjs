@@ -1,7 +1,7 @@
 // Provider-neutral bot conversation for staff sign-in and messenger linking.
 // Events come from the Telegram or MAX adapter in the same normalized shape.
 
-const HELP = 'Это бот DetailFlow для входа сотрудников. Чтобы войти, откройте DetailFlow и выберите вход через мессенджер. Чтобы привязать аккаунт, попросите владельца центра прислать приглашение из раздела «Команда».';
+const HELP = 'Это бот DetailFlow для входа сотрудников. Чтобы войти или создать свой центр, откройте DetailFlow и выберите мессенджер на экране входа. Чтобы привязать аккаунт к центру, попросите его владельца прислать приглашение из раздела «Команда».';
 
 export function createBotDialog({ auth, adapters, logger = console }) {
   const adapterFor = (provider) => adapters.get(provider);
@@ -12,8 +12,15 @@ export function createBotDialog({ auth, adapters, logger = console }) {
 
   async function startLogin(event, login) {
     if (!login) return reply(event, 'Ссылка или код входа устарели. Начните вход заново на экране DetailFlow.');
+    // Creating a new center needs no membership: the person becomes the owner of the center they create.
+    if (auth.loginPurpose(login.id) === 'signup') {
+      auth.markLoginAwaiting(login.id, event.userId, event.displayName);
+      return reply(event,
+        `Создание центра в DetailFlow\nКод на экране: ${login.short_code}\n\nПодтверждайте, только если вы сами сейчас создаёте центр и код совпадает. Вы станете его владельцем.`,
+        [[{ text: 'Это я, продолжить', payload: `login_ok:${login.id}` }, { text: 'Отклонить', payload: `login_no:${login.id}` }]]);
+    }
     if (!auth.membershipsFor(event.provider, event.userId).length) {
-      return reply(event, 'Этот аккаунт ещё не привязан к сотруднику центра. Попросите владельца прислать приглашение в разделе «Команда».');
+      return reply(event, 'Этот аккаунт ещё не привязан к сотруднику центра. Попросите владельца прислать приглашение в разделе «Команда» или создайте свой центр на экране входа DetailFlow.');
     }
     auth.markLoginAwaiting(login.id, event.userId);
     return reply(event,

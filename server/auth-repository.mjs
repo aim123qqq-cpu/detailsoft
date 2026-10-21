@@ -5,6 +5,8 @@ const LOGIN_TTL_MS = 5 * 60 * 1000;
 const INVITE_TTL_MS = 24 * 60 * 60 * 1000;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+/** One messenger account can create this many centers itself (more go through support). */
+export const CENTERS_PER_ACCOUNT = 5;
 
 const hash = (value) => createHash('sha256').update(String(value)).digest('hex');
 // Same text format as SQLite CURRENT_TIMESTAMP (UTC), so values compare lexicographically.
@@ -24,8 +26,9 @@ export class AuthRepository {
     this.db = db;
   }
 
-  createLoginRequest(provider) {
-    if (!MESSENGER_PROVIDERS.includes(provider)) return null;
+  /** `purpose: 'signup'` opens a request for creating a new center instead of signing in to an existing one. */
+  createLoginRequest(provider, purpose = 'login') {
+    if (!MESSENGER_PROVIDERS.includes(provider) || !['login', 'signup'].includes(purpose)) return null;
     const id = `lr_${randomUUID()}`;
     const startToken = randomBytes(16).toString('hex');
     const pollSecret = randomBytes(32).toString('hex');
@@ -37,7 +40,8 @@ export class AuthRepository {
     const expiresAt = sqlTime(new Date(Date.now() + LOGIN_TTL_MS));
     this.db.prepare(`INSERT INTO login_requests (id, provider, start_token_hash, short_code, poll_secret_hash, expires_at)
       VALUES (?, ?, ?, ?, ?, ?)`).run(id, provider, hash(startToken), shortCode, hash(pollSecret), expiresAt);
-    return { id, startToken, shortCode, pollSecret, expiresAt: apiTime(expiresAt) };
+    if (purpose === 'signup') this.db.prepare("INSERT INTO login_request_purposes (login_request_id, purpose) VALUES (?, 'signup')").run(id);
+    return { id, startToken, shortCode, pollSecret, expiresAt: apiTime(expiresAt), purpose };
   }
 
   findOpenLogin(provider, { startToken, shortCode }) {
@@ -49,9 +53,15 @@ export class AuthRepository {
     return row;
   }
 
-  markLoginAwaiting(id, externalUserId) {
+  /** 'signup' for a request opened to create a center, 'login' otherwise. */
+  loginPurpose(id) {
+    return this.db.prepare('SELECT purpose FROM login_request_purposes WHERE login_request_id = ?').get(id)?.purpose ?? 'login';
+  }
+
+  markLoginAwaiting(id, externalUserId, externalName = null) {
     this.db.prepare(`UPDATE login_requests SET status = 'AWAITING_CONFIRMATION', external_user_id = ?
       WHERE id = ? AND status IN ('PENDING', 'AWAITING_CONFIRMATION')`).run(String(externalUserId), id);
+    this.db.prepare('UPDATE login_request_purposes SET external_name = ? WHERE login_request_id = ?').run(externalName ?? null, id);
   }
 
   /** Only the messenger account that opened the request can confirm or deny it. */
@@ -84,7 +94,8 @@ export class AuthRepository {
       provider: row.provider,
       status,
       expiresAt: apiTime(row.expires_at),
-      memberships: status === 'CONFIRMED' ? this.membershipsFor(row.provider, row.external_user_id) : []
+      memberships: status === 'CONFIRMED' ? this.membershipsFor(row.provider, row.external_user_id) : [],
+      purpose: this.loginPurpose(row.id)
     };
   }
 
@@ -113,6 +124,48 @@ export class AuthRepository {
       throw error;
     }
     return { kind: 'created', session: { token, expiresAt: apiTime(expiresAt), tenant: chosen.tenant, member: chosen.member } };
+  }
+
+  /**
+   * The confirmed sign-up request becomes a new center: the center, its owner (owner + admin roles)
+   * linked to the messenger account that confirmed, and a session — all or nothing.
+   */
+  createCenterFromLogin(id, pollSecret, input) {
+    const status = this.getLoginStatus(id, pollSecret);
+    if (!status) return { kind: 'not_found' };
+    if (status.purpose !== 'signup') return { kind: 'conflict', code: 'not_a_signup', message: 'Этот запрос открыт для входа, а не для создания центра' };
+    if (status.status !== 'CONFIRMED') return { kind: 'conflict', code: 'login_not_confirmed', message: 'Подтвердите создание центра в мессенджере' };
+    const centerName = String(input?.centerName ?? '').trim().replace(/\s+/g, ' ');
+    const ownerName = String(input?.ownerName ?? '').trim().replace(/\s+/g, ' ');
+    if (centerName.length < 2 || centerName.length > 120 || ownerName.length < 2 || ownerName.length > 80) return { kind: 'invalid' };
+    const row = this.db.prepare(`SELECT l.external_user_id, p.external_name FROM login_requests l
+      JOIN login_request_purposes p ON p.login_request_id = l.id WHERE l.id = ?`).get(id);
+    const made = this.db.prepare('SELECT COUNT(*) count FROM center_signups WHERE provider = ? AND external_user_id = ?').get(status.provider, row.external_user_id).count;
+    if (made >= CENTERS_PER_ACCOUNT) return { kind: 'conflict', code: 'too_many_centers', message: `С одного аккаунта можно создать не больше ${CENTERS_PER_ACCOUNT} центров. Напишите в поддержку, если нужно больше` };
+
+    const tenant = { id: `tenant_${randomUUID()}`, name: centerName };
+    const member = { id: `member_${randomUUID()}`, displayName: ownerName, roles: ['admin', 'owner'] };
+    const token = `dfs_${randomBytes(32).toString('hex')}`;
+    const expiresAt = sqlTime(new Date(Date.now() + SESSION_TTL_MS));
+    this.db.exec('BEGIN');
+    try {
+      const consumed = this.db.prepare(`UPDATE login_requests SET status = 'CONSUMED' WHERE id = ? AND status = 'CONFIRMED'`).run(id);
+      if (consumed.changes !== 1) throw new Error('login_already_consumed');
+      this.db.prepare('INSERT INTO tenants (id, name) VALUES (?, ?)').run(tenant.id, tenant.name);
+      this.db.prepare('INSERT INTO tenant_members (id, tenant_id, display_name, roles_json) VALUES (?, ?, ?, ?)')
+        .run(member.id, tenant.id, member.displayName, JSON.stringify(member.roles));
+      this.db.prepare(`INSERT INTO member_messenger_links (id, tenant_id, member_id, provider, external_user_id, external_name)
+        VALUES (?, ?, ?, ?, ?, ?)`).run(`ml_${randomUUID()}`, tenant.id, member.id, status.provider, row.external_user_id, row.external_name ?? null);
+      this.db.prepare('INSERT INTO center_signups (tenant_id, provider, external_user_id) VALUES (?, ?, ?)').run(tenant.id, status.provider, row.external_user_id);
+      this.db.prepare(`INSERT INTO auth_sessions (id, tenant_id, member_id, token_hash, provider, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?)`).run(`ses_${randomUUID()}`, tenant.id, member.id, hash(token), status.provider, expiresAt);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      if (error.message === 'login_already_consumed') return { kind: 'conflict', code: 'login_not_confirmed', message: 'Запрос уже использован' };
+      throw error;
+    }
+    return { kind: 'created', session: { token, expiresAt: apiTime(expiresAt), tenant, member } };
   }
 
   authenticateSession(token) {

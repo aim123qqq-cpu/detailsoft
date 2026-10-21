@@ -18,6 +18,10 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
   const [memberships, setMemberships] = useState<LoginMembership[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // "signup": a person without a center creates one and becomes its owner.
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [centerName, setCenterName] = useState('');
+  const [ownerName, setOwnerName] = useState('');
   const opening = useRef(false);
 
   useEffect(() => {
@@ -58,6 +62,8 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
         setStatus(next.status);
         if (next.status === 'CONFIRMED') {
           stopped = true;
+          // A sign-up goes on to the center's name; a sign-in opens the workplace.
+          if (login.purpose === 'signup') return;
           if (next.memberships.length > 1) setMemberships(next.memberships);
           else void openSession(login);
           return;
@@ -84,13 +90,25 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
   const start = async (provider: AuthProvider) => {
     setBusy(true); setError(''); setMemberships([]);
     try {
-      const created = await api.createLoginRequest(provider.provider);
+      const created = await api.createLoginRequest(provider.provider, mode);
       setLogin(created);
       setStatus('PENDING');
     } catch (requestError) { setError((requestError as Error).message); }
     finally { setBusy(false); }
   };
 
+  const createCenter = async () => {
+    if (!login) return;
+    setBusy(true); setError('');
+    try {
+      const session = await api.createCenter(login.id, login.pollSecret, { centerName: centerName.trim(), ownerName: ownerName.trim() });
+      authSession.save(session.token);
+      onSignedIn();
+    } catch (requestError) { setError((requestError as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  const signup = mode === 'signup';
   const providerTitle = login ? providers?.find((item) => item.provider === login.provider)?.title ?? login.provider : '';
   const finished = status === 'DENIED' || status === 'EXPIRED' || status === 'CONSUMED';
   const reset = () => { setLogin(null); setStatus(null); setError(''); setMemberships([]); };
@@ -105,9 +123,11 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
 
       <div className={`login-layout ${login ? 'in-progress' : ''}`}>
         <div className="login-intro">
-          <span className="login-kicker">Рабочее место</span>
-          <h1>Вход для сотрудников</h1>
-          <p>Без паролей и SMS. Подтвердите вход одной кнопкой в мессенджере, к которому вас привязал владелец центра.</p>
+          <span className="login-kicker">{signup ? 'Новый центр' : 'Рабочее место'}</span>
+          <h1>{signup ? 'Создайте свой центр' : 'Вход для сотрудников'}</h1>
+          <p>{signup
+            ? 'Подтвердите себя в мессенджере и назовите центр. Вы станете его владельцем и сами пригласите команду.'
+            : 'Без паролей и SMS. Подтвердите вход одной кнопкой в мессенджере, к которому вас привязал владелец центра.'}</p>
         </div>
         <div className="login-preview">
           <BotPreview
@@ -125,7 +145,7 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
               {providers?.map((provider) => (
                 <button key={provider.provider} className={`login-provider ${provider.provider}`} data-testid={`login-${provider.provider}`} disabled={busy} onClick={() => start(provider)}>
                   <ProviderIcon provider={provider.provider}/>
-                  <span><b>Войти через {provider.title}</b><small>{provider.botName ? `@${provider.botName}` : 'бот центра'}</small></span>
+                  <span><b>{signup ? 'Продолжить' : 'Войти'} через {provider.title}</b><small>{provider.botName ? `@${provider.botName}` : 'бот центра'}</small></span>
                   <i className="login-provider-arrow" aria-hidden="true">→</i>
                 </button>
               ))}
@@ -136,30 +156,36 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
             </div>
             <ol className="login-how" aria-label="Как проходит вход">
               <li><b>1</b><span>Откройте бота по кнопке или отправьте ему код с экрана</span></li>
-              <li><b>2</b><span>Сверьте код и нажмите «Это я, войти»</span></li>
-              <li><b>3</b><span>Вернитесь сюда — рабочее место откроется само</span></li>
+              <li><b>2</b><span>Сверьте код и нажмите «{signup ? 'Это я, продолжить' : 'Это я, войти'}»</span></li>
+              <li><b>3</b><span>{signup ? 'Вернитесь сюда и назовите центр' : 'Вернитесь сюда — рабочее место откроется само'}</span></li>
             </ol>
           </>}
 
           {login && <div className="login-progress" data-testid="login-progress" aria-live="polite">
             <div className="login-progress-head">
               <ProviderIcon provider={login.provider}/>
-              <span><b>Вход через {providerTitle}</b><small>{login.botName ? `@${login.botName}` : 'бот центра'}</small></span>
+              <span><b>{signup ? 'Подтверждение' : 'Вход'} через {providerTitle}</b><small>{login.botName ? `@${login.botName}` : 'бот центра'}</small></span>
               {!finished && status !== 'CONFIRMED' && <Countdown expiresAt={login.expiresAt}/>}
             </div>
             <span className="login-code-label">Код для бота</span>
             <div className="login-code" data-testid="login-code" data-code={login.shortCode} role="img" aria-label={`Код ${login.shortCode.split('').join(' ')}`}>
               {login.shortCode.split('').map((char, index) => <span key={index}>{char}</span>)}
             </div>
-            {login.deepLink && !finished && <a className="primary-button login-open-bot" href={login.deepLink} target="_blank" rel="noopener noreferrer" data-testid="open-bot">Открыть {login.botName ? `@${login.botName}` : `бота ${providerTitle}`}</a>}
+            {login.deepLink && !finished && status !== 'CONFIRMED' && <a className="primary-button login-open-bot" href={login.deepLink} target="_blank" rel="noopener noreferrer" data-testid="open-bot">Открыть {login.botName ? `@${login.botName}` : `бота ${providerTitle}`}</a>}
             <ol className={`login-steps ${finished ? 'failed' : ''}`} aria-label="Ход входа">
-              {['Бот открыт', 'Подтверждение', 'Вход выполнен'].map((label, index) => {
+              {['Бот открыт', 'Подтверждение', signup ? 'Название центра' : 'Вход выполнен'].map((label, index) => {
                 const position = index + 1;
                 const state = finished ? (position < step ? 'done' : position === step ? 'failed' : '') : position < step || status === 'CONFIRMED' ? 'done' : position === step ? 'current' : '';
                 return <li key={label} className={state}><i>{state === 'done' ? '✓' : state === 'failed' ? '!' : position}</i><span>{label}</span></li>;
               })}
             </ol>
-            <div className={`login-status ${status ?? ''}`} data-testid="login-status">{status ? statusText[status] : ''}</div>
+            <div className={`login-status ${status ?? ''}`} data-testid="login-status">{signup && status === 'CONFIRMED' ? 'Подтверждено. Осталось назвать центр.'
+              : signup && status === 'AWAITING_CONFIRMATION' ? 'Подтвердите кнопкой «Это я, продолжить» в боте.' : status ? statusText[status] : ''}</div>
+            {signup && status === 'CONFIRMED' && <div className="login-signup" data-testid="login-signup">
+              <label>Название центра<input data-testid="center-name" value={centerName} maxLength={120} placeholder="Например, Детейлинг Север" onChange={(event) => setCenterName(event.target.value)}/></label>
+              <label>Ваше имя<input data-testid="owner-name" value={ownerName} maxLength={80} placeholder="Имя Фамилия" onChange={(event) => setOwnerName(event.target.value)}/></label>
+              <button className="primary-button" data-testid="create-center" disabled={busy || centerName.trim().length < 2 || ownerName.trim().length < 2} onClick={createCenter}>{busy ? 'Создаём…' : 'Создать центр'}</button>
+            </div>}
             {memberships.length > 1 && <div className="login-tenants" data-testid="login-tenants">
               <strong>Выберите центр</strong>
               {memberships.map((membership) => <button key={membership.tenant.id} onClick={() => openSession(login, membership.tenant.id)}><b>{membership.tenant.name}</b><small>{membership.member.displayName}</small></button>)}
@@ -173,7 +199,10 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
       </div>
 
       <footer className="login-footer">
-        <p><b>Нет доступа?</b> Попросите владельца центра прислать приглашение из раздела «Профиль → Команда».</p>
+        {!login && <button className="login-secondary" data-testid="toggle-signup" onClick={() => { setMode(signup ? 'login' : 'signup'); setError(''); }}>
+          {signup ? 'У меня уже есть центр — войти' : 'Создать свой центр'}
+        </button>}
+        {!signup && <p><b>Нет доступа?</b> Попросите владельца центра прислать приглашение из раздела «Профиль → Команда» или создайте свой центр.</p>}
         {onCancel && demoAuthEnabled && <button className="login-demo" data-testid="login-cancel" onClick={onCancel}>Продолжить в демо-режиме</button>}
       </footer>
     </section>

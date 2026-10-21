@@ -250,7 +250,13 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
 
   return {
     authProviders: (signal?: AbortSignal) => request<{ items: AuthProvider[]; demo: boolean }>('/api/auth/providers', { signal }),
-    createLoginRequest: (provider: AuthProvider['provider']) => request<LoginRequest>('/api/auth/login-requests', { method: 'POST', body: { provider } }),
+    createLoginRequest: (provider: AuthProvider['provider'], purpose: 'login' | 'signup' = 'login') =>
+      request<LoginRequest>('/api/auth/login-requests', { method: 'POST', body: { provider, purpose } }),
+    /** A confirmed sign-up request becomes a new center; the answer is the owner's session. */
+    createCenter: (login: LoginRequest, input: { centerName: string; ownerName: string }) =>
+      request<{ token: string; expiresAt: string; tenant: { id: string; name: string } }>(`/api/auth/login-requests/${encodeURIComponent(login.id)}/center`, {
+        method: 'POST', headers: { 'x-login-secret': login.pollSecret }, body: input
+      }),
     loginStatus: (login: LoginRequest, signal?: AbortSignal) =>
       request<LoginStatus>(`/api/auth/login-requests/${encodeURIComponent(login.id)}`, { signal, headers: { 'x-login-secret': login.pollSecret } }),
     openSession: (login: LoginRequest, tenantId?: string) =>

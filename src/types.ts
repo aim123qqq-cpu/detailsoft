@@ -179,6 +179,8 @@ export type LoginRequest = {
   expiresAt: string;
   botName: string | null;
   deepLink: string | null;
+  /** "signup": opened to create a new center; the person becomes its owner. */
+  purpose?: 'login' | 'signup';
 };
 export type LoginMembership = { tenant: { id: string; name: string }; member: { id: string; displayName: string; roles: string[] } };
 export type LoginStatus = {
@@ -187,6 +189,7 @@ export type LoginStatus = {
   status: 'PENDING' | 'AWAITING_CONFIRMATION' | 'CONFIRMED' | 'DENIED' | 'CONSUMED' | 'EXPIRED';
   expiresAt: string;
   memberships: LoginMembership[];
+  purpose?: 'login' | 'signup';
 };
 
 export type CenterSettings = {

@@ -266,8 +266,14 @@ export const api = {
   getAuthProviders(signal?: AbortSignal) {
     return request<{ items: AuthProvider[]; demo: boolean }>('/api/auth/providers', { signal });
   },
-  createLoginRequest(provider: MessengerProvider) {
-    return request<LoginRequest>('/api/auth/login-requests', { method: 'POST', body: JSON.stringify({ provider }) });
+  createLoginRequest(provider: MessengerProvider, purpose: 'login' | 'signup' = 'login') {
+    return request<LoginRequest>('/api/auth/login-requests', { method: 'POST', body: JSON.stringify({ provider, purpose }) });
+  },
+  /** A confirmed sign-up request becomes a new center; the answer is the owner's session. */
+  createCenter(loginId: string, pollSecret: string, input: { centerName: string; ownerName: string }) {
+    return request<{ token: string; expiresAt: string; tenant: { id: string; name: string } }>(`/api/auth/login-requests/${encodeURIComponent(loginId)}/center`, {
+      method: 'POST', headers: { 'x-login-secret': pollSecret }, body: JSON.stringify(input)
+    });
   },
   getLoginStatus(loginId: string, pollSecret: string, signal?: AbortSignal) {
     return request<LoginStatus>(`/api/auth/login-requests/${encodeURIComponent(loginId)}`, { signal, headers: { 'x-login-secret': pollSecret } });

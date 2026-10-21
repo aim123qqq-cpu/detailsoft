@@ -71,6 +71,7 @@ export function createDetailFlowServer({
   const readyProviders = new Set();
   const botDialog = createBotDialog({ auth, adapters });
   const allowLoginRequest = createRateLimiter(20, 60_000);
+  const allowCenterSignup = createRateLimiter(20, 60_000);
   const idempotency = createIdempotency(db);
   for (const adapter of adapters.values()) {
     adapter.start(botDialog)
@@ -110,16 +111,30 @@ export function createDetailFlowServer({
         if (!allowLoginRequest(request.socket.remoteAddress ?? 'unknown')) return sendJson(response, 429, {
           error: { code: 'too_many_requests', message: 'Слишком много попыток входа. Подождите минуту' }
         });
-        const provider = (await readJson(request)).provider;
+        const input = await readJson(request);
+        const provider = input.provider;
         if (!MESSENGER_PROVIDERS.includes(provider) || !readyProviders.has(provider)) return sendJson(response, 422, {
           error: { code: 'provider_unavailable', message: 'Вход через этот мессенджер не настроен' }
         });
-        const login = auth.createLoginRequest(provider);
+        // purpose "signup": the person creates a new center and becomes its owner.
+        const login = auth.createLoginRequest(provider, input.purpose === 'signup' ? 'signup' : 'login');
         const adapter = adapters.get(provider);
         return sendJson(response, 201, {
-          id: login.id, provider, shortCode: login.shortCode, pollSecret: login.pollSecret, expiresAt: login.expiresAt,
+          id: login.id, provider, purpose: login.purpose, shortCode: login.shortCode, pollSecret: login.pollSecret, expiresAt: login.expiresAt,
           botName: adapter.botName, deepLink: adapter.deepLink(`login_${login.startToken}`)
         });
+      }
+      // A confirmed sign-up request becomes a new center with its owner and a session.
+      const signup = url.pathname.match(/^\/api\/auth\/login-requests\/([^/]+)\/center$/);
+      if (signup && request.method === 'POST') {
+        if (!allowCenterSignup(request.socket.remoteAddress ?? 'unknown')) return sendJson(response, 429, {
+          error: { code: 'too_many_requests', message: 'Слишком много попыток. Подождите минуту' }
+        });
+        const result = auth.createCenterFromLogin(signup[1], request.headers['x-login-secret'], await readJson(request));
+        if (result.kind === 'created') return sendJson(response, 201, result.session);
+        if (result.kind === 'invalid') return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите название центра и своё имя (от 2 символов)' } });
+        if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+        return sendJson(response, 404, { error: { code: 'login_not_found', message: 'Запрос не найден' } });
       }
       const loginRequest = url.pathname.match(/^\/api\/auth\/login-requests\/([^/]+)(\/session)?$/);
       if (loginRequest) {

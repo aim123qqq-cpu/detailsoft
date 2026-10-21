@@ -1321,6 +1321,11 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
 .login-tenants button { min-height: 52px; display: grid; gap: 2px; padding: 8px 12px; border: 1px solid #3a4651; border-radius: 10px; color: #e3e8eb; background: #0d141a; text-align: left; cursor: pointer; }
 .login-tenants small { color: #8e9ba5; font-size: 11px; }
 .login-secondary { min-height: 46px; border: 1px solid #394550; border-radius: 11px; color: #c2cbd2; background: transparent; font-size: 13px; font-weight: 800; cursor: pointer; }
+.login-signup { display: grid; gap: 12px; margin-top: 12px; }
+.login-signup label { display: grid; gap: 6px; color: #a7b2bb; font-size: 12px; font-weight: 800; }
+.login-signup input { min-height: 46px; padding: 0 14px; border: 1px solid #394550; border-radius: 11px; color: #eef2f5; background: #10171d; font-size: 15px; }
+.login-signup input:focus-visible { outline: 2px solid #ff7939; outline-offset: 1px; }
+.login-footer .login-secondary { padding: 0 18px; }
 .profile-signin { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 11px; padding: 14px; border: 1px solid #303d47; border-radius: 15px; background: #121920; }
 .profile-signin > div { display: grid; gap: 3px; }
 .profile-signin span { color: #8a97a1; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }

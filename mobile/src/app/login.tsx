@@ -18,6 +18,11 @@ const statusText: Record<LoginStatus['status'], string> = {
 
 export default function LoginScreen() {
   const { api, server, signIn } = useSession();
+  // "signup": a person without a center creates one and becomes its owner.
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [confirmed, setConfirmed] = useState(false);
+  const [centerName, setCenterName] = useState('');
+  const [ownerName, setOwnerName] = useState('');
   const [providers, setProviders] = useState<AuthProvider[] | null>(null);
   const [demo, setDemo] = useState(false);
   const [login, setLogin] = useState<LoginRequest | null>(null);
@@ -65,7 +70,8 @@ export default function LoginScreen() {
         setStatus(next.status);
         if (next.status === 'CONFIRMED') {
           stopped = true;
-          if (next.memberships.length > 1) setMemberships(next.memberships);
+          if (login.purpose === 'signup') setConfirmed(true);
+          else if (next.memberships.length > 1) setMemberships(next.memberships);
           else void openSession(login);
           return;
         }
@@ -84,13 +90,24 @@ export default function LoginScreen() {
   const start = async (provider: AuthProvider) => {
     setBusy(true); setError(''); setMemberships([]);
     try {
-      const created = await api.createLoginRequest(provider.provider);
+      const created = await api.createLoginRequest(provider.provider, mode);
       setLogin(created);
       setStatus('PENDING');
       if (created.deepLink) void Linking.openURL(created.deepLink).catch(() => {});
     } catch (requestError) { setError((requestError as Error).message); }
     finally { setBusy(false); }
   };
+
+  const createCenter = async () => {
+    if (!login) return;
+    setBusy(true); setError('');
+    try {
+      const session = await api.createCenter(login, { centerName: centerName.trim(), ownerName: ownerName.trim() });
+      await signIn(session.token);
+    } catch (requestError) { setError((requestError as Error).message); }
+    finally { setBusy(false); }
+  };
+  const reset = () => { setLogin(null); setStatus(null); setError(''); setConfirmed(false); };
 
   const signInWithCode = async () => {
     const value = code.trim();
@@ -109,14 +126,16 @@ export default function LoginScreen() {
 
   return (
     <Screen contentStyle={{ paddingTop: 64 }}>
-      <Title>Вход в DetailFlow</Title>
-      <Body muted>Войдите через мессенджер, к которому вас привязал владелец центра, или по коду доступа.</Body>
+      <Title>{mode === 'signup' ? 'Новый центр' : 'Вход в DetailFlow'}</Title>
+      <Body muted>{mode === 'signup'
+        ? 'Подтвердите себя в мессенджере, затем назовите центр. Вы станете его владельцем и сами пригласите команду.'
+        : 'Войдите через мессенджер, к которому вас привязал владелец центра, или по коду доступа.'}</Body>
       {error ? <Notice>{error}</Notice> : null}
 
       {!login && <>
         {providers === null ? <Body muted>Загружаем способы входа…</Body> : null}
         {providers?.map((provider) => (
-          <Button key={provider.provider} title={`Войти через ${provider.title}`} busy={busy} onPress={() => start(provider)} testID={`login-${provider.provider}`}/>
+          <Button key={provider.provider} title={`${mode === 'signup' ? 'Продолжить' : 'Войти'} через ${provider.title}`} busy={busy} onPress={() => start(provider)} testID={`login-${provider.provider}`}/>
         ))}
       </>}
 
@@ -124,8 +143,15 @@ export default function LoginScreen() {
         <Card>
           <Label>{providerTitle}</Label>
           <Text style={styles.code} accessibilityLabel={`Код ${login.shortCode.split('').join(' ')}`} testID="login-code">{login.shortCode}</Text>
-          <Body muted>{status ? statusText[status] : ''}</Body>
-          {login.deepLink && !finished && <Button title={`Открыть ${providerTitle}`} tone="secondary" onPress={() => Linking.openURL(login.deepLink!)}/>}
+          <Body muted>{confirmed ? 'Подтверждено. Осталось назвать центр.'
+            : status === 'AWAITING_CONFIRMATION' && login.purpose === 'signup' ? 'Подтвердите кнопкой «Это я, продолжить» в боте.'
+            : status ? statusText[status] : ''}</Body>
+          {confirmed && <View style={{ gap: space.m }}>
+            <Field label="Название центра" value={centerName} onChangeText={setCenterName} maxLength={120} placeholder="Например, Детейлинг Север" testID="center-name"/>
+            <Field label="Ваше имя" value={ownerName} onChangeText={setOwnerName} maxLength={80} autoCapitalize="words" placeholder="Имя Фамилия" testID="owner-name"/>
+            <Button title="Создать центр" busy={busy} disabled={centerName.trim().length < 2 || ownerName.trim().length < 2} onPress={createCenter} testID="create-center"/>
+          </View>}
+          {login.deepLink && !finished && !confirmed && <Button title={`Открыть ${providerTitle}`} tone="secondary" onPress={() => Linking.openURL(login.deepLink!)}/>}
           {memberships.length > 1 && <View style={{ gap: space.s }}>
             <Label>Выберите центр</Label>
             {memberships.map((membership) => (
@@ -136,18 +162,21 @@ export default function LoginScreen() {
               </Pressable>
             ))}
           </View>}
-          {finished && <Button title="Начать заново" onPress={() => { setLogin(null); setStatus(null); setError(''); }}/>}
-          {!finished && <Button title="Отмена" tone="quiet" onPress={() => { setLogin(null); setStatus(null); }}/>}
+          {finished && <Button title="Начать заново" onPress={reset}/>}
+          {!finished && <Button title="Отмена" tone="quiet" onPress={reset}/>}
         </Card>
       )}
 
-      {!login && <Card style={{ marginTop: space.s }}>
+      {!login && <Button title={mode === 'signup' ? 'У меня уже есть центр — войти' : 'Создать свой центр'} tone="quiet"
+        onPress={() => { setMode(mode === 'signup' ? 'login' : 'signup'); setError(''); }} testID="toggle-signup"/>}
+
+      {!login && mode === 'login' && <Card style={{ marginTop: space.s }}>
         <Field label="Код доступа сотрудника" value={code} onChangeText={setCode} placeholder="df_…" autoCapitalize="none" autoCorrect={false}
           secureTextEntry returnKeyType="go" onSubmitEditing={signInWithCode} error={codeError} testID="access-code"/>
         <Button title="Войти по коду" tone="secondary" busy={busy} onPress={signInWithCode} testID="access-code-submit"/>
       </Card>}
 
-      {!login && demo && <Button title="Демо-режим" tone="quiet" onPress={() => signIn('demo-session-token')} testID="login-demo"/>}
+      {!login && mode === 'login' && demo && <Button title="Демо-режим" tone="quiet" onPress={() => signIn('demo-session-token')} testID="login-demo"/>}
 
       <Pressable accessibilityRole="button" onPress={() => router.push('/server')} style={styles.server} hitSlop={8}>
         <Text style={styles.serverText}>Сервер: {server} · <Text style={{ color: colors.primary }}>Сменить</Text></Text>
