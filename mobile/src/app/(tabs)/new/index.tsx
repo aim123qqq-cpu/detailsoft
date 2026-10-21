@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import type { Customer, Vehicle } from '@df/types';
 import { Segmented, VehicleRow } from '@/features/booking-ui';
@@ -49,6 +49,12 @@ function Search() {
   // Results belong to the query they were found for; while typing, the old ones are not shown.
   const current = searchable && results?.mode === mode && results.query === query ? results : null;
   const searching = searchable && !current && !error;
+
+  // "Not found" appears below the search, under the keyboard: a full number moves on to the name,
+  // and the screen scrolls to the focused field.
+  const nameField = useRef<React.ComponentRef<typeof TextInput>>(null);
+  const newCustomer = current?.mode === 'phone' && !current.customers.length && digits.length >= 11;
+  useEffect(() => { if (newCustomer) nameField.current?.focus(); }, [newCustomer]);
 
   const choose = (customer: DraftCustomer, vehicle: DraftVehicle) => {
     update({ customer, vehicle, selections: [], quote: null, booking: null });
@@ -102,7 +108,7 @@ function Search() {
       {current?.mode === 'phone' && !current.customers.length ? <Card>
         <Text style={styles.name}>Клиент не найден</Text>
         <Body muted>{digits.length < 11 ? 'Введите номер полностью, чтобы создать клиента.' : 'Добавьте имя — номер уже записан.'}</Body>
-        <Field label="Имя клиента" value={name} onChangeText={setName} autoCapitalize="words" placeholder="Например, Иван Петров"/>
+        <Field ref={nameField} label="Имя клиента" value={name} onChangeText={setName} autoCapitalize="words" placeholder="Например, Иван Петров"/>
         <Button title="Создать клиента" busy={creating} disabled={name.trim().length < 2 || digits.length < 11} onPress={() => void createCustomer()}/>
       </Card> : null}
 

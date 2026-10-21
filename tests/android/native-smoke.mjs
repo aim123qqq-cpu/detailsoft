@@ -214,8 +214,10 @@ try {
   await tap('+7 999 000-00-00');
   await type('79990001122');
   await waitFor('Клиент не найден', { timeout: 20_000 });
-  await tap('Например, Иван Петров');
+  // A full number with nobody behind it puts the cursor in the name: typing goes straight there.
+  await sleep(800);
   await type('Ivan Petrov');
+  await waitFor('Ivan Petrov');
   back();
   await tap('Создать клиента');
   await tap('Вручную', { timeout: 20_000 });
