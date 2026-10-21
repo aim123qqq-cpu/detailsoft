@@ -1,12 +1,12 @@
 // Google Play listing images and the web app icons (public/icons), drawn from the same car mark as the app icon:
-// android/store/icon-512.png (512x512, Play masks the corners) and feature-1024x500.png.
+// mobile/store/icon-512.png (512x512, Play masks the corners) and feature-1024x500.png.
 // Run: node scripts/store-assets.mjs
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright-core';
 import { chromePath } from '../tests/e2e/chrome.mjs';
 
-const out = resolve('android/store');
+const out = resolve('mobile/store');
 await mkdir(out, { recursive: true });
 const mark = (size, stroke = '#FF7939') => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${stroke}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15v-4l2-5h12l2 5v4"/><path d="M4 13h16M7 13v2m10-2v2M6 18h1m10 0h1"/></svg>`;
 const fonts = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700&family=Russo+One&display=swap">';

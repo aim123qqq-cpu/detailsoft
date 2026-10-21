@@ -5,18 +5,21 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 
 const kind = process.argv[2] === 'aab' ? 'aab' : 'apk';
 const abisFlag = process.argv.indexOf('--abis');
-const abis = abisFlag > 0 ? process.argv[abisFlag + 1] : kind === 'apk' ? 'arm64-v8a,x86_64' : 'armeabi-v7a,arm64-v8a,x86_64';
+// Every phone, old 32-bit ones included, and the emulator; --abis arm64-v8a,x86_64 builds faster for testing.
+const abis = abisFlag > 0 ? process.argv[abisFlag + 1] : 'armeabi-v7a,arm64-v8a,x86_64';
 const root = resolve('.');
 const work = process.env.DF_BUILD_DIR ?? 'C:\\dfb';
 const env = {
   ...process.env,
   JAVA_HOME: process.env.JAVA_HOME || 'C:\\Program Files\\Android\\Android Studio\\jbr',
   ANDROID_HOME: process.env.ANDROID_HOME || `${process.env.LOCALAPPDATA}\\Android\\Sdk`,
-  DF_KEYSTORE_PROPERTIES: resolve(root, 'android', 'keystore.properties')
+  // The upload key and its properties live outside the repository, in ~/.detailflow.
+  DF_KEYSTORE_PROPERTIES: process.env.DF_KEYSTORE_PROPERTIES || resolve(homedir(), '.detailflow', 'keystore.properties')
 };
 
 // robocopy exit codes below 8 mean success.

@@ -8,15 +8,12 @@ graphify-out/
 .env
 .env.*
 !.env.example
-android/.gradle/
-android/build/
-android/app/build/
-android/local.properties
 *.apk
 
 .taste-skill/
 site/
-android/keystore.properties
+# Signing secrets never go to git (they live in ~/.detailflow)
+keystore.properties
 *.jks
 *.keystore
 *.aab

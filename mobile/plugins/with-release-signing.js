@@ -1,11 +1,11 @@
-// Release builds sign with the same Google Play upload key as the WebView shell (android/keystore.properties
-// at the repository root, not in git), so the native app installs over it as an update. Without that file
-// the release falls back to the debug key, as the Expo template does.
+// Release builds sign with the upload key of DetailFlow (the same key as the former WebView shell, so the
+// native app installs over it as an update). The key and its keystore.properties live outside the
+// repository, in ~/.detailflow; without that file the release falls back to the debug key, as in the Expo template.
 const { withAppBuildGradle } = require('expo/config-plugins');
 
-// DF_KEYSTORE_PROPERTIES points at the file when the app is built outside the repository (scripts/build-mobile.mjs).
+// DF_KEYSTORE_PROPERTIES points at another file (scripts/build-mobile.mjs passes the default explicitly).
 const HEADER = `// DetailFlow upload key (see plugins/with-release-signing.js)
-def dfKeystoreFile = System.getenv('DF_KEYSTORE_PROPERTIES') ? new File(System.getenv('DF_KEYSTORE_PROPERTIES')) : rootProject.file('../../android/keystore.properties')
+def dfKeystoreFile = System.getenv('DF_KEYSTORE_PROPERTIES') ? new File(System.getenv('DF_KEYSTORE_PROPERTIES')) : new File(System.getProperty('user.home'), '.detailflow/keystore.properties')
 def dfKeystore = new Properties()
 if (dfKeystoreFile.exists()) dfKeystoreFile.withInputStream { dfKeystore.load(it) }
 `;

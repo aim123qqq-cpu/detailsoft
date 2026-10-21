@@ -3,6 +3,7 @@
 //   node scripts/sign-mobile.mjs [--from <folder with DetailFlow-unsigned.apk/.aab>]
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, copyFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const REPO = 'aim123qqq-cpu/detailsoft';
@@ -10,7 +11,9 @@ const root = resolve('.');
 const out = resolve(root, 'artifacts');
 mkdirSync(out, { recursive: true });
 
-const props = Object.fromEntries(readFileSync(resolve(root, 'android', 'keystore.properties'), 'utf8').split(/\r?\n/)
+// The upload key and its properties live outside the repository (~/.detailflow), never in git.
+const keystoreProperties = process.env.DF_KEYSTORE_PROPERTIES || join(homedir(), '.detailflow', 'keystore.properties');
+const props = Object.fromEntries(readFileSync(keystoreProperties, 'utf8').split(/\r?\n/)
   .filter((line) => line && !line.startsWith('#') && line.includes('=')).map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]));
 const sdk = process.env.ANDROID_HOME || `${process.env.LOCALAPPDATA}\\Android\\Sdk`;
 const buildTools = join(sdk, 'build-tools', readdirSync(join(sdk, 'build-tools')).sort().at(-1));

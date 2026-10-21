@@ -20,7 +20,7 @@ node scripts/build-mobile.mjs aab   # artifacts\DetailFlow-<версия>.aab д
 
 Без этого (или на другой машине) приложение собирает GitHub Actions — workflow «Mobile» выкладывает неподписанные APK и AAB в предварительный релиз `mobile-ci`, а `node scripts/sign-mobile.mjs` подписывает их ключом загрузки локально.
 
-Подпись — ключ загрузки из `android/keystore.properties` в корне репозитория (`plugins/with-release-signing.js`), тот же, что у WebView-оболочки: нативная версия ставится поверх неё как обновление.
+Подпись — ключ загрузки из `~/.detailflow/keystore.properties` (вне проекта; `plugins/with-release-signing.js`, путь меняется переменной `DF_KEYSTORE_PROPERTIES`). Это тот же ключ, что был у прежней WebView-оболочки: приложение ставится поверх неё как обновление. Без файла релиз подписывается отладочным ключом.
 
 ## Проверка
 

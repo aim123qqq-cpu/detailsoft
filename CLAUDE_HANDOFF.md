@@ -84,9 +84,9 @@ docs/DEPLOY.md                    рабочая установка: env, пер
 server/setup.mjs                  первичная настройка центра и владельца (scripts/setup-owner.mjs)
 server/backup.mjs                 онлайн-копии SQLite и восстановление
 tests/e2e/chrome.mjs              путь к Chrome для E2E (CHROME_PATH или стандартный для ОС)
-android/                          Android-оболочка (Java, WebView, без зависимостей): адрес сервера, мост share/print/clipboard, камера
+mobile/                           нативное приложение (React Native, Expo): все разделы, работа без сети на общем src/offline + SQLite; см. docs/MOBILE.md
 src/platform.ts                   randomId() без secure context и доступ к мосту Android
-tests/android/smoke.mjs           Playwright _android: сценарий в настоящем WebView (не входит в pnpm test)
+tests/android/native-smoke.mjs    сценарий нативного приложения на эмуляторе через adb (не входит в pnpm test)
 migrations/                       схема 001–022
 server/repository/                методы репозитория по областям (center, leads, customers, vehicles, catalog, bookings, orders, analytics) + shared.mjs; класс в server/repository.mjs подмешивает их
 src/workspace/                    BookingsWorkspace.tsx, OrdersWorkspace.tsx, shared.tsx (бывший WorkspaceScreens.tsx)
@@ -96,9 +96,8 @@ src/shared/                       общий код сервера и прило
 server/offline-pack.mjs           пакет для записи без сети (GET /api/offline/booking-pack)
 src/offline/bookingLocal.ts       каталог, расчёт, свободное время, поиск и запись на телефоне по пакету
 server/idempotency.mjs            общий Idempotency-Key для изменяющих запросов (запомненный ответ, 7 дней)
-src/offline/                      работа без сети: store.ts (IndexedDB), sync.ts (копия ответов и очередь), orderLocal.ts (правила заказа на телефоне)
+src/offline/                      работа без сети, общая для веба и приложения: store.ts (IndexedDB или подключённое хранилище — SQLite в mobile/), sync.ts (копия ответов и очередь), orderLocal.ts, bookingLocal.ts
 src/SyncBanner.tsx                плашка «нет подключения / отправляем / не отправлено»
-android/.../ShellCache.java       файлы интерфейса в папке приложения для запуска APK без сервера
 server/catalog-repository.mjs     разделы каталога и простые услуги (одна скрытая операция, цена по умолчанию '*')
 src/SimpleServiceForm.tsx         форма простой услуги: раздел, название, время, цена, цены по классам
 server/roles-repository.mjs       роли центра: список прав, системные роли по умолчанию, свои роли, журнал
