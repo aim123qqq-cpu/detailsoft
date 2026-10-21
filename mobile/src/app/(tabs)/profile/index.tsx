@@ -24,6 +24,11 @@ export default function ProfileScreen() {
   const [busy, setBusy] = useState<'out' | 'delete' | null>(null);
   const [error, setError] = useState('');
   const granted = capabilityLabels.filter(([key]) => session.capabilities[key]);
+  const management = [
+    session.capabilities.manageCatalog && { href: '/profile/catalog' as const, title: 'Каталог услуг', note: 'Разделы, услуги, время и цены' },
+    session.capabilities.manageTeam && { href: '/profile/team' as const, title: 'Команда и роли', note: 'Сотрудники, доступы, приглашения' },
+    session.capabilities.manageSettings && { href: '/profile/settings' as const, title: 'График центра', note: 'Рабочие дни, часы, шаг записи' }
+  ].filter((item) => item !== false);
 
   const leave = async () => {
     setBusy('out');
@@ -54,6 +59,16 @@ export default function ProfileScreen() {
           <Body muted>{(session.actor.roleNames?.length ? session.actor.roleNames : session.actor.roles).join(' · ')}</Body>
         </View>
       </View>
+
+      {management.length ? <View style={styles.group}>
+        <Label>Управление центром</Label>
+        {management.map((item) => (
+          <Pressable key={item.href} accessibilityRole="button" onPress={() => router.push(item.href)} android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.link}>
+            <View style={{ flex: 1 }}><Text style={styles.linkLabel}>{item.title}</Text><Text style={styles.linkNote}>{item.note}</Text></View>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
+        ))}
+      </View> : null}
 
       <Card>
         <Label>Рабочий центр</Label>
@@ -97,6 +112,9 @@ const styles = StyleSheet.create({
   link: { minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.m, paddingHorizontal: space.l, backgroundColor: colors.surface, borderRadius: radius.l, overflow: 'hidden' },
   linkLabel: { color: colors.text, fontSize: 16, fontWeight: '600' },
   linkValue: { color: colors.primary, fontSize: 15, flexShrink: 1 },
+  linkNote: { color: colors.muted, fontSize: 13 },
+  chevron: { color: colors.muted, fontSize: 24 },
+  group: { gap: space.s },
   delete: { marginTop: space.s },
   version: { color: colors.soft, fontSize: 12, textAlign: 'center', marginTop: space.l }
 });

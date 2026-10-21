@@ -276,7 +276,7 @@ try {
   const pad = await scrollTo('Поле для подписи клиента пальцем', { swipes: 12 });
   const { x1, x2, y1, y2 } = pad.bounds;
   adb('shell', 'input', 'swipe', String(x1 + 60), String(y2 - 50), String(x2 - 60), String(y1 + 50), '600');
-  await waitFor('Подпись поставлена');
+  await scrollTo('Подпись поставлена');
   screenshot(resolve(out, '22-signature.png'));
   await tapNode(await scrollTo('Подписать и сохранить'));
   await waitFor(/^Акт приёмки № /, { timeout: 20_000 }); // the issued act, with its number
@@ -326,9 +326,81 @@ try {
   back();
   await waitFor(/^Все$/);
 
+  step('stage 6: statistics, a new service, the schedule, a new member and a new role');
+  await tap('Статистика');
+  await waitFor('Согласовано по сметам', { timeout: 20_000 });
+  await tap('7 дней');
+  await waitFor('Активность по дням', { timeout: 20_000 });
+  screenshot(resolve(out, '28-analytics.png'));
+
+  await tap('Профиль');
+  await tap('Каталог услуг', { timeout: 20_000 });
+  await waitFor('Бережная мойка', { timeout: 20_000 });
+  screenshot(resolve(out, '29-catalog.png'));
+  await tap('＋ Услуга');
+  await tap('Например, озонирование салона', { timeout: 20_000 });
+  await type('Ozon');
+  back();
+  await tap(/^0$/);
+  await type('1500');
+  back();
+  const form6 = find(/./).map((node) => node.text || node.desc).filter(Boolean).join(' | ');
+  await tapNode(await scrollTo('Добавить услугу'));
+  await sleep(2500);
+  if (!(await (await api('/api/tenants/current/catalog')).json()).items.some((item) => item.name === 'Ozon')) {
+    console.log('  form was:', form6);
+    console.log('  now:', find(/./).map((node) => node.text || node.desc).filter(Boolean).join(' | '));
+  }
+  for (let swipe = 0; swipe < 4; swipe += 1) adb('shell', 'input', 'swipe', '540', '700', '540', '1900', '300'); // back to the top of the catalog
+  await scrollTo('Ozon', { swipes: 14 });
+  await sleep(1500); // the list reloads on return
+  await tap('Ozon');
+  await waitFor('Цена, ₽', { timeout: 20_000 }); // the edit form of the new service
+  await scrollTo('Доступно для записи');
+  await scrollTo('Сохранить услугу');
+  const catalog6 = await (await api('/api/tenants/current/catalog')).json();
+  const ozon = catalog6.items.find((item) => item.name === 'Ozon');
+  assert.equal(ozon?.basePrice?.amountMinor, 150000, 'the new service is in the catalog at 1 500 ₽');
+  back();
+  back();
+
+  await tap('График центра', { timeout: 20_000 });
+  await tap('Вс', { timeout: 20_000 });
+  await tapNode(await scrollTo('Сохранить график'));
+  await waitFor(/^График сохранён/, { timeout: 20_000 });
+  screenshot(resolve(out, '30-schedule.png'));
+  assert.ok(!(await (await api('/api/tenants/current/settings')).json()).workingDays.includes(0), 'Sunday is off');
+  back();
+
+  await tap('Команда и роли', { timeout: 20_000 });
+  await tap('＋ Сотрудник', { timeout: 20_000 });
+  await tap('Например, Мария Орлова', { timeout: 20_000 });
+  await type('Petr Ivanov');
+  back();
+  await tapNode(await scrollTo('Добавить сотрудника'));
+  await waitFor('Поделиться кодом', { timeout: 20_000 });
+  screenshot(resolve(out, '31-member-code.png'));
+  await tap('Готово');
+  await waitFor('Petr Ivanov', { timeout: 20_000 });
+  assert.ok((await (await api('/api/tenants/current/team')).json()).items.some((member) => member.displayName === 'Petr Ivanov'));
+  const permission6 = (await (await api('/api/tenants/current/roles')).json()).permissions[0];
+  await tap('Роли и права');
+  await tap('＋ Роль', { timeout: 20_000 });
+  await tap('Например, Старший мастер', { timeout: 20_000 });
+  await type('Senior');
+  back();
+  await tap(permission6.title);
+  await tapNode(await scrollTo('Создать роль'));
+  await waitFor('Senior', { timeout: 20_000 });
+  screenshot(resolve(out, '32-roles.png'));
+  const senior = (await (await api('/api/tenants/current/roles')).json()).items.find((role) => role.name === 'Senior');
+  assert.deepEqual(senior?.permissions, [permission6.key]);
+  back();
+  await waitFor('Управление центром', { timeout: 20_000 });
+
   step('profile: demo sign-out returns to sign-in');
   await tap('Профиль');
-  await waitFor('Рабочий центр');
+  await waitFor('Управление центром');
   screenshot(resolve(out, '05-profile.png'));
   await tapNode(await scrollTo('Выйти из демо-режима'));
   // (checked by the server and the web test: a demo session has no account to delete)

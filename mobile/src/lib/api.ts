@@ -1,7 +1,7 @@
 import { randomUUID } from 'expo-crypto';
 import type {
-  AuthProvider, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogVariant, Customer, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, LoginRequest, LoginStatus,
-  OrderDocument, OrderDocumentContent, OrderDocumentType, OrderListItem, OrderRecommendation, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, Vehicle, WorkOrder
+  AnalyticsOverview, AuthProvider, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogSection, CatalogVariant, CenterRole, CenterSettings, Customer, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, LoginRequest, LoginStatus, ManagedCatalog, ManagedCatalogItem,
+  OrderDocument, OrderDocumentContent, OrderDocumentType, OrderListItem, OrderRecommendation, Permission, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, SimpleServiceInput, TeamMember, Vehicle, WorkOrder
 } from '@df/types';
 
 /** An answer from the server with an error: the message is the server's own, ready for the user. */
@@ -61,7 +61,12 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
       if ((error as Error).name === 'AbortError') throw error;
       throw new NetworkError();
     }
-    const payload = await response.json().catch(() => ({}));
+    // A success whose body cannot be read (the connection dropped mid-answer) is a failed request,
+    // never an empty result: a screen would otherwise take `{}` for an order or a list.
+    const payload = await response.json().catch(() => {
+      if (response.ok) throw new NetworkError();
+      return {};
+    });
     if (response.status === 401 && !path.startsWith('/api/auth/')) onUnauthorized();
     if (!response.ok) {
       throw new ApiError(payload.error?.message ?? 'Не удалось выполнить запрос', response.status, payload.error?.code ?? 'request_failed', payload.error?.details ?? {});
@@ -111,6 +116,35 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
       request<OrderDocument>(`/api/orders/${encodeURIComponent(orderId)}/documents/${encodeURIComponent(documentId)}`, { signal }),
     issueDocument: (orderId: string, input: { type: OrderDocumentType; signerName?: string; signatureDataUrl?: string }) =>
       request<OrderDocument>(`/api/orders/${encodeURIComponent(orderId)}/documents`, { method: 'POST', body: input, headers: { 'idempotency-key': randomUUID() } }),
+    analytics: (from: string, to: string, signal?: AbortSignal) =>
+      request<AnalyticsOverview>(`/api/analytics/overview?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, { signal }),
+
+    catalog: (signal?: AbortSignal) => request<ManagedCatalog>('/api/tenants/current/catalog', { signal }),
+    createSection: (name: string) => request<CatalogSection>('/api/tenants/current/catalog/sections', { method: 'POST', body: { name } }),
+    createSimpleService: (input: SimpleServiceInput) => request<ManagedCatalogItem>('/api/tenants/current/catalog/simple-services', { method: 'POST', body: input }),
+    updateSimpleService: (serviceId: string, input: SimpleServiceInput & { active: boolean }) =>
+      request<ManagedCatalogItem>(`/api/tenants/current/catalog/simple-services/${encodeURIComponent(serviceId)}`, { method: 'PUT', body: input }),
+
+    settings: (signal?: AbortSignal) => request<CenterSettings>('/api/tenants/current/settings', { signal }),
+    updateSettings: (input: Omit<CenterSettings, 'timezone'>) => request<CenterSettings>('/api/tenants/current/settings', { method: 'PATCH', body: input }),
+
+    team: (signal?: AbortSignal) => request<{ items: TeamMember[] }>('/api/tenants/current/team', { signal }),
+    createMember: (input: { displayName: string; roles: string[] }) =>
+      request<{ member: TeamMember; accessToken: string }>('/api/tenants/current/team', { method: 'POST', body: input }),
+    updateMember: (memberId: string, input: { roles?: string[]; status?: TeamMember['status'] }) =>
+      request<TeamMember>(`/api/tenants/current/team/${encodeURIComponent(memberId)}`, { method: 'PATCH', body: input }),
+    messengerInvite: (memberId: string, provider: AuthProvider['provider']) =>
+      request<{ code: string; provider: AuthProvider['provider']; expiresAt: string; botName: string | null; deepLink: string | null }>(
+        `/api/tenants/current/team/${encodeURIComponent(memberId)}/messenger-invites`, { method: 'POST', body: { provider } }),
+    removeMessengerLink: (memberId: string, linkId: string) =>
+      request<{ removed: boolean }>(`/api/tenants/current/team/${encodeURIComponent(memberId)}/messenger-links/${encodeURIComponent(linkId)}`, { method: 'DELETE' }),
+    roles: (signal?: AbortSignal) => request<{ permissions: Permission[]; items: CenterRole[] }>('/api/tenants/current/roles?includeArchived=true', { signal }),
+    createRole: (input: { name: string; permissions: string[] }) => request<CenterRole>('/api/tenants/current/roles', { method: 'POST', body: input }),
+    updateRole: (key: string, input: { name?: string; permissions?: string[] }) =>
+      request<CenterRole>(`/api/tenants/current/roles/${encodeURIComponent(key)}`, { method: 'PATCH', body: input }),
+    setRoleArchived: (key: string, archived: boolean) =>
+      request<CenterRole>(`/api/tenants/current/roles/${encodeURIComponent(key)}/${archived ? 'archive' : 'restore'}`, { method: 'POST', body: {} }),
+
     /** Starts intake: the order of a booking (the server returns the existing one on a repeat). */
     createOrder: (bookingId: string) => request<WorkOrder>('/api/orders', { method: 'POST', body: { bookingId }, headers: { 'idempotency-key': randomUUID() } }),
 
