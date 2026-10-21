@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiRequestError, api, authSession, demoAuthEnabled } from './api';
+import { iosBrowserTab } from './platform';
 import type { AuthProvider, LoginMembership, LoginRequest, LoginStatus } from './types';
 
 const statusText: Record<LoginStatus['status'], string> = {
@@ -203,6 +204,7 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
           {signup ? 'У меня уже есть центр — войти' : 'Создать свой центр'}
         </button>}
         {!signup && <p><b>Нет доступа?</b> Попросите владельца центра прислать приглашение из раздела «Профиль → Команда» или создайте свой центр.</p>}
+        {iosBrowserTab() && <p className="login-install" data-testid="ios-install"><b>Как приложение на iPhone:</b> нажмите «Поделиться» в Safari и выберите «На экран „Домой“». DetailFlow откроется на весь экран и будет работать без сети.</p>}
         {onCancel && demoAuthEnabled && <button className="login-demo" data-testid="login-cancel" onClick={onCancel}>Продолжить в демо-режиме</button>}
       </footer>
     </section>

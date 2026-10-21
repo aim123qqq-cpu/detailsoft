@@ -10,6 +10,13 @@ declare global {
 
 export const androidApp = (): AndroidBridge | null => window.DetailFlowAndroid ?? null;
 
+/** An iPhone or iPad browser tab, not yet added to the home screen (iOS never offers to install by itself). */
+export function iosBrowserTab() {
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = (navigator as Navigator & { standalone?: boolean }).standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  return ios && !standalone;
+}
+
 /**
  * crypto.randomUUID exists only in secure contexts, and a phone on the center Wi-Fi opens
  * DetailFlow over plain http://192.168…; getRandomValues works everywhere.

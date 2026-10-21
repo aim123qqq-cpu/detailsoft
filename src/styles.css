@@ -1524,3 +1524,8 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
 .composition-new-time strong { font-size: 12px; }
 .composition-new-time label { color: #8c99a3; font-size: 9px; font-weight: 800; text-transform: uppercase; }
 .composition-new-time input { min-height: 44px; padding: 9px 10px; border: 1px solid #35424c; border-radius: 10px; color: #edf1f3; background: #0c1319; font: inherit; }
+
+/* iPhone Safari zooms the page into any field with text under 16px: on touch screens fields are at least 16px. */
+@media (pointer: coarse) { input, textarea, select { font-size: max(16px, 1em) !important; } }
+.login-install { max-width: 32em; margin: 4px 0 0; padding: 10px 12px; border: 1px dashed #3a4651; border-radius: 11px; color: #a7b2bb; font-size: 12px; line-height: 1.5; }
+.login-install b { color: #eef2f5; }
