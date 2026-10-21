@@ -108,6 +108,16 @@ pnpm build
 
 На сервере `.env` создаётся с `DEMO_AUTH=false`, `SEED_DEMO=false` и копией базы каждые 6 часов (28 копий).
 
+### Telegram из российского дата-центра
+
+Если сервер не достаёт до `api.telegram.org` (в `/api/ready` — `"telegram":"unavailable"`, в журнале — `fetch failed`), Telegram можно пустить через VPN владельца, остальной трафик сервера идёт напрямую. На сервере от root:
+
+```bash
+node /opt/detailflow/deploy/telegram-proxy.mjs 'ссылка на подписку VPN'
+```
+
+Скрипт ставит sing-box, перебирает серверы из подписки, пока Telegram не ответит, запускает локальный прокси `127.0.0.1:2080` (через VPN — только домены Telegram) и подключает его к службе DetailFlow (`/etc/systemd/system/detailflow.service.d/telegram-proxy.conf`). Ключи хранятся в `/etc/sing-box` (только root) и не выводятся. После перевыпуска ссылки у VPN-сервиса запустите скрипт ещё раз с новой ссылкой.
+
 ## Облачный сервер (Linux)
 
 Кнопке «Поделиться» и буферу обмена на телефонах нужен HTTPS. Проще всего поставить перед DetailFlow [Caddy](https://caddyserver.com/): он сам получает и продлевает сертификат.
