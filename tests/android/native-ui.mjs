@@ -52,7 +52,8 @@ export async function tap(matcher, options) {
 export async function scrollTo(matcher, { swipes = 8 } = {}) {
   for (let attempt = 0; attempt <= swipes; attempt += 1) {
     const [node] = find(matcher);
-    if (node) return node;
+    // After a swipe the list may still glide: look again once it stops, so a tap lands where the element is.
+    if (node) return attempt ? (await sleep(700), find(matcher)[0] ?? node) : node;
     adb('shell', 'input', 'swipe', '540', '1800', '540', '900', '350');
     await sleep(600);
   }
