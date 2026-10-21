@@ -75,25 +75,29 @@ try {
   const workOrderId = await approvedOrder();
   const intakeOrder = await newOrder('veh_mazda', 15);
 
-  step('first launch asks for the server');
+  step('first launch opens sign-in on the public server; the test points it at its own');
   await launch('ru.detailflow.app', { clear: true });
-  await waitFor('Адрес сервера', { timeout: 45_000 });
-  // The field offers the public server; the test types its own address instead.
-  await tap(/^detailflow\.ru$/);
-  adb('shell', 'input', 'keyevent', 'KEYCODE_MOVE_END', ...Array(20).fill('KEYCODE_DEL'));
+  const title = await waitFor('Вход в DetailFlow', { timeout: 45_000 });
+  assert.ok(!find('Адрес сервера').length && !find(/Сменить/).length, 'no server choice for people');
+  screenshot(resolve(out, '01-first-launch.png'));
+  // The hidden way to another server: a long press on the title.
+  adb('shell', 'input', 'swipe', String(title.x), String(title.y), String(title.x), String(title.y), '2000');
+  await tap(/detailflow\.ru$/);
+  adb('shell', 'input', 'keyevent', 'KEYCODE_MOVE_END', ...Array(30).fill('KEYCODE_DEL'));
   await type(`10.0.2.2:${PORT}`);
   screenshot(resolve(out, '01-server.png'));
   await tap('Подключиться');
 
   step('sign-in offers the messenger, an access code and the demo');
   // Just after a cold boot the emulator's network may not be up yet: try again, as a person would.
+  // The demo button is only on the test server: it shows that the app now talks to it.
   for (let attempt = 0; ; attempt += 1) {
-    const node = await waitFor(/^Вход в DetailFlow$|^По этому адресу сервер DetailFlow не отвечает/, { timeout: 30_000 });
-    if (node.text === 'Вход в DetailFlow' || attempt === 2) break;
+    const node = await waitFor(/^Демо-режим$|^По этому адресу сервер DetailFlow не отвечает/, { timeout: 30_000 });
+    if (node.text === 'Демо-режим' || attempt === 2) break;
     await sleep(3000);
-    await tap('Подключиться');
+    if (find('Подключиться').length) await tap('Подключиться');
   }
-  await waitFor('Вход в DetailFlow');
+  await waitFor('Демо-режим');
   screenshot(resolve(out, '02-login.png'));
   await tap('Демо-режим');
 

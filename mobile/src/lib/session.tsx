@@ -1,11 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { SessionContext } from '@df/types';
-import { ApiError, createApi, type Api } from './api';
+import { ApiError, DEFAULT_SERVER, createApi, normalizeServerUrl, type Api } from './api';
 import { storage } from './storage';
 
 type State =
   | { phase: 'loading' }
-  | { phase: 'no-server' }
   | { phase: 'signed-out'; server: string }
   | { phase: 'signed-in'; server: string; token: string; session: SessionContext }
   | { phase: 'offline'; server: string; token: string; message: string };
@@ -28,7 +27,7 @@ const Context = createContext<SessionValue | null>(null);
  */
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>({ phase: 'loading' });
-  const server = state.phase === 'loading' || state.phase === 'no-server' ? null : state.server;
+  const server = state.phase === 'loading' ? null : state.server;
   const token = state.phase === 'signed-in' || state.phase === 'offline' ? state.token : null;
 
   const signedOut = useCallback(async (url: string) => {
@@ -49,8 +48,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void (async () => {
-      const url = await storage.server();
-      if (!url) return setState({ phase: 'no-server' });
+      // Everyone works on the public server; another address is set only for tests (long press on the sign-in title).
+      const url = await storage.server() ?? normalizeServerUrl(DEFAULT_SERVER);
       await open(url, await storage.token());
     })();
   }, [open]);

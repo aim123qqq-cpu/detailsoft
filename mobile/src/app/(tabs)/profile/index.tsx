@@ -89,9 +89,6 @@ export default function ProfileScreen() {
         <Button title={session.actor.authMethod === 'demo' ? 'Выйти из демо-режима' : 'Выйти'} tone="secondary" busy={busy === 'out'} onPress={leave} testID="sign-out"/>
       </Card>
 
-      <Pressable accessibilityRole="button" onPress={() => router.push('/server')} android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.link}>
-        <Text style={styles.linkLabel}>Сервер</Text><Text style={styles.linkValue} numberOfLines={1}>{server}</Text>
-      </Pressable>
       <Pressable accessibilityRole="link" onPress={() => WebBrowser.openBrowserAsync(`${server}/privacy/`, { toolbarColor: colors.ground, controlsColor: colors.primary })}
         android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.link}>
         <Text style={styles.linkLabel}>Политика конфиденциальности</Text><Text style={styles.linkValue}>Открыть</Text>

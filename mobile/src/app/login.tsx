@@ -126,7 +126,10 @@ export default function LoginScreen() {
 
   return (
     <Screen contentStyle={{ paddingTop: 64 }}>
-      <Title>{mode === 'signup' ? 'Новый центр' : 'Вход в DetailFlow'}</Title>
+      {/* A long press on the title points the app at another server: for tests and a center's own machine. */}
+      <Pressable onLongPress={() => router.push('/server')} delayLongPress={1500} accessible={false} testID="login-title">
+        <Title>{mode === 'signup' ? 'Новый центр' : 'Вход в DetailFlow'}</Title>
+      </Pressable>
       <Body muted>{mode === 'signup'
         ? 'Подтвердите себя в мессенджере, затем назовите центр. Вы станете его владельцем и сами пригласите команду.'
         : 'Войдите через мессенджер, к которому вас привязал владелец центра, или по коду доступа.'}</Body>
@@ -177,10 +180,6 @@ export default function LoginScreen() {
       </Card>}
 
       {!login && mode === 'login' && demo && <Button title="Демо-режим" tone="quiet" onPress={() => signIn('demo-session-token')} testID="login-demo"/>}
-
-      <Pressable accessibilityRole="button" onPress={() => router.push('/server')} style={styles.server} hitSlop={8}>
-        <Text style={styles.serverText}>Сервер: {server} · <Text style={{ color: colors.primary }}>Сменить</Text></Text>
-      </Pressable>
     </Screen>
   );
 }
@@ -189,7 +188,5 @@ const styles = StyleSheet.create({
   code: { color: colors.text, fontSize: 40, fontWeight: '800', letterSpacing: 6, textAlign: 'center', marginVertical: space.s, fontVariant: ['tabular-nums'] },
   tenant: { backgroundColor: colors.surfaceRaised, borderRadius: radius.m, padding: space.m, overflow: 'hidden' },
   tenantName: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  tenantRole: { color: colors.muted, fontSize: 14, marginTop: 2 },
-  server: { marginTop: space.xl, alignItems: 'center', padding: space.s },
-  serverText: { color: colors.muted, fontSize: 14 }
+  tenantRole: { color: colors.muted, fontSize: 14, marginTop: 2 }
 });

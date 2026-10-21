@@ -3,12 +3,11 @@ import { View } from 'react-native';
 import { router } from 'expo-router';
 import { DEFAULT_SERVER, normalizeServerUrl, probeServer } from '@/lib/api';
 import { useSession } from '@/lib/session';
-import { Body, Button, Field, Screen, Title } from '@/ui';
+import { Body, Button, Field, Screen } from '@/ui';
 
-/** First launch (and "Сменить сервер"): the address of the center's DetailFlow server. */
+/** Another server than the public one: reached by a long press on the sign-in title (tests, a center's own machine). */
 export default function ServerScreen() {
-  const { server, setServer, state } = useSession();
-  // A new install offers the public server; a center with its own machine types its address instead.
+  const { server, setServer } = useSession();
   const [address, setAddress] = useState(server ?? DEFAULT_SERVER);
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(false);
@@ -25,9 +24,8 @@ export default function ServerScreen() {
   };
 
   return (
-    <Screen contentStyle={{ paddingTop: state.phase === 'no-server' ? 72 : 16 }}>
-      {state.phase === 'no-server' && <Title>DetailFlow</Title>}
-      <Body muted>Обычно это {DEFAULT_SERVER} — оставьте как есть и нажмите «Подключиться». Если у вашего центра свой сервер, введите его адрес: его знает владелец (например, 192.168.1.60:4173 в сети центра).</Body>
+    <Screen>
+      <Body muted>Обычно менять не нужно: приложение работает с {DEFAULT_SERVER}. Другой адрес — только для своего сервера центра (например, 192.168.1.60:4173).</Body>
       <View style={{ height: 8 }}/>
       <Field label="Адрес сервера" value={address} onChangeText={setAddress} placeholder={DEFAULT_SERVER} autoCapitalize="none" autoCorrect={false}
         keyboardType="url" returnKeyType="go" onSubmitEditing={connect} error={error} testID="server-address"/>
