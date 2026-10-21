@@ -4,10 +4,24 @@
     "strict": true,
     "allowImportingTsExtensions": true,
     "paths": {
-      "@/*": ["./src/*"],
-      "@/assets/*": ["./assets/*"],
-      "@df/shared/*": ["../src/shared/*"],
-      "@df/types": ["../src/types.ts"]
+      "@/*": [
+        "./src/*"
+      ],
+      "@/assets/*": [
+        "./assets/*"
+      ],
+      "@df/shared/*": [
+        "../src/shared/*"
+      ],
+      "@df/types": [
+        "../src/types.ts"
+      ],
+      "@df/offline/*": [
+        "../src/offline/*"
+      ],
+      "@df/apiError": [
+        "../src/apiError.ts"
+      ]
     }
   },
   "include": [

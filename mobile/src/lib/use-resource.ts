@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { onSynced } from '@df/offline/sync';
 
 /**
  * Loads data for a screen: the result, the server's error message, and a reload for pull-to-refresh.
@@ -19,6 +20,8 @@ export function useResource<T>(fetcher: (signal: AbortSignal) => Promise<T>) {
     return () => controller.abort();
   }, [fetcher, version]);
 
+  // Changes made offline reached the server: show the server's version (real ids, numbers, times).
+  useEffect(() => onSynced(() => setVersion((value) => value + 1)), []);
   const reload = useCallback(() => { setRefreshing(true); setVersion((value) => value + 1); }, []);
   /** Loads again without the pull-to-refresh spinner (a screen coming back into view). */
   const refresh = useCallback(() => setVersion((value) => value + 1), []);

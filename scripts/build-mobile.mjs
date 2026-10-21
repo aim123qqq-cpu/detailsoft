@@ -28,9 +28,11 @@ const run = (command, args, cwd) => execFileSync(command, args, { cwd, env, stdi
 
 console.log(`→ sources to ${work}`);
 mirror(resolve(root, 'mobile'), `${work}\\mobile`, '/XD', 'node_modules', 'android', 'ios', '.expo');
+// The web code the phone shares: shared rules, the offline queue and local rules, and what they import.
 mirror(resolve(root, 'src', 'shared'), `${work}\\src\\shared`);
+mirror(resolve(root, 'src', 'offline'), `${work}\\src\\offline`);
 mkdirSync(`${work}\\src`, { recursive: true });
-copyFileSync(resolve(root, 'src', 'types.ts'), `${work}\\src\\types.ts`);
+for (const file of ['types.ts', 'apiError.ts', 'platform.ts']) copyFileSync(resolve(root, 'src', file), `${work}\\src\\${file}`);
 
 // Dependencies are reinstalled whenever package-lock.json changes (a new Expo module, an update).
 const lock = createHash('sha256').update(readFileSync(resolve(root, 'mobile', 'package-lock.json'))).digest('hex');

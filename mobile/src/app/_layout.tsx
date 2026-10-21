@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { useSyncLoop } from '@/features/sync-banner';
 import { BookingDraftProvider } from '@/lib/booking-draft';
 import { SessionProvider, useSession } from '@/lib/session';
 import { colors, navigationTheme } from '@/lib/theme';
@@ -24,6 +25,7 @@ export default function RootLayout() {
 /** Without a server: its address. Signed out: sign-in. Signed in: the tabs. */
 function RootNavigator() {
   const { state } = useSession();
+  useSyncLoop();
   useEffect(() => { if (state.phase !== 'loading') void SplashScreen.hideAsync(); }, [state.phase]);
   if (state.phase === 'loading') return null;
 

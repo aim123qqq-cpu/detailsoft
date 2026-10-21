@@ -40,6 +40,19 @@ let send: Sender | null = null;
 let scopeOf: () => string = () => 'anonymous';
 let state: SyncState = { reachable: typeof navigator === 'undefined' || navigator.onLine !== false, syncing: false, pending: 0, failed: null };
 const listeners = new Set<() => void>();
+const syncedListeners = new Set<() => void>();
+// The browser runs in a window with events and a document; the native app has neither.
+const browser = typeof window !== 'undefined' && typeof window.addEventListener === 'function' && typeof document !== 'undefined';
+
+/** Everything queued reached the server (or a refused change was dropped): open screens reload. */
+function announceSynced() {
+  syncedListeners.forEach((listener) => listener());
+  if (browser) window.dispatchEvent(new CustomEvent('detailflow:synced'));
+}
+export function onSynced(listener: () => void) {
+  syncedListeners.add(listener);
+  return () => { syncedListeners.delete(listener); };
+}
 let sequence = 0;
 
 function emit(next: Partial<SyncState>) {
@@ -191,7 +204,7 @@ export async function flush() {
     await refreshCounts();
   }
   // Open screens reload their data from the server once everything is sent.
-  if (sentAny && state.pending === 0 && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('detailflow:synced'));
+  if (sentAny && state.pending === 0) announceSynced();
 }
 
 async function afterSent(item: OutboxItem, payload: unknown) {
@@ -246,12 +259,12 @@ export async function discardFailed() {
     if (path) { await storeDelete('cache', cacheKey(path)); await storeDelete('meta', cacheKey(path)); }
   }
   await refreshCounts();
-  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('detailflow:synced'));
+  announceSynced();
   await flush();
   return dropped.length;
 }
 
-if (typeof window !== 'undefined') {
+if (browser) {
   window.addEventListener('online', () => markReachable(true));
   window.addEventListener('offline', () => emit({ reachable: false }));
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void flush(); });

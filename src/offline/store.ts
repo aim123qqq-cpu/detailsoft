@@ -4,7 +4,23 @@
  * it just forgets the copy on reload.
  */
 /** cache: saved answers; outbox: queued changes; meta: when and how big each saved answer is (for cleanup). */
-type StoreName = 'cache' | 'outbox' | 'meta';
+export type StoreName = 'cache' | 'outbox' | 'meta';
+
+/**
+ * Where the stores live. The browser uses IndexedDB (below); the native app plugs in SQLite with
+ * `setStoreBackend`, and the queue and copy logic in sync.ts stay the same on both.
+ */
+export type StoreBackend = {
+  get<T>(store: StoreName, key: string): Promise<T | undefined>;
+  set(store: StoreName, key: string, value: unknown): Promise<void>;
+  delete(store: StoreName, key: string): Promise<void>;
+  /** All entries ordered by key. */
+  entries<T>(store: StoreName): Promise<Array<[string, T]>>;
+  keys(store: StoreName): Promise<string[]>;
+  wipe(): Promise<void>;
+};
+let backend: StoreBackend | null = null;
+export function setStoreBackend(next: StoreBackend) { backend = next; }
 const STORES: StoreName[] = ['cache', 'outbox', 'meta'];
 
 const DB_NAME = 'detailflow-offline';
@@ -56,22 +72,26 @@ function run<T>(store: StoreName, mode: IDBTransactionMode, action: (objects: ID
 }
 
 export async function storeGet<T>(store: StoreName, key: string): Promise<T | undefined> {
+  if (backend) return backend.get<T>(store, key);
   if (!(await open())) return memory[store].get(key) as T | undefined;
   return run<T>(store, 'readonly', (objects) => objects.get(key) as IDBRequest<T>);
 }
 
 export async function storeSet(store: StoreName, key: string, value: unknown): Promise<void> {
+  if (backend) return backend.set(store, key, value);
   if (!(await open())) { memory[store].set(key, value); return; }
   await run(store, 'readwrite', (objects) => objects.put(value, key));
 }
 
 export async function storeDelete(store: StoreName, key: string): Promise<void> {
+  if (backend) return backend.delete(store, key);
   if (!(await open())) { memory[store].delete(key); return; }
   await run(store, 'readwrite', (objects) => objects.delete(key));
 }
 
 /** All entries ordered by key. */
 export async function storeEntries<T>(store: StoreName): Promise<Array<[string, T]>> {
+  if (backend) return backend.entries<T>(store);
   if (!(await open())) return [...memory[store].entries()].sort(([left], [right]) => left.localeCompare(right)) as Array<[string, T]>;
   const [keys, values] = await Promise.all([
     run<IDBValidKey[]>(store, 'readonly', (objects) => objects.getAllKeys()),
@@ -82,12 +102,14 @@ export async function storeEntries<T>(store: StoreName): Promise<Array<[string, 
 
 /** Keys only: cheap even when the values are large (orders with photos). */
 export async function storeKeys(store: StoreName): Promise<string[]> {
+  if (backend) return backend.keys(store);
   if (!(await open())) return [...memory[store].keys()];
   return ((await run<IDBValidKey[]>(store, 'readonly', (objects) => objects.getAllKeys())) ?? []).map(String);
 }
 
 /** Erases the whole offline copy and queue on this device (after the account is deleted). */
 export async function wipeOfflineData(): Promise<void> {
+  if (backend) return backend.wipe();
   for (const store of STORES) memory[store].clear();
   const db = await open();
   db?.close();

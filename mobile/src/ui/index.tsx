@@ -1,12 +1,14 @@
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type PressableProps, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 import { colors, radius, space } from '@/lib/theme';
+import { SyncBanner } from '@/features/sync-banner';
 
 /** A scrolling screen body with the page margins; refresh control optional. */
 export function Screen({ children, refreshControl, contentStyle }: { children: ReactNode; refreshControl?: React.ComponentProps<typeof ScrollView>['refreshControl']; contentStyle?: StyleProp<ViewStyle> }) {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={[styles.screenContent, contentStyle]} contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps="handled" refreshControl={refreshControl}>
+      <SyncBanner/>
       {children}
     </ScrollView>
   );

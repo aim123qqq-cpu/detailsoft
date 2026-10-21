@@ -79,7 +79,8 @@ export function BookingRow({ item, timeZone }: { item: BookingListItem; timeZone
         <Text style={styles.name} numberOfLines={1}>{item.customer.name}</Text>
         <Text style={styles.meta} numberOfLines={1}>{item.vehicle.plate} · {vehicleName(item.vehicle)}</Text>
         <View style={styles.rowBottom}>
-          {item.orderId ? <Pill label="Заказ открыт" tone="ok"/> : item.status !== 'CONFIRMED' ? <Pill label={status.label} tone={status.tone}/> : <Text style={styles.meta}>{duration(item.estimatedDurationMinutes)}</Text>}
+          {item.slotConflict ? <Pill label="Конфликт времени" tone="warn"/> : item.pendingSync ? <Pill label="На телефоне" tone="neutral"/>
+            : item.orderId ? <Pill label="Заказ открыт" tone="ok"/> : item.status !== 'CONFIRMED' ? <Pill label={status.label} tone={status.tone}/> : <Text style={styles.meta}>{duration(item.estimatedDurationMinutes)}</Text>}
           <Text style={styles.amount}>{money(item.preliminaryAmountMinor)}</Text>
         </View>
       </View>

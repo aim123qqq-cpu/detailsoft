@@ -7,6 +7,7 @@ import { useSession, useSignedIn } from '@/lib/session';
 import { useResource } from '@/lib/use-resource';
 import { colors, radius, space } from '@/lib/theme';
 import { Body, Button, Chip, Loading, Notice, Pill } from '@/ui';
+import { SyncBanner } from '@/features/sync-banner';
 
 type Filter = 'mine' | 'all' | 'active' | 'ready' | 'closed';
 
@@ -44,6 +45,7 @@ export default function OrdersScreen() {
         onRefresh={reload}/>}
       ListHeaderComponent={
         <View style={{ gap: space.m, marginBottom: space.s }}>
+          <SyncBanner/>
           {error ? <><Notice>{error}</Notice><Button title="Повторить" tone="secondary" onPress={reload}/></> : null}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.s }}>
             {filters.map((item) => <Chip key={item.id} label={item.label} selected={filter === item.id} onPress={() => setFilter(item.id)}/>)}

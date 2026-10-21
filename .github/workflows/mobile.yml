@@ -11,6 +11,9 @@ on:
       - mobile/**
       - src/shared/**
       - src/types.ts
+      - src/offline/**
+      - src/apiError.ts
+      - src/platform.ts
       - .github/workflows/mobile.yml
   workflow_dispatch:
 

@@ -43,7 +43,7 @@ export default function BookingScreen() {
   };
   const change = (key: string, input: { startAt: string } | { status: 'CANCELLED' | 'NO_SHOW' }) => act(key, async () => {
     const updated = await api.updateBooking(item.id, input);
-    setItem((current) => ({ ...current, startAt: updated.startAt, status: updated.status }));
+    setItem((current) => ({ ...current, startAt: updated.startAt, status: updated.status, pendingSync: updated.pendingSync, slotConflict: updated.slotConflict ?? false }));
     setMoving(false); setMoveTo('');
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   });
@@ -87,6 +87,8 @@ export default function BookingScreen() {
         ))}
       </Card> : null}
 
+      {item.slotConflict ? <Notice>Конфликт времени: запись сделали без связи с сервером, а это время за это время заняли. Перенесите её на свободное время.</Notice>
+        : item.pendingSync ? <Notice tone="info">Сохранено на телефоне — отправится, когда появится связь.</Notice> : null}
       {error ? <Notice>{error}</Notice> : null}
 
       {item.orderId ? <>

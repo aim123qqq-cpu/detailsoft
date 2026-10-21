@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import Constants from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
 import type { SessionContext } from '@df/types';
+import { wipeOfflineData } from '@df/offline/store';
 import { useSession, useSignedIn } from '@/lib/session';
 import { colors, radius, space } from '@/lib/theme';
 import { Body, Button, Card, Label, Notice, Screen, Title } from '@/ui';
@@ -44,7 +45,8 @@ export default function ProfileScreen() {
       { text: 'Отмена', style: 'cancel' },
       { text: 'Удалить навсегда', style: 'destructive', onPress: async () => {
         setBusy('delete'); setError('');
-        try { await api.deleteAccount(); await signOut(); }
+        // The phone's copy of the center's data goes too: nothing of it stays on this device.
+        try { await api.deleteAccount(); await wipeOfflineData(); await signOut(); }
         catch (requestError) { setError((requestError as Error).message); setBusy(null); }
       } }
     ]

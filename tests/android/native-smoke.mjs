@@ -3,6 +3,7 @@
 // Run from the repository root: node tests/android/native-smoke.mjs
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
+import net from 'node:net';
 import { resolve } from 'node:path';
 import { createDetailFlowServer } from '../../server/app.mjs';
 import { carLayout } from '../../src/shared/carLayouts.ts';
@@ -12,8 +13,22 @@ const PORT = 4180;
 const out = resolve('artifacts/native');
 mkdirSync(out, { recursive: true });
 const server = createDetailFlowServer({ databasePath: ':memory:', seed: true, staticDir: resolve('dist') });
-await new Promise((done) => server.listen(PORT, '0.0.0.0', done));
-const api = (path, init = {}) => fetch(`http://127.0.0.1:${PORT}${path}`, { ...init, headers: { authorization: 'Bearer demo-session-token', 'content-type': 'application/json', ...init.headers } });
+// The app reaches the server through a proxy on PORT; switching the proxy off is the phone losing the network.
+const SERVER_PORT = PORT + 1;
+await new Promise((done) => server.listen(SERVER_PORT, '127.0.0.1', done));
+const sockets = new Set();
+const proxy = net.createServer((client) => {
+  const upstream = net.connect(SERVER_PORT, '127.0.0.1');
+  const drop = () => { client.destroy(); upstream.destroy(); sockets.delete(client); sockets.delete(upstream); };
+  for (const socket of [client, upstream]) { sockets.add(socket); socket.on('error', drop); socket.on('close', drop); }
+  client.pipe(upstream).pipe(client);
+});
+const network = {
+  up: () => new Promise((done) => proxy.listen(PORT, '0.0.0.0', done)),
+  down: () => new Promise((done) => { for (const socket of sockets) socket.destroy(); proxy.close(() => done()); })
+};
+await network.up();
+const api = (path, init = {}) => fetch(`http://127.0.0.1:${SERVER_PORT}${path}`, { ...init, headers: { authorization: 'Bearer demo-session-token', 'content-type': 'application/json', ...init.headers } });
 const step = (name) => console.log(`· ${name}`);
 
 async function newOrder(vehicleId, hour) {
@@ -289,9 +304,10 @@ try {
   assert.ok(full.signatureDataUrl.startsWith('data:image/png;base64,iVBORw0KGgo'), 'the signature is a PNG');
   await tapNode(await scrollTo('PDF — отправить или распечатать'));
   // The PDF is made on the phone and handed to the system share sheet.
-  await sleep(6000);
+  const sheet = await waitFor(/.pdf$/, { timeout: 30_000 }).catch(() => null); // the share sheet names the file
   screenshot(resolve(out, '24-pdf-share.png'));
-  console.log('  share sheet:', find(/./).map((node) => node.text || node.desc).filter(Boolean).slice(0, 12).join(' | '));
+  assert.ok(sheet, `the share sheet opens with the PDF; on screen: ${find(/./).map((node) => node.text || node.desc).filter(Boolean).slice(0, 12).join(' | ')}`);
+  console.log('  share sheet:', sheet.text);
   back(); // close the share sheet
   await sleep(1200);
   await tapNode(await scrollTo('Готово'));
@@ -398,6 +414,56 @@ try {
   back();
   await waitFor('Управление центром', { timeout: 20_000 });
 
+  step('stage 7: without the server — work on an order and a new booking, then sync');
+  const offlineOrder = await approvedOrder();
+  const [master7] = (await (await api('/api/tenants/current/masters')).json()).items;
+  await api(`/api/orders/${offlineOrder}/assignment`, { method: 'PUT', body: JSON.stringify({ memberId: master7.id }), headers: { 'idempotency-key': `s7-${Date.now()}` } });
+  await tap('Заказы');
+  await sleep(4000); // the list loads and keeps unfinished orders, masters and the booking pack on the phone
+  await tapNode(await scrollTo(/В476РЕ 155, Согласован$/));
+  await scrollTo('Начать работу');
+  await sleep(1500);
+  await network.down();
+  await tapNode(await scrollTo('Начать работу'));
+  await waitFor('Нет связи с сервером', { timeout: 30_000 });
+  await tapNode(await scrollTo('Бережная мойка'));
+  await waitFor(/^1\/2$/, { timeout: 20_000 });
+  screenshot(resolve(out, '33-offline-work.png'));
+  back();
+  await tap('Новая');
+  await tap('+7 999 000-00-00', { timeout: 20_000 });
+  await type('79131234567');
+  await waitFor('Алексей Морозов', { timeout: 30_000 });
+  back();
+  await tap(/^В476РЕ 155,/);
+  await waitFor('Комплексы', { timeout: 20_000 }); // services and prices from the copy on the phone
+  await scrollTo('Бережная мойка'); // below the service added in stage 6
+  adb('shell', 'input', 'swipe', '540', '1500', '540', '900', '400'); // above the price dock
+  await sleep(600);
+  await tap('Бережная мойка');
+  await waitFor(/^[\d ]+ ₽ · /, { timeout: 20_000 });
+  await tap('Выбрать время');
+  await tapNode(await scrollTo('19:00'));
+  await tapNode(await scrollTo('Записать на 19:00'));
+  await waitFor('Запись сохранена на телефоне', { timeout: 20_000 });
+  screenshot(resolve(out, '34-offline-booking.png'));
+  assert.equal(await fetch(`http://127.0.0.1:${PORT}/api/ready`).then(() => 'reachable', () => 'unreachable'), 'unreachable', 'the phone is really offline');
+
+  await network.up();
+  const synced = async () => {
+    const order = await (await api(`/api/orders/${offlineOrder}`)).json();
+    const bookings = (await (await api('/api/bookings?view=upcoming&limit=50')).json()).items;
+    return order.status === 'IN_PROGRESS' && order.work.operations.some((operation) => operation.status === 'DONE')
+      && bookings.some((booking) => booking.customer.id === 'cust_alexey' && booking.startAt.endsWith('T19:00:00+03:00'));
+  };
+  const started7 = Date.now();
+  while (!(await synced())) {
+    assert.ok(Date.now() - started7 < 60_000, 'the queue reaches the server within a minute');
+    await sleep(2000);
+  }
+  await tap('Новая запись');
+  await tap('Профиль');
+
   step('profile: demo sign-out returns to sign-in');
   await tap('Профиль');
   await waitFor('Управление центром');
@@ -420,10 +486,11 @@ try {
   screenshot(resolve(out, '06-delete-confirm.png'));
   await tap(/^Удалить навсегда$/i);
   await waitFor('Вход в DetailFlow');
-  const after = await fetch(`http://127.0.0.1:${PORT}/api/session`, { headers: { authorization: `Bearer ${created.accessToken}` } });
+  const after = await fetch(`http://127.0.0.1:${SERVER_PORT}/api/session`, { headers: { authorization: `Bearer ${created.accessToken}` } });
   assert.equal(after.status, 401, 'the access code no longer works');
   screenshot(resolve(out, '07-after-delete.png'));
   console.log('native smoke: ok');
 } finally {
+  await network.down().catch(() => {});
   await new Promise((done) => server.close(done));
 }

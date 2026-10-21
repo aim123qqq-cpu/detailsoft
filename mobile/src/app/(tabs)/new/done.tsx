@@ -36,7 +36,7 @@ export default function DoneScreen() {
     <Screen>
       <View style={styles.hero}>
         <View style={styles.mark}><Text style={styles.markText}>✓</Text></View>
-        <Text style={styles.kicker}>Запись подтверждена</Text>
+        <Text style={styles.kicker}>{booking.pendingSync ? 'Запись сохранена на телефоне' : 'Запись подтверждена'}</Text>
         <Text style={styles.when}>{dayTitle(dayKey(booking.startAt, timeZone), dayKey(new Date(), timeZone))}, {timeOf(booking.startAt, timeZone)}</Text>
       </View>
       <Card>
@@ -46,7 +46,9 @@ export default function DoneScreen() {
         <Row label="Длительность" value={duration(booking.estimatedDurationMinutes)}/>
         <Row label="Предварительно" value={money(booking.preliminaryAmountMinor)}/>
       </Card>
-      <Body muted>Запись уже в расписании центра.</Body>
+      <Body muted>{booking.pendingSync
+        ? 'Нет связи с сервером. Запись отправится сама, когда связь появится. Если это время за это время займут, запись сохранится с пометкой «конфликт времени».'
+        : 'Запись уже в расписании центра.'}</Body>
       {error ? <Notice>{error}</Notice> : null}
       {session.capabilities.manageIntake ? <Button title="Клиент на месте — начать приёмку" busy={busy} onPress={() => void intake()}/> : null}
       <Button title="Новая запись" tone="secondary" onPress={again}/>
