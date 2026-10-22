@@ -40,14 +40,14 @@ const authMethodLabels: Record<SessionContext['actor']['authMethod'], string> = 
   access_token: 'Код доступа сотрудника'
 };
 
-export function ProfileScreen({ onSignIn }: { onSignIn: () => void }) {
+export function ProfileScreen({ onSignIn, open }: { onSignIn: () => void; open?: 'catalog' | 'team' | 'settings' }) {
   const [signingOut, setSigningOut] = useState(false);
   const [session, setSession] = useState<SessionContext | null>(null);
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
-  const [showCatalog, setShowCatalog] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showTeam, setShowTeam] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(open === 'catalog');
+  const [showSettings, setShowSettings] = useState(open === 'settings');
+  const [showTeam, setShowTeam] = useState(open === 'team');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');

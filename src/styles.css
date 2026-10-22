@@ -1530,3 +1530,17 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
 @media (pointer: coarse) { input, textarea, select { font-size: max(16px, 1em) !important; } }
 .login-install { max-width: 32em; margin: 4px 0 0; padding: 10px 12px; border: 1px dashed #3a4651; border-radius: 11px; color: #a7b2bb; font-size: 12px; line-height: 1.5; }
 .login-install b { color: #eef2f5; }
+
+.first-steps { display: grid; gap: 8px; margin-bottom: 20px; padding: 16px; border: 1px solid rgba(255,121,57,.35); border-radius: 16px; background: #111820; }
+.first-steps h2 { margin: 0; font-size: 18px; }
+.first-steps p { margin: 0 0 4px; color: var(--muted); font-size: 12px; }
+.first-steps-link { min-height: 0; padding: 0; border: 0; background: none; color: var(--primary); font: inherit; font-weight: 700; cursor: pointer; }
+.first-steps ol { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.first-steps li button { width: 100%; display: flex; align-items: center; gap: 12px; padding: 8px 4px; border: 0; border-radius: 10px; background: transparent; text-align: left; cursor: pointer; }
+.first-steps li button:hover { background: rgba(255,255,255,.04); }
+.first-steps i { flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; color: var(--primary); background: rgba(255,121,57,.15); font-style: normal; font-weight: 800; }
+.first-steps span { display: grid; gap: 2px; }
+.first-steps b { font-size: 14px; }
+.first-steps small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.first-steps li.done i { color: var(--success); background: rgba(54,201,150,.18); }
+.first-steps li.done b { color: var(--muted); text-decoration: line-through; }

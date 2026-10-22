@@ -433,6 +433,9 @@ export const api = {
   getManagedCatalog(signal?: AbortSignal) {
     return request<ManagedCatalog>('/api/tenants/current/catalog', { signal });
   },
+  getCenterSetup(signal?: AbortSignal) {
+    return request<{ services: number; members: number; bookings: number }>('/api/tenants/current/setup', { signal });
+  },
   getCenterSettings(signal?: AbortSignal) {
     return request<CenterSettings>('/api/tenants/current/settings', { signal });
   },

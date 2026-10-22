@@ -5,6 +5,7 @@ import { visitsLabel } from './format';
 import { NoAccess, SessionInfo } from './session';
 import { ScheduleStep, ServicesStep } from './BookingFlow';
 import { OrderFlow } from './OrderFlow';
+import { FirstSteps, type SetupTarget } from './FirstSteps';
 import { SyncBanner } from './SyncBanner';
 import { pruneCache, syncState } from './offline/sync';
 import { BookingsWorkspace } from './workspace/BookingsWorkspace';
@@ -83,6 +84,8 @@ export function App() {
   const [authGate, setAuthGate] = useState<'checking' | 'login' | 'app'>(() => authSession.token() || authSession.demoChosen() ? 'app' : 'checking');
   const [demoAllowed, setDemoAllowed] = useState(demoAuthEnabled);
   const [session, setSession] = useState<SessionContext | null>(null);
+  // The profile opens on its main page, or straight on a section (from the first steps); n remounts it.
+  const [profileTarget, setProfileTarget] = useState<{ open?: 'catalog' | 'team' | 'settings'; n: number }>({ n: 0 });
 
   // Roles shape the UI: a master starts on Orders, intake on Bookings. The server still checks every request.
   useEffect(() => {
@@ -260,8 +263,15 @@ export function App() {
     setError('');
   };
 
+  const openSetupStep = (target: SetupTarget) => {
+    if (target === 'booking') return document.getElementById('search-input')?.focus();
+    setProfileTarget((current) => ({ open: target, n: current.n + 1 }));
+    setWorkspace('profile');
+  };
+
   const selectWorkspace = (nextWorkspace: Workspace) => {
     setOverlays([]);
+    if (nextWorkspace === 'profile') setProfileTarget((current) => ({ n: current.n + 1 }));
     if (nextWorkspace === 'new') startNewBooking();
     else setWorkspace(nextWorkspace);
   };
@@ -344,12 +354,13 @@ export function App() {
         {workspace === 'orders' && <OrdersWorkspace onOpenCustomer={openCustomerProfile} onOpenOrder={openOrderWorkspace} refreshToken={workspaceRefresh}/>}
         {workspace === 'analytics' && (analyticsAllowed ? <AnalyticsScreen/> : <NoAccess section="Раздел «Статистика»"/>)}
         {workspace === 'new' && !newBookingAllowed && <NoAccess section="Раздел «Новая запись»"/>}
-        {workspace === 'profile' && <ProfileScreen onSignIn={() => setAuthGate('login')}/>}
+        {workspace === 'profile' && <ProfileScreen key={profileTarget.n} open={profileTarget.open} onSignIn={() => setAuthGate('login')}/>}
         {workspace === 'new' && newBookingAllowed && step === 1 && profileVehicleId && <VehicleProfileScreen vehicleId={profileVehicleId} onBack={() => setProfileVehicleId(null)} onOpenCustomer={openCustomerProfile}/>}
         {workspace === 'new' && newBookingAllowed && step === 1 && !profileVehicleId && (
           <section className="screen" aria-label="Поиск клиента и автомобиля">
             {activeLead && <div className="lead-conversion-banner"><span>Обращение · {leadChannelLabels[activeLead.channel]}</span><strong>{activeLead.contactName}</strong><small>Выберите клиента и автомобиль — обращение закроется после создания записи.</small></div>}
-            <div className="context-line"><span className="live-dot"/> DetailFlow Studio <span>·</span> Сегодня, 14:30</div>
+            {session?.capabilities.manageSettings && !activeLead && <FirstSteps onOpen={openSetupStep}/>}
+            <div className="context-line"><span className="live-dot"/> {session?.tenant.name ?? 'DetailFlow'} <span>·</span> Сегодня, {new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</div>
             <div className="section-block compact">
               <label className="section-label">Канал обращения</label>
               <div className="chips" role="group" aria-label="Канал обращения">

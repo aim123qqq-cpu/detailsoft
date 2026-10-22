@@ -54,6 +54,15 @@ test('a production server: a person creates a center in the browser and lands in
 
     // The workplace opens in the new center, with the owner's sections.
     await page.locator('.bottom-nav').waitFor();
+    // An empty center: the owner is told what to do first, and each step opens its section.
+    await page.getByTestId('first-steps').waitFor();
+    assert.match(await page.locator('.context-line').innerText(), /Детейлинг Север/, 'the center is named, not the demo one');
+    await page.screenshot({ path: resolve(artifacts, '96b-first-steps.png'), fullPage: true });
+    await page.getByTestId('first-step-team').click();
+    await page.getByTestId('team-screen').waitFor();
+    await page.getByTestId('new-booking-nav').click();
+    await page.getByTestId('first-step-booking').click();
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'search-input', 'the booking step puts the cursor in the phone search');
     await page.getByTestId('profile-nav').click();
     await page.getByText('Детейлинг Север').first().waitFor();
     await page.getByText('Никита Шиганов').first().waitFor();
