@@ -66,7 +66,8 @@ test('mobile messenger sign-in: owner invite, bot confirmation, session and sign
     await page.screenshot({ path: resolve(artifacts, '73-team-messenger-invite.png') });
 
     await telegram.handler({ provider: 'telegram', kind: 'start', userId: '1001', displayName: 'Анна', payload: new URL(inviteLink).searchParams.get('start') });
-    assert.match(telegram.sent.at(-1).text, /привязан к сотруднику «Анна Смирнова»/);
+    assert.match(telegram.sent.at(-1).text, /^Готово: аккаунт привязан./);
+    assert.doesNotMatch(telegram.sent.at(-1).text, /Анна/, 'no names go to the messenger');
 
     // Sign in from the profile.
     await page.getByRole('button', { name: '← Команда' }).click();

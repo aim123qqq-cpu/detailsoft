@@ -93,6 +93,11 @@ export function createDetailFlowServer({
       botRetries.add(timer);
     });
   for (const adapter of adapters.values()) startBot(adapter);
+  // Expired sign-in data is deleted on start and every hour (retention, see AuthRepository.purgeExpired).
+  const purgeExpired = () => { try { auth.purgeExpired(); } catch (error) { console.error('Purging expired sign-in data failed:', error.message); } };
+  purgeExpired();
+  const purgeTimer = setInterval(purgeExpired, 60 * 60 * 1000);
+  purgeTimer.unref?.();
   const qualityControlEnabled = features?.qualityControl === true;
   if (!qualityControlEnabled) repository.releaseDeprecatedQualityControlOrders();
 
@@ -996,6 +1001,7 @@ export function createDetailFlowServer({
   server.on('close', () => {
     closed = true;
     for (const timer of botRetries) clearTimeout(timer);
+    clearInterval(purgeTimer);
     for (const adapter of adapters.values()) adapter.stop();
     db.close();
   });

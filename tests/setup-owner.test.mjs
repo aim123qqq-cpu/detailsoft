@@ -17,7 +17,8 @@ test('setup creates an empty center with an owner whose invite links the messeng
   const auth = new AuthRepository(db);
   const dialog = createBotDialog({ auth, adapters: new Map([['telegram', { sendMessage: async (to, text) => sent.push(text) }]]) });
   await dialog({ provider: 'telegram', kind: 'text', userId: '777', displayName: 'Мария', text: result.invites[0].code });
-  assert.match(sent[0], /привязан к сотруднику «Мария Петрова» в центре «Детейлинг на Ленина»/);
+  assert.match(sent[0], /^Готово: аккаунт привязан./);
+  assert.doesNotMatch(sent[0], /Мария|Ленина/, 'no names of people or centers go to the messenger');
   assert.equal(auth.membershipsFor('telegram', '777')[0].tenant.id, result.tenant.id);
   db.close();
 });

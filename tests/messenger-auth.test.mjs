@@ -81,7 +81,8 @@ test('owner invite links a Telegram account and the employee signs in after expl
   assert.match(created.code, /^invite_[0-9a-f]{24}$/);
   assert.ok(created.deepLink.endsWith(`start=${created.code}`));
   await telegram.handler({ provider: 'telegram', kind: 'start', userId: '1001', displayName: 'Анна', payload: created.code });
-  assert.match(telegram.lastTo('1001').text, /привязан к сотруднику «Анна Смирнова»/);
+  assert.match(telegram.lastTo('1001').text, /^Готово: аккаунт привязан./);
+  assert.doesNotMatch(telegram.lastTo('1001').text, /Анна|DetailFlow Studio/, 'no names of people or centers go to the messenger');
 
   const team = await (await api('/api/tenants/current/team', { token: 'demo-session-token' })).json();
   const owner = team.items.find((member) => member.id === 'member_demo_owner');
@@ -135,7 +136,7 @@ test('owner invite links a Telegram account and the employee signs in after expl
 test('MAX sign-in works with the short code typed into the bot', async () => {
   const created = await invite('member_demo_master', 'max');
   await max.handler({ provider: 'max', kind: 'text', userId: '7001', displayName: 'Дмитрий', text: created.code });
-  assert.match(max.lastTo('7001').text, /«Дмитрий Соколов»/);
+  assert.match(max.lastTo('7001').text, /^Готово: аккаунт привязан./);
 
   const login = await startLogin('max');
   await max.handler({ provider: 'max', kind: 'text', userId: '7001', displayName: 'Дмитрий', text: login.shortCode.toLowerCase() });
@@ -202,4 +203,20 @@ test('public login creation is rate limited per client', async () => {
     responses.push((await api('/api/auth/login-requests', { method: 'POST', body: { provider: 'telegram' } })).status);
   }
   assert.ok(responses.includes(429));
+});
+
+test('retention: old login requests, ended sessions and spent invites are deleted', async () => {
+  const { openDatabase } = await import('../server/db.mjs');
+  const { AuthRepository } = await import('../server/auth-repository.mjs');
+  const db = openDatabase(':memory:', { seed: true });
+  const auth = new AuthRepository(db);
+  const old = '2020-01-01 00:00:00';
+  db.prepare(`INSERT INTO login_requests (id, provider, start_token_hash, short_code, poll_secret_hash, status, expires_at)
+    VALUES ('login_old', 'telegram', 'old-start', 'OLD123', 'old-secret', 'PENDING', ?)`).run(old);
+  const fresh = auth.createLoginRequest('telegram');
+  const result = auth.purgeExpired();
+  assert.ok(result.logins >= 1, 'the old login request is gone');
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM login_requests WHERE id = ?').get('login_old').count, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM login_requests WHERE id = ?').get(fresh.id).count, 1, 'a live request stays');
+  db.close();
 });

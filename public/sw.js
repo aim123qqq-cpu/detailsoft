@@ -10,7 +10,6 @@
  * - Static pages beside the app (/landing/, /landing22/, /privacy/) are left to the network.
  */
 const SHELL = 'detailflow-shell-v1';
-const FONTS = 'detailflow-fonts-v1';
 const PAGE = '/index.html';
 
 const assetsOf = (html) => [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((match) => match[1]);
@@ -34,7 +33,7 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    for (const name of await caches.keys()) if (![SHELL, FONTS].includes(name)) await caches.delete(name);
+    for (const name of await caches.keys()) if (name !== SHELL) await caches.delete(name); // also the old Google fonts cache
     await self.clients.claim();
   })());
 });
@@ -70,15 +69,5 @@ self.addEventListener('fetch', (event) => {
       })());
     }
     return;
-  }
-
-  if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
-    event.respondWith((async () => {
-      const cache = await caches.open(FONTS);
-      const cached = await cache.match(request);
-      const refresh = fetch(request).then((response) => { if (response.ok || response.type === 'opaque') cache.put(request, response.clone()); return response; });
-      if (cached) { event.waitUntil(refresh.catch(() => {})); return cached; }
-      return refresh;
-    })());
   }
 });

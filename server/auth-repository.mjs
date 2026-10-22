@@ -177,6 +177,28 @@ export class AuthRepository {
     return row ? { tenantId: row.tenant_id, memberId: row.member_id, provider: row.provider, displayName: row.display_name, roles: JSON.parse(row.roles_json) } : null;
   }
 
+  /**
+   * Retention: what has served its purpose is deleted, not kept forever. Login requests live a day after
+   * they expire; ended sessions (signed out or expired) and used or expired invites live 30 days, for
+   * questions like "who signed in when", then go.
+   */
+  purgeExpired(now = new Date()) {
+    const dayAgo = sqlTime(new Date(now.getTime() - 86_400_000));
+    const monthAgo = sqlTime(new Date(now.getTime() - 30 * 86_400_000));
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare('DELETE FROM login_request_purposes WHERE login_request_id IN (SELECT id FROM login_requests WHERE expires_at < ?)').run(dayAgo);
+      const logins = this.db.prepare('DELETE FROM login_requests WHERE expires_at < ?').run(dayAgo).changes;
+      const sessions = this.db.prepare('DELETE FROM auth_sessions WHERE expires_at < ? OR revoked_at < ?').run(monthAgo, monthAgo).changes;
+      const invites = this.db.prepare('DELETE FROM messenger_invites WHERE expires_at < ? OR used_at < ?').run(monthAgo, monthAgo).changes;
+      this.db.exec('COMMIT');
+      return { logins, sessions, invites };
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   revokeSession(token) {
     if (typeof token !== 'string') return false;
     return this.db.prepare(`UPDATE auth_sessions SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL`)

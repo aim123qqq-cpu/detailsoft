@@ -30,7 +30,8 @@ export function createBotDialog({ auth, adapters, logger = console }) {
 
   async function redeem(event, code) {
     const result = auth.redeemInvite(event.provider, code, event.userId, event.displayName);
-    if (result.kind === 'linked') return reply(event, `Готово: аккаунт привязан к сотруднику «${result.memberName}» в центре «${result.tenantName}». Теперь можно входить в DetailFlow через этот мессенджер.`);
+    // No names of people or centers go to the messenger: it is a foreign service, and the person sees them in DetailFlow.
+    if (result.kind === 'linked') return reply(event, 'Готово: аккаунт привязан. Теперь можно входить в DetailFlow через этот мессенджер.');
     if (result.kind === 'conflict') return reply(event, 'Этот аккаунт уже привязан к другому сотруднику этого центра. Обратитесь к владельцу центра.');
     return reply(event, 'Приглашение недействительно или устарело. Попросите владельца центра отправить новое.');
   }
