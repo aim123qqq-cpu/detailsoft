@@ -71,6 +71,8 @@ export function createDetailFlowServer({
   const auth = new AuthRepository(db);
   const adapters = new Map(messengers.map((adapter) => [adapter.provider, adapter]));
   const readyProviders = new Set();
+  // Why a bot is down, for /api/ready (adapter messages name the method and the API's answer, never the token).
+  const botProblems = new Map();
   const botDialog = createBotDialog({ auth, adapters });
   const allowLoginRequest = createRateLimiter(20, 60_000);
   const allowCenterSignup = createRateLimiter(20, 60_000);
@@ -80,9 +82,10 @@ export function createDetailFlowServer({
   const botRetries = new Set();
   let closed = false;
   const startBot = (adapter, attempt = 0) => adapter.start(botDialog)
-    .then(() => readyProviders.add(adapter.provider))
+    .then(() => { readyProviders.add(adapter.provider); botProblems.delete(adapter.provider); })
     .catch((error) => {
       if (closed) return;
+      botProblems.set(adapter.provider, String(error.message).slice(0, 200));
       const delay = Math.min(60_000, botRetryMs * 2 ** attempt);
       console.error(`${adapter.provider} bot is unavailable, next try in ${delay / 1000} s:`, error.message);
       const timer = setTimeout(() => { botRetries.delete(timer); startBot(adapter, attempt + 1); }, delay);
@@ -112,7 +115,8 @@ export function createDetailFlowServer({
         } catch {
           return sendJson(response, 503, { status: 'unavailable', database: 'error', messengers: messengerStatus });
         }
-        return sendJson(response, 200, { status: 'ready', database: 'ok', messengers: messengerStatus, version });
+        const problems = Object.fromEntries([...botProblems].filter(([provider]) => !readyProviders.has(provider)));
+        return sendJson(response, 200, { status: 'ready', database: 'ok', messengers: messengerStatus, version, ...(Object.keys(problems).length ? { problems } : {}) });
       }
 
       // Public sign-in endpoints: the browser has no session yet.

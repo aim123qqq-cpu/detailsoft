@@ -46,7 +46,11 @@ export function createMaxAdapter({ token, fetchImpl = fetch, apiBase = 'https://
       body: body ? JSON.stringify(body) : undefined,
       signal
     });
-    if (!response.ok) throw new Error(`max ${method} ${path} failed: ${response.status}`);
+    if (!response.ok) {
+      // MAX explains a refusal in the body ({ code, message }): kept short, it never contains the token.
+      const reason = await response.json().then((body) => [body?.code, body?.message].filter(Boolean).join(' '), () => '');
+      throw new Error(`max ${method} ${path} failed: ${response.status}${reason ? ` ${reason}` : ''}`.slice(0, 200));
+    }
     return response.json();
   }
 
