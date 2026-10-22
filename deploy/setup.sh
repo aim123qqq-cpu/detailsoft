@@ -92,8 +92,14 @@ www.$DOMAIN {
 CADDY
 sudo systemctl reload caddy || sudo systemctl restart caddy
 
+echo "→ SSH also on port 2222 (some VPNs on the owner's computer drop port 22)"
+printf 'Port 22\nPort 2222\n' | sudo tee /etc/ssh/sshd_config.d/10-detailflow-port.conf >/dev/null
+sudo systemctl daemon-reload
+if systemctl is-active --quiet ssh.socket; then sudo systemctl restart ssh.socket; else sudo systemctl restart ssh; fi
+
 echo "→ firewall: SSH, HTTP, HTTPS"
 sudo ufw allow OpenSSH >/dev/null
+sudo ufw allow 2222/tcp >/dev/null
 sudo ufw allow 80/tcp >/dev/null
 sudo ufw allow 443/tcp >/dev/null
 sudo ufw --force enable >/dev/null

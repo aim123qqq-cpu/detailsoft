@@ -81,3 +81,27 @@ test('MAX adapter authenticates with the Authorization header and sends callback
   assert.equal(calls.at(-1).url, 'https://max.test/answers?callback_id=c1');
   assert.deepEqual(calls.at(-1).body, { notification: 'Готово' });
 });
+
+test('a bot that cannot start (no network yet after a reboot) is tried again until it is ready', async () => {
+  const { createDetailFlowServer } = await import('../server/app.mjs');
+  let attempts = 0;
+  const flaky = {
+    provider: 'telegram', title: 'Telegram', botName: 'detailflow_bot', deepLink: () => null,
+    async start() { attempts += 1; if (attempts < 3) throw new Error('fetch failed'); },
+    stop() {}, async sendMessage() {}, async answerCallback() {}
+  };
+  const errors = console.error;
+  console.error = () => {};
+  const server = createDetailFlowServer({ databasePath: ':memory:', seed: true, messengers: [flaky], botRetryMs: 20 });
+  await new Promise((done) => server.listen(0, '127.0.0.1', done));
+  try {
+    const ready = async () => (await (await fetch(`http://127.0.0.1:${server.address().port}/api/ready`)).json()).messengers.telegram;
+    assert.equal(await ready(), 'unavailable');
+    for (let wait = 0; wait < 50 && await ready() !== 'ready'; wait += 1) await new Promise((done) => setTimeout(done, 20));
+    assert.equal(await ready(), 'ready');
+    assert.equal(attempts, 3);
+  } finally {
+    console.error = errors;
+    await new Promise((done) => server.close(done));
+  }
+});

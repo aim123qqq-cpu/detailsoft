@@ -62,7 +62,8 @@ export function createDetailFlowServer({
     ['demo-session-token', { tenantId: 'tenant_demo', displayName: 'Анна', roles: ['owner', 'admin', 'intake', 'master', 'qc'] }],
     ['other-session-token', { tenantId: 'tenant_other', displayName: 'Администратор', roles: ['admin', 'intake', 'master', 'qc'] }]
   ]),
-  messengers = []
+  messengers = [],
+  botRetryMs = 5_000
 } = {}) {
   const db = openDatabase(databasePath, { seed });
   const repository = new DetailFlowRepository(db);
@@ -73,11 +74,21 @@ export function createDetailFlowServer({
   const allowLoginRequest = createRateLimiter(20, 60_000);
   const allowCenterSignup = createRateLimiter(20, 60_000);
   const idempotency = createIdempotency(db);
-  for (const adapter of adapters.values()) {
-    adapter.start(botDialog)
-      .then(() => readyProviders.add(adapter.provider))
-      .catch((error) => console.error(`${adapter.provider} bot is unavailable:`, error.message));
-  }
+  // A bot that cannot start (no network yet after a reboot, the proxy still starting) is tried again,
+  // 5 s, 10 s, 20 s… then every minute, instead of staying unavailable until the next restart.
+  const botRetries = new Set();
+  let closed = false;
+  const startBot = (adapter, attempt = 0) => adapter.start(botDialog)
+    .then(() => readyProviders.add(adapter.provider))
+    .catch((error) => {
+      if (closed) return;
+      const delay = Math.min(60_000, botRetryMs * 2 ** attempt);
+      console.error(`${adapter.provider} bot is unavailable, next try in ${delay / 1000} s:`, error.message);
+      const timer = setTimeout(() => { botRetries.delete(timer); startBot(adapter, attempt + 1); }, delay);
+      timer.unref?.();
+      botRetries.add(timer);
+    });
+  for (const adapter of adapters.values()) startBot(adapter);
   const qualityControlEnabled = features?.qualityControl === true;
   if (!qualityControlEnabled) repository.releaseDeprecatedQualityControlOrders();
 
@@ -971,6 +982,8 @@ export function createDetailFlowServer({
   });
 
   server.on('close', () => {
+    closed = true;
+    for (const timer of botRetries) clearTimeout(timer);
     for (const adapter of adapters.values()) adapter.stop();
     db.close();
   });

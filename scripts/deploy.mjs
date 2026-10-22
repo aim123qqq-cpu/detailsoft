@@ -3,7 +3,8 @@
 //   node scripts/deploy.mjs          update to the latest main and restart (deploy/update.sh)
 //   node scripts/deploy.mjs status   service state, readiness and the last log lines
 //   node scripts/deploy.mjs backup   a fresh copy of the server's database to ~/.detailflow/server-backups
-// The server is described in ~/.detailflow/server.json: { "host": "<ip>", "user": "<login>", "domain": "<domain>" }.
+// The server is described in ~/.detailflow/server.json: { "host": "<ip>", "user": "<login>", "domain": "<domain>", "port": 2222 }
+// (port is optional, 22 by default: some VPNs on this computer drop port 22, so the server also listens on 2222).
 // The SSH key is ~/.ssh/detailflow_yc (override with DF_SSH_KEY). Nothing secret is stored in the repository.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -14,7 +15,10 @@ const command = process.argv[2] ?? 'update';
 const server = JSON.parse(readFileSync(join(homedir(), '.detailflow', 'server.json'), 'utf8'));
 const key = process.env.DF_SSH_KEY ?? join(homedir(), '.ssh', 'detailflow_yc');
 const target = `${server.user}@${server.host}`;
-const sshOptions = ['-i', key, '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=15'];
+const port = String(server.port ?? 22);
+const common = ['-i', key, '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=15'];
+const sshOptions = [...common, '-p', port];
+const scpOptions = [...common, '-P', port];
 const ssh = (remote) => execFileSync('ssh', [...sshOptions, target, remote], { stdio: 'inherit' });
 
 async function ready() {
@@ -29,7 +33,7 @@ async function ready() {
 }
 
 if (command === 'setup') {
-  execFileSync('scp', [...sshOptions, resolve('deploy', 'setup.sh'), `${target}:/tmp/detailflow-setup.sh`], { stdio: 'inherit' });
+  execFileSync('scp', [...scpOptions, resolve('deploy', 'setup.sh'), `${target}:/tmp/detailflow-setup.sh`], { stdio: 'inherit' });
   ssh(`bash /tmp/detailflow-setup.sh ${server.domain}`);
   await ready();
 } else if (command === 'update') {
@@ -43,8 +47,8 @@ if (command === 'setup') {
   const { backupDatabaseFile } = await import('../server/backup.mjs');
   const copy = await backupDatabaseFile(resolve('data', 'detailflow.db'), resolve('data', 'backups'), { reason: 'move-to-server', keep: 50 });
   if (!copy) throw new Error('There is no local database to move');
-  execFileSync('scp', [...sshOptions, copy, `${target}:/tmp/detailflow-move.db`], { stdio: 'inherit' });
-  execFileSync('scp', [...sshOptions, resolve('.env'), `${target}:/tmp/detailflow-move.env`], { stdio: 'inherit' });
+  execFileSync('scp', [...scpOptions, copy, `${target}:/tmp/detailflow-move.db`], { stdio: 'inherit' });
+  execFileSync('scp', [...scpOptions, resolve('.env'), `${target}:/tmp/detailflow-move.env`], { stdio: 'inherit' });
   ssh([
     'set -e', 'cd /opt/detailflow',
     'sudo systemctl stop detailflow',
@@ -65,7 +69,7 @@ if (command === 'setup') {
   if (!remote) throw new Error(`The server did not make a copy: ${made}`);
   const folder = join(homedir(), '.detailflow', 'server-backups');
   mkdirSync(folder, { recursive: true });
-  execFileSync('scp', [...sshOptions, `${target}:${remote}`, join(folder, remote.split('/').at(-1))], { stdio: 'inherit' });
+  execFileSync('scp', [...scpOptions, `${target}:${remote}`, join(folder, remote.split('/').at(-1))], { stdio: 'inherit' });
   console.log(`✓ ${join(folder, remote.split('/').at(-1))}`);
 } else if (command === 'status') {
   ssh('sudo systemctl status detailflow --no-pager -l | head -15; curl -s http://127.0.0.1:4173/api/ready; echo; sudo journalctl -u detailflow -n 20 --no-pager');
