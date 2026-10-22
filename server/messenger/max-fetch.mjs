@@ -2,7 +2,7 @@ import { Agent, request } from 'node:https';
 import { readFileSync } from 'node:fs';
 import { rootCertificates } from 'node:tls';
 
-// The MAX API (platform-api2.max.ru) is signed by the Russian Trusted Root CA of the Ministry of Digital
+// The MAX API (platform-api.max.ru) is signed by the Russian Trusted Root CA of the Ministry of Digital
 // Development, which Node.js does not ship. It is trusted here for MAX requests only; the rest of the
 // server keeps the usual list. The certificate is public (gu-st.ru), SHA-256 D2:6D:2D:02…:CA:8E:CF:31.
 const russianRoot = readFileSync(new URL('./russian-trusted-root-ca.pem', import.meta.url), 'utf8');

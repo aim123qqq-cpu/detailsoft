@@ -32,7 +32,7 @@ export function normalizeMaxUpdate(update) {
   return null;
 }
 
-export function createMaxAdapter({ token, fetchImpl = fetch, apiBase = 'https://platform-api2.max.ru', logger = console, retryDelayMs = 3000 }) {
+export function createMaxAdapter({ token, fetchImpl = fetch, apiBase = 'https://platform-api.max.ru', logger = console, retryDelayMs = 3000 }) {
   let botName = null;
   let running = false;
   let controller = null;
