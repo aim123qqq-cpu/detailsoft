@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
@@ -92,6 +93,11 @@ export function createDetailFlowServer({
   const qualityControlEnabled = features?.qualityControl === true;
   if (!qualityControlEnabled) repository.releaseDeprecatedQualityControlOrders();
 
+  // The running commit, so a deploy can be checked from outside (the server updates itself from GitHub).
+  const version = (() => {
+    try { return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return 'unknown'; }
+  })();
+
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, 'http://localhost');
@@ -106,7 +112,7 @@ export function createDetailFlowServer({
         } catch {
           return sendJson(response, 503, { status: 'unavailable', database: 'error', messengers: messengerStatus });
         }
-        return sendJson(response, 200, { status: 'ready', database: 'ok', messengers: messengerStatus });
+        return sendJson(response, 200, { status: 'ready', database: 'ok', messengers: messengerStatus, version });
       }
 
       // Public sign-in endpoints: the browser has no session yet.

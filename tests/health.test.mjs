@@ -26,7 +26,9 @@ test('health is public liveness; ready checks the database and reports bots with
 
     const ready = await fetch(`${baseUrl}/api/ready`);
     assert.equal(ready.status, 200, 'a broken bot does not make the center unavailable');
-    assert.deepEqual(await ready.json(), { status: 'ready', database: 'ok', messengers: { telegram: 'ready', max: 'unavailable' } });
+    const { version, ...state } = await ready.json();
+    assert.deepEqual(state, { status: 'ready', database: 'ok', messengers: { telegram: 'ready', max: 'unavailable' } });
+    assert.match(version, /^([0-9a-f]{7,}|unknown)$/, 'the running commit is reported');
   } finally {
     await new Promise((done) => server.close(done));
     console.error = originalError;
