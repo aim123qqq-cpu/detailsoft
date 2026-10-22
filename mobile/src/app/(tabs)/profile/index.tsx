@@ -15,9 +15,13 @@ const capabilityLabels: [keyof SessionContext['capabilities'], string][] = [
   ['acceptAssignments', 'Исполнитель заказов'], ['closeOrders', 'Выдача автомобилей'], ['manageCatalog', 'Каталог и цены'],
   ['manageSettings', 'Настройки центра'], ['manageTeam', 'Команда и роли'], ['viewAnalytics', 'Статистика']
 ];
-const signInLabels: Record<SessionContext['actor']['authMethod'], string> = {
-  demo: 'Демо-режим', messenger: 'Вход через мессенджер', access_token: 'Код доступа сотрудника'
-};
+/** How this person is signed in, in words: the messenger by name when the server knows it. */
+function signedInWith(actor: SessionContext['actor']) {
+  if (actor.authMethod === 'demo') return 'Демо-режим';
+  if (actor.authMethod === 'access_token') return 'Вы вошли по коду доступа';
+  return actor.authProvider === 'max' ? 'Вы вошли через MAX' : actor.authProvider === 'telegram' ? 'Вы вошли через Telegram' : 'Вы вошли через мессенджер';
+}
+const badges = { telegram: { mark: '✈', color: '#229ed9' }, max: { mark: 'M', color: '#5b4cf0' }, other: { mark: '#', color: colors.surfaceRaised } };
 
 export default function ProfileScreen() {
   const { api, server, signOut } = useSession();
@@ -25,6 +29,7 @@ export default function ProfileScreen() {
   const [busy, setBusy] = useState<'out' | 'delete' | null>(null);
   const [error, setError] = useState('');
   const granted = capabilityLabels.filter(([key]) => session.capabilities[key]);
+  const badge = badges[session.actor.authProvider ?? 'other'];
   const management = [
     session.capabilities.manageCatalog && { href: '/profile/catalog' as const, title: 'Каталог услуг', note: 'Разделы, услуги, время и цены' },
     session.capabilities.manageTeam && { href: '/profile/team' as const, title: 'Команда и роли', note: 'Сотрудники, доступы, приглашения' },
@@ -83,19 +88,23 @@ export default function ProfileScreen() {
         {granted.map(([key, label]) => <Text key={key} style={styles.capability}>✓  {label}</Text>)}
       </Card>
 
-      <Card>
-        <Label>Вход</Label>
-        <Body>{signInLabels[session.actor.authMethod]}</Body>
+      <Card style={styles.account}>
+        <View style={styles.accountHead}>
+          <View style={[styles.badge, { backgroundColor: badge.color }]}><Text style={styles.badgeText}>{badge.mark}</Text></View>
+          <View style={{ flex: 1 }}>
+            <Label>Аккаунт</Label>
+            <Text style={styles.accountTitle}>{signedInWith(session.actor)}</Text>
+          </View>
+        </View>
         <Button title={session.actor.authMethod === 'demo' ? 'Выйти из демо-режима' : 'Выйти'} tone="secondary" busy={busy === 'out'} onPress={leave} testID="sign-out"/>
+        {session.actor.memberId ? <Button title="Удалить аккаунт" tone="dangerQuiet" busy={busy === 'delete'} onPress={confirmDelete} testID="delete-account"/> : null}
+        {error ? <Notice>{error}</Notice> : null}
       </Card>
 
       <Pressable accessibilityRole="link" onPress={() => WebBrowser.openBrowserAsync(`${server}/privacy/`, { toolbarColor: colors.ground, controlsColor: colors.primary })}
         android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.link}>
         <Text style={styles.linkLabel}>Политика конфиденциальности</Text><Text style={styles.linkValue}>Открыть</Text>
       </Pressable>
-
-      {error ? <Notice>{error}</Notice> : null}
-      {session.actor.memberId ? <Button title="Удалить аккаунт" tone="dangerQuiet" busy={busy === 'delete'} onPress={confirmDelete} style={styles.delete} testID="delete-account"/> : null}
 
       <Text style={styles.version}>DetailFlow {Constants.expoConfig?.version ?? ''} · нативная версия</Text>
     </Screen>
@@ -114,6 +123,10 @@ const styles = StyleSheet.create({
   linkNote: { color: colors.muted, fontSize: 13 },
   chevron: { color: colors.muted, fontSize: 24 },
   group: { gap: space.s },
-  delete: { marginTop: space.s },
+  account: { gap: space.m },
+  accountHead: { flexDirection: 'row', alignItems: 'center', gap: space.m },
+  badge: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  badgeText: { color: '#fff', fontSize: 20, fontWeight: '900' },
+  accountTitle: { color: colors.text, fontSize: 17, fontWeight: '800' },
   version: { color: colors.soft, fontSize: 12, textAlign: 'center', marginTop: space.l }
 });
