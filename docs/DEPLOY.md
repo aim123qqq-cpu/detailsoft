@@ -108,6 +108,16 @@ pnpm build
 
 На сервере `.env` создаётся с `DEMO_AUTH=false`, `SEED_DEMO=false` и копией базы каждые 6 часов (28 копий).
 
+### Выкладка без SSH: сервер обновляется сам
+
+Если SSH с компьютера управления не проходит (VPN или провайдер режут SSH на любом порту), сервер забирает обновления сам. Один раз в консоли панели хостинга от root:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aim123qqq-cpu/detailsoft/main/deploy/enable-self-update.sh | bash
+```
+
+Таймер `detailflow-update.timer` раз в 2 минуты проверяет `main` на GitHub; если он ушёл вперёд — собирает (`deploy/update.sh`, при ошибке сборки возврат к прежней версии) и перезапускает службу (`deploy/self-update.sh`). Выкладка — это `git push` в `main`, поэтому в `main` попадает только проверенное. Журнал: `journalctl -u detailflow-update`. Выключить: `systemctl disable --now detailflow-update.timer`.
+
 ### Telegram из российского дата-центра
 
 Если сервер не достаёт до `api.telegram.org` (в `/api/ready` — `"telegram":"unavailable"`, в журнале — `fetch failed`), Telegram можно пустить через VPN владельца, остальной трафик сервера идёт напрямую. На сервере от root:
