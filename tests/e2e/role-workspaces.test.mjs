@@ -6,6 +6,7 @@ import { chromium } from 'playwright-core';
 import { createDetailFlowServer } from '../../server/app.mjs';
 
 import { chromePath } from './chrome.mjs';
+import { acceptLegal } from './offline-helpers.mjs';
 
 async function settle(page) {
   await page.evaluate(() => document.activeElement?.blur());
@@ -51,6 +52,7 @@ test('mobile workspaces follow the employee role: admin assigns a real master, m
   await mkdir(artifacts, { recursive: true });
   const openAs = async (token) => {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+    if (token) await acceptLegal(baseUrl, token).catch(() => {}); // the demo token has no person to accept
     if (token) await context.addInitScript((value) => localStorage.setItem('detailflow.session', value), token);
     const page = await context.newPage();
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });

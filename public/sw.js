@@ -7,7 +7,7 @@
  * - /assets/ (hashed by Vite, never change): cache first. Assets the current page no longer
  *   references are removed after each successful load of the page.
  * - Fonts: cache first, refreshed in the background.
- * - Static pages beside the app (/landing/, /landing22/, /privacy/) are left to the network.
+ * - Static pages beside the app (/landing/, /landing22/, /privacy/, /terms/, /consent/, /licenses/) are left to the network.
  */
 const SHELL = 'detailflow-shell-v1';
 const PAGE = '/index.html';
@@ -38,7 +38,7 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
-const isAppPage = (url) => !/^\/(api|landing|landing22|privacy)(\/|$)/.test(url.pathname) && !/\.[a-z0-9]+$/i.test(url.pathname);
+const isAppPage = (url) => !/^\/(api|landing|landing22|privacy|terms|consent|licenses)(\/|$)/.test(url.pathname) && !/\.[a-z0-9]+$/i.test(url.pathname);
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;

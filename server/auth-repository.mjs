@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
+import { LEGAL_VERSION, recordLegalAcceptance } from './legal.mjs';
 
 export const MESSENGER_PROVIDERS = ['telegram', 'max'];
 const LOGIN_TTL_MS = 5 * 60 * 1000;
@@ -138,6 +139,8 @@ export class AuthRepository {
     const centerName = String(input?.centerName ?? '').trim().replace(/\s+/g, ' ');
     const ownerName = String(input?.ownerName ?? '').trim().replace(/\s+/g, ' ');
     if (centerName.length < 2 || centerName.length > 120 || ownerName.length < 2 || ownerName.length > 80) return { kind: 'invalid' };
+    // The agreement and the separate consent to the processing of personal data come first (152-FZ art. 9).
+    if (input?.acceptedLegal !== LEGAL_VERSION) return { kind: 'conflict', code: 'legal_not_accepted', message: 'Примите пользовательское соглашение и дайте согласие на обработку персональных данных' };
     const row = this.db.prepare(`SELECT l.external_user_id, p.external_name FROM login_requests l
       JOIN login_request_purposes p ON p.login_request_id = l.id WHERE l.id = ?`).get(id);
     const made = this.db.prepare('SELECT COUNT(*) count FROM center_signups WHERE provider = ? AND external_user_id = ?').get(status.provider, row.external_user_id).count;
@@ -156,6 +159,7 @@ export class AuthRepository {
         .run(member.id, tenant.id, member.displayName, JSON.stringify(member.roles));
       this.db.prepare(`INSERT INTO member_messenger_links (id, tenant_id, member_id, provider, external_user_id, external_name)
         VALUES (?, ?, ?, ?, ?, ?)`).run(`ml_${randomUUID()}`, tenant.id, member.id, status.provider, row.external_user_id, row.external_name ?? null);
+      recordLegalAcceptance(this.db, tenant.id, member.id, 'signup');
       this.db.prepare('INSERT INTO center_signups (tenant_id, provider, external_user_id) VALUES (?, ?, ?)').run(tenant.id, status.provider, row.external_user_id);
       this.db.prepare(`INSERT INTO auth_sessions (id, tenant_id, member_id, token_hash, provider, expires_at)
         VALUES (?, ?, ?, ?, ?, ?)`).run(`ses_${randomUUID()}`, tenant.id, member.id, hash(token), status.provider, expiresAt);

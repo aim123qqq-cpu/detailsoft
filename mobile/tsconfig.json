@@ -21,6 +21,9 @@
       ],
       "@df/apiError": [
         "../src/apiError.ts"
+      ],
+      "@df/legal": [
+        "../src/legal.ts"
       ]
     }
   },

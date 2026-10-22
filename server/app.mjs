@@ -9,6 +9,7 @@ import { createBotDialog } from './messenger/bot-dialog.mjs';
 import { PERMISSIONS } from './roles-repository.mjs';
 import { createIdempotency } from './idempotency.mjs';
 import { buildBookingPack } from './offline-pack.mjs';
+import { LEGAL_VERSION, hasAcceptedLegal, recordLegalAcceptance } from './legal.mjs';
 
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -242,6 +243,15 @@ export function createDetailFlowServer({
           if (result.kind === 'last_owner') return sendJson(response, 409, { error: { code: 'last_owner', message: 'Вы единственный владелец центра. Сначала назначьте владельцем другого сотрудника.' } });
           return sendJson(response, 404, { error: { code: 'member_not_found', message: 'Аккаунт не найден' } });
         }
+        if (request.method === 'POST' && url.pathname === '/api/legal/accept') {
+          // A signed-in person accepts the agreement and gives the separate consent (shown once per edition).
+          const memberId = typeof session === 'object' ? session?.memberId : null;
+          if (!memberId) return sendJson(response, 409, { error: { code: 'no_member', message: 'Демо-доступ не требует согласия' } });
+          const body = await readJson(request);
+          if (body?.version !== LEGAL_VERSION) return sendJson(response, 409, { error: { code: 'legal_outdated', message: 'Документы обновились. Обновите страницу и примите новую редакцию.' } });
+          recordLegalAcceptance(db, tenantId, memberId, 'sign_in');
+          return sendJson(response, 200, { accepted: true, version: LEGAL_VERSION });
+        }
         if (request.method === 'POST' && url.pathname === '/api/auth/logout') {
           return sendJson(response, 200, { revoked: auth.revokeSession(token) });
         }
@@ -258,8 +268,11 @@ export function createDetailFlowServer({
               memberId: session?.memberId ?? null,
               authMethod: authTokens.has(token) ? 'demo' : token.startsWith('dfs_') ? 'messenger' : 'access_token',
               // Which messenger this session came through (telegram or max), for the profile.
-              authProvider: typeof session === 'object' && session?.provider ? session.provider : null
+              authProvider: typeof session === 'object' && session?.provider ? session.provider : null,
+              // A person (not the demo) sees the agreement and the consent until they accept this edition.
+              legalAccepted: session?.memberId ? hasAcceptedLegal(db, session.memberId) : true
             },
+            legalVersion: LEGAL_VERSION,
             tenant,
             preferences: { locale: 'ru-RU', currency: 'RUB' },
             features: { qualityControl: qualityControlEnabled },

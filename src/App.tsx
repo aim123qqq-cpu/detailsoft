@@ -6,6 +6,7 @@ import { NoAccess, SessionInfo } from './session';
 import { ScheduleStep, ServicesStep } from './BookingFlow';
 import { OrderFlow } from './OrderFlow';
 import { FirstSteps, type SetupTarget } from './FirstSteps';
+import { LegalGate } from './LegalGate';
 import { SyncBanner } from './SyncBanner';
 import { pruneCache, syncState } from './offline/sync';
 import { BookingsWorkspace } from './workspace/BookingsWorkspace';
@@ -319,6 +320,19 @@ export function App() {
         <LoginScreen
           onSignedIn={() => window.location.reload()}
           onCancel={demoAllowed && !authSession.token() ? () => { authSession.chooseDemo(); setAuthGate('app'); } : undefined}
+        />
+      </main>
+    </div>
+  );
+
+  // A person who has not accepted this edition of the agreement and the consent sees them before any data.
+  if (session?.actor.legalAccepted === false) return (
+    <div className="app-shell login-shell">
+      <main id="main-content" tabIndex={-1}>
+        <LegalGate
+          centerName={session.tenant.name}
+          onAccepted={() => setSession({ ...session, actor: { ...session.actor, legalAccepted: true } })}
+          onSignOut={async () => { await api.logout().catch(() => {}); authSession.clear(); window.location.reload(); }}
         />
       </main>
     </div>

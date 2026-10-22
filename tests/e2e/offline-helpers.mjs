@@ -28,3 +28,12 @@ export async function waitForOfflineCopy(page, suffixes, timeout = 10_000) {
     await page.waitForTimeout(100);
   }
 }
+
+/** An employee in these tests has already accepted the agreement and the consent (the gate has its own tests). */
+export async function acceptLegal(baseUrl, token) {
+  const { LEGAL_VERSION } = await import('../../server/legal.mjs');
+  const response = await fetch(`${baseUrl}/api/legal/accept`, {
+    method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ version: LEGAL_VERSION })
+  });
+  if (!response.ok) throw new Error(`accepting the documents failed: ${response.status}`);
+}

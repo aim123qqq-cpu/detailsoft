@@ -35,7 +35,7 @@ mirror(resolve(root, 'mobile'), `${work}\\mobile`, '/XD', 'node_modules', 'andro
 mirror(resolve(root, 'src', 'shared'), `${work}\\src\\shared`);
 mirror(resolve(root, 'src', 'offline'), `${work}\\src\\offline`);
 mkdirSync(`${work}\\src`, { recursive: true });
-for (const file of ['types.ts', 'apiError.ts', 'platform.ts']) copyFileSync(resolve(root, 'src', file), `${work}\\src\\${file}`);
+for (const file of ['types.ts', 'apiError.ts', 'platform.ts', 'legal.ts']) copyFileSync(resolve(root, 'src', file), `${work}\\src\\${file}`);
 
 // Dependencies are reinstalled whenever package-lock.json changes (a new Expo module, an update).
 const lock = createHash('sha256').update(readFileSync(resolve(root, 'mobile', 'package-lock.json'))).digest('hex');

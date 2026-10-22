@@ -103,8 +103,14 @@ export default function ProfileScreen() {
 
       <Pressable accessibilityRole="link" onPress={() => WebBrowser.openBrowserAsync(`${server}/privacy/`, { toolbarColor: colors.ground, controlsColor: colors.primary })}
         android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.link}>
-        <Text style={styles.linkLabel}>Политика конфиденциальности</Text><Text style={styles.linkValue}>Открыть</Text>
+        <Text style={styles.linkLabel}>Политика обработки данных</Text><Text style={styles.linkValue}>Открыть</Text>
       </Pressable>
+      {[['Пользовательское соглашение', '/terms/'], ['Согласие на обработку данных', '/consent/'], ['Лицензии', '/licenses/']].map(([label, path]) => (
+        <Pressable key={path} accessibilityRole="link" onPress={() => WebBrowser.openBrowserAsync(`${server}${path}`, { toolbarColor: colors.ground, controlsColor: colors.primary })}
+          android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.link}>
+          <Text style={styles.linkLabel}>{label}</Text><Text style={styles.linkValue}>Открыть</Text>
+        </Pressable>
+      ))}
 
       <Text style={styles.version}>DetailFlow {Constants.expoConfig?.version ?? ''} · нативная версия</Text>
     </Screen>

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { LEGAL_VERSION } from '@df/legal';
 import type { AuthProvider, LoginMembership, LoginRequest, LoginStatus } from '@df/types';
 import { ApiError, createApi } from '@/lib/api';
+import { LegalChecks, type LegalState } from '@/features/legal-checks';
 import { useSession } from '@/lib/session';
 import { colors, radius, space } from '@/lib/theme';
 import { Body, Button, Card, Field, Label, Notice, Screen, Title } from '@/ui';
@@ -23,6 +25,7 @@ export default function LoginScreen() {
   const [confirmed, setConfirmed] = useState(false);
   const [centerName, setCenterName] = useState('');
   const [ownerName, setOwnerName] = useState('');
+  const [legal, setLegal] = useState<LegalState>({ terms: false, consent: false });
   const [providers, setProviders] = useState<AuthProvider[] | null>(null);
   const [demo, setDemo] = useState(false);
   const [login, setLogin] = useState<LoginRequest | null>(null);
@@ -102,7 +105,7 @@ export default function LoginScreen() {
     if (!login) return;
     setBusy(true); setError('');
     try {
-      const session = await api.createCenter(login, { centerName: centerName.trim(), ownerName: ownerName.trim() });
+      const session = await api.createCenter(login, { centerName: centerName.trim(), ownerName: ownerName.trim(), acceptedLegal: LEGAL_VERSION });
       await signIn(session.token);
     } catch (requestError) { setError((requestError as Error).message); }
     finally { setBusy(false); }
@@ -152,7 +155,8 @@ export default function LoginScreen() {
           {confirmed && <View style={{ gap: space.m }}>
             <Field label="Название центра" value={centerName} onChangeText={setCenterName} maxLength={120} placeholder="Например, Детейлинг Север" testID="center-name"/>
             <Field label="Ваше имя" value={ownerName} onChangeText={setOwnerName} maxLength={80} autoCapitalize="words" placeholder="Имя Фамилия" testID="owner-name"/>
-            <Button title="Создать центр" busy={busy} disabled={centerName.trim().length < 2 || ownerName.trim().length < 2} onPress={createCenter} testID="create-center"/>
+            <LegalChecks value={legal} onChange={setLegal}/>
+            <Button title="Создать центр" busy={busy} disabled={centerName.trim().length < 2 || ownerName.trim().length < 2 || !legal.terms || !legal.consent} onPress={createCenter} testID="create-center"/>
           </View>}
           {login.deepLink && !finished && !confirmed && <Button title={`Открыть ${providerTitle}`} tone="secondary" onPress={() => Linking.openURL(login.deepLink!)}/>}
           {memberships.length > 1 && <View style={{ gap: space.s }}>

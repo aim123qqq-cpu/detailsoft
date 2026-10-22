@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { chromium } from 'playwright-core';
 import { createDetailFlowServer } from '../../server/app.mjs';
 import { chromePath } from './chrome.mjs';
+import { acceptLegal } from './offline-helpers.mjs';
 
 async function settle(page) {
   await page.evaluate(() => document.activeElement?.blur());
@@ -54,6 +55,7 @@ test('mobile: the owner builds a custom role from checkboxes and the employee ge
     await owner.context().close();
 
     const employeeContext = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+    await acceptLegal(baseUrl, accessToken);
     await employeeContext.addInitScript((value) => localStorage.setItem('detailflow.session', value), accessToken);
     const employee = await employeeContext.newPage();
     await employee.goto(baseUrl, { waitUntil: 'domcontentloaded' });

@@ -100,6 +100,15 @@ test('mobile messenger sign-in: owner invite, bot confirmation, session and sign
     const stored = await page.evaluate(() => localStorage.getItem('detailflow.session'));
     assert.match(stored, /^dfs_[0-9a-f]{64}$/);
 
+    // First time in: the agreement and the consent, two separate unticked boxes, before any data.
+    await page.getByTestId('legal-gate').waitFor();
+    assert.equal(await page.locator('.bottom-nav').count(), 0, 'no workplace before accepting');
+    assert.equal(await page.getByTestId('accept-legal').isDisabled(), true);
+    await page.getByTestId('accept-terms').check();
+    assert.equal(await page.getByTestId('accept-legal').isDisabled(), true, 'the consent is a separate tick');
+    await page.getByTestId('accept-consent').check();
+    await page.getByTestId('accept-legal').click();
+
     await page.getByTestId('profile-nav').click();
     await page.getByTestId('sign-out').waitFor();
     const profile = await page.getByTestId('profile-screen').innerText();

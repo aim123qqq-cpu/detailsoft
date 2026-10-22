@@ -261,7 +261,8 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
     createLoginRequest: (provider: AuthProvider['provider'], purpose: 'login' | 'signup' = 'login') =>
       request<LoginRequest>('/api/auth/login-requests', { method: 'POST', body: { provider, purpose } }),
     /** A confirmed sign-up request becomes a new center; the answer is the owner's session. */
-    createCenter: (login: LoginRequest, input: { centerName: string; ownerName: string }) =>
+    acceptLegal: (version: string) => request<{ accepted: true; version: string }>('/api/legal/accept', { method: 'POST', body: { version } }),
+    createCenter: (login: LoginRequest, input: { centerName: string; ownerName: string; acceptedLegal: string }) =>
       request<{ token: string; expiresAt: string; tenant: { id: string; name: string } }>(`/api/auth/login-requests/${encodeURIComponent(login.id)}/center`, {
         method: 'POST', headers: { 'x-login-secret': login.pollSecret }, body: input
       }),

@@ -44,6 +44,9 @@ test('a production server: a person creates a center in the browser and lands in
     await page.getByTestId('login-signup').waitFor();
     await page.getByTestId('center-name').fill('Детейлинг Север');
     await page.getByTestId('owner-name').fill('Никита Шиганов');
+    assert.equal(await page.getByTestId('create-center').isDisabled(), true, 'no center before the agreement and the consent');
+    await page.getByTestId('accept-terms').check();
+    await page.getByTestId('accept-consent').check();
     for (const width of [320, 390]) {
       await page.setViewportSize({ width, height: 844 });
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

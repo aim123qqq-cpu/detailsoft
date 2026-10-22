@@ -2,6 +2,7 @@ import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { createDetailFlowServer } from '../server/app.mjs';
 import { CENTERS_PER_ACCOUNT } from '../server/auth-repository.mjs';
+import { LEGAL_VERSION } from '../server/legal.mjs';
 
 // A production server: no demo center, no demo access. Centers are created by their owners.
 function fakeAdapter(provider, botName) {
@@ -47,7 +48,8 @@ async function confirm(login, userId, displayName = 'Никита') {
   await telegram.handler({ provider: 'telegram', kind: 'start', userId, displayName, payload: login.startPayload });
   await telegram.handler({ provider: 'telegram', kind: 'callback', userId, payload: `login_ok:${login.id}`, callbackId: `cb-${login.id}` });
 }
-const createCenter = (login, body) => api(`/api/auth/login-requests/${login.id}/center`, { method: 'POST', headers: { 'x-login-secret': login.pollSecret }, body });
+// The person ticks the agreement and the consent in the form: the current edition goes with the request.
+const createCenter = (login, body, acceptedLegal = LEGAL_VERSION) => api(`/api/auth/login-requests/${login.id}/center`, { method: 'POST', headers: { 'x-login-secret': login.pollSecret }, body: { acceptedLegal, ...body } });
 
 test('a new person creates a center in the messenger and becomes its owner', async () => {
   const signup = await request('signup');
@@ -63,6 +65,9 @@ test('a new person creates a center in the messenger and becomes its owner', asy
   assert.deepEqual([status.status, status.purpose, status.memberships.length], ['CONFIRMED', 'signup', 0]);
 
   assert.equal((await createCenter(signup, { centerName: 'Д', ownerName: 'Никита Шиганов' })).status, 422);
+  const unaccepted = await createCenter(signup, { centerName: 'Детейлинг Север', ownerName: 'Никита Шиганов' }, null);
+  assert.equal(unaccepted.status, 409, 'no center without the agreement and the consent');
+  assert.equal((await unaccepted.json()).error.code, 'legal_not_accepted');
   assert.equal((await api(`/api/auth/login-requests/${signup.id}/center`, { method: 'POST', headers: { 'x-login-secret': 'wrong' }, body: { centerName: 'Детейлинг Север', ownerName: 'Никита' } })).status, 404);
   const created = await createCenter(signup, { centerName: '  Детейлинг   Север ', ownerName: 'Никита Шиганов' });
   assert.equal(created.status, 201);
@@ -73,6 +78,7 @@ test('a new person creates a center in the messenger and becomes its owner', asy
   const context = await (await api('/api/session', { token: session.token })).json();
   assert.equal(context.tenant.name, 'Детейлинг Север');
   assert.equal(context.actor.displayName, 'Никита Шиганов');
+  assert.equal(context.actor.legalAccepted, true, 'accepted in the sign-up form, recorded with the center');
   assert.ok(context.actor.roles.includes('owner'));
   assert.equal(context.capabilities.manageTeam, true);
   const team = await (await api('/api/tenants/current/team', { token: session.token })).json();

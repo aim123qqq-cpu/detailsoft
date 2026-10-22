@@ -30,6 +30,9 @@ test('mobile: an employee deletes the account from the profile and the device fo
     // Signed in with the employee's access code.
     await page.addInitScript((token) => { if (!sessionStorage.getItem('signed')) { localStorage.setItem('detailflow.session', token); sessionStorage.setItem('signed', '1'); } }, created.accessToken);
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
+    await page.getByTestId('accept-terms').check();
+    await page.getByTestId('accept-consent').check();
+    await page.getByTestId('accept-legal').click();
     await page.getByTestId('profile-nav').click();
     await page.getByTestId('profile-screen').getByText('Мария Орлова').waitFor();
     assert.equal(await page.getByTestId('privacy-link').getAttribute('href'), '/privacy/');

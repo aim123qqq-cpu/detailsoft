@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { chromium } from 'playwright-core';
 import { createDetailFlowServer } from '../../server/app.mjs';
 import { chromePath } from './chrome.mjs';
-import { waitForOfflineCopy } from './offline-helpers.mjs';
+import { waitForOfflineCopy, acceptLegal } from './offline-helpers.mjs';
 
 async function settle(page) {
   await page.evaluate(() => document.activeElement?.blur());
@@ -46,6 +46,7 @@ test('mobile offline: a master works on an order without the server and the chan
   const artifacts = resolve('artifacts');
   await mkdir(artifacts, { recursive: true });
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+  await acceptLegal(baseUrl, 'e2e-master-token');
   await context.addInitScript(() => localStorage.setItem('detailflow.session', 'e2e-master-token'));
   const page = await context.newPage();
 

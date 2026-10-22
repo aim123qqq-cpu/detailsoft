@@ -171,7 +171,7 @@ export function ProfileScreen({ onSignIn, open }: { onSignIn: () => void; open?:
         </div>}
       </section>
 
-      <p className="profile-version"><a href="/privacy/" target="_blank" rel="noopener" data-testid="privacy-link">Политика конфиденциальности</a> · DetailFlow</p>
+      <p className="profile-version"><a href="/privacy/" target="_blank" rel="noopener" data-testid="privacy-link">Политика обработки данных</a> · <a href="/terms/" target="_blank" rel="noopener">Соглашение</a> · <a href="/consent/" target="_blank" rel="noopener">Согласие</a> · <a href="/licenses/" target="_blank" rel="noopener">Лицензии</a></p>
     </section>
   );
 }

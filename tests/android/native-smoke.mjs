@@ -495,6 +495,12 @@ try {
   await type(created.accessToken);
   back(); // hide the keyboard
   await tap('Войти по коду');
+  // A person signs in for the first time: the agreement and the consent, two separate ticks, before any data.
+  await waitFor('Перед началом работы', { timeout: 20_000 });
+  screenshot(resolve(out, '05b-legal-gate.png'));
+  await tap(/^Принимаю Пользовательское соглашение$/);
+  await tap(/^Даю согласие на обработку персональных данных$/);
+  await tap('Продолжить');
   await waitFor(/^Все$/, { timeout: 20_000 });
   await tap('Профиль');
   await waitFor('Мария Орлова');
@@ -526,6 +532,8 @@ try {
   await tapNode(await scrollTo('Имя Фамилия'));
   await type('Nikita Owner');
   back();
+  await tapNode(await scrollTo(/^Принимаю Пользовательское соглашение$/));
+  await tap(/^Даю согласие на обработку персональных данных$/);
   await tapNode(await scrollTo('Создать центр'));
   await waitFor(/^Все$/, { timeout: 20_000 });
   // The new center is empty: the owner is told what to do first, and a booking without services says where they go.

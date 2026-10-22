@@ -270,7 +270,10 @@ export const api = {
     return request<LoginRequest>('/api/auth/login-requests', { method: 'POST', body: JSON.stringify({ provider, purpose }) });
   },
   /** A confirmed sign-up request becomes a new center; the answer is the owner's session. */
-  createCenter(loginId: string, pollSecret: string, input: { centerName: string; ownerName: string }) {
+  acceptLegal(version: string) {
+    return request<{ accepted: true; version: string }>('/api/legal/accept', { method: 'POST', body: JSON.stringify({ version }) });
+  },
+  createCenter(loginId: string, pollSecret: string, input: { centerName: string; ownerName: string; acceptedLegal: string }) {
     return request<{ token: string; expiresAt: string; tenant: { id: string; name: string } }>(`/api/auth/login-requests/${encodeURIComponent(loginId)}/center`, {
       method: 'POST', headers: { 'x-login-secret': pollSecret }, body: JSON.stringify(input)
     });

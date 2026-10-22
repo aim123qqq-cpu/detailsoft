@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiRequestError, api, authSession, demoAuthEnabled } from './api';
 import { iosBrowserTab } from './platform';
+import { LEGAL_VERSION } from './legal';
+import { LegalChecks, type LegalState } from './LegalGate';
 import type { AuthProvider, LoginMembership, LoginRequest, LoginStatus } from './types';
 
 const statusText: Record<LoginStatus['status'], string> = {
@@ -23,6 +25,7 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [centerName, setCenterName] = useState('');
   const [ownerName, setOwnerName] = useState('');
+  const [legal, setLegal] = useState<LegalState>({ terms: false, consent: false });
   const opening = useRef(false);
 
   useEffect(() => {
@@ -102,7 +105,7 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
     if (!login) return;
     setBusy(true); setError('');
     try {
-      const session = await api.createCenter(login.id, login.pollSecret, { centerName: centerName.trim(), ownerName: ownerName.trim() });
+      const session = await api.createCenter(login.id, login.pollSecret, { centerName: centerName.trim(), ownerName: ownerName.trim(), acceptedLegal: LEGAL_VERSION });
       authSession.save(session.token);
       onSignedIn();
     } catch (requestError) { setError((requestError as Error).message); }
@@ -185,7 +188,8 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
             {signup && status === 'CONFIRMED' && <div className="login-signup" data-testid="login-signup">
               <label>Название центра<input data-testid="center-name" value={centerName} maxLength={120} placeholder="Например, Детейлинг Север" onChange={(event) => setCenterName(event.target.value)}/></label>
               <label>Ваше имя<input data-testid="owner-name" value={ownerName} maxLength={80} placeholder="Имя Фамилия" onChange={(event) => setOwnerName(event.target.value)}/></label>
-              <button className="primary-button" data-testid="create-center" disabled={busy || centerName.trim().length < 2 || ownerName.trim().length < 2} onClick={createCenter}>{busy ? 'Создаём…' : 'Создать центр'}</button>
+              <LegalChecks value={legal} onChange={setLegal}/>
+              <button className="primary-button" data-testid="create-center" disabled={busy || centerName.trim().length < 2 || ownerName.trim().length < 2 || !legal.terms || !legal.consent} onClick={createCenter}>{busy ? 'Создаём…' : 'Создать центр'}</button>
             </div>}
             {memberships.length > 1 && <div className="login-tenants" data-testid="login-tenants">
               <strong>Выберите центр</strong>

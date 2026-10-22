@@ -1554,3 +1554,12 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
 .account-actions { display: grid; gap: 8px; }
 .account-primary { min-height: 46px; border: 1px solid #394550; border-radius: 11px; color: #e6ebee; background: #18212a; font-size: 13px; font-weight: 800; cursor: pointer; }
 .account-delete { min-height: 44px; border: 0; background: transparent; color: #e98a8a; font-size: 12px; font-weight: 700; cursor: pointer; }
+
+.legal-checks { display: grid; gap: 10px; margin: 6px 0 4px; text-align: left; }
+.legal-checks label { display: flex; align-items: flex-start; gap: 10px; color: #c8d0d6; font-size: 13px; line-height: 1.45; cursor: pointer; }
+.legal-checks input { flex: 0 0 auto; width: 20px; height: 20px; min-height: 0; margin: 1px 0 0; accent-color: var(--primary); }
+.legal-checks small { color: var(--muted); font-size: 12px; line-height: 1.45; }
+.legal-checks a { color: var(--primary); }
+.legal-gate { display: grid; gap: 14px; padding-top: max(32px, env(safe-area-inset-top)); }
+.legal-gate h1 { margin: 0; font-size: 24px; }
+.legal-gate p { margin: 0; color: #b9c3ca; font-size: 14px; line-height: 1.5; }
