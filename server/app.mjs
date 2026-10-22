@@ -251,7 +251,9 @@ export function createDetailFlowServer({
               roles,
               roleNames: repository.roles.listRoles(tenantId).filter((role) => roles.includes(role.key)).map((role) => role.name),
               memberId: session?.memberId ?? null,
-              authMethod: authTokens.has(token) ? 'demo' : token.startsWith('dfs_') ? 'messenger' : 'access_token'
+              authMethod: authTokens.has(token) ? 'demo' : token.startsWith('dfs_') ? 'messenger' : 'access_token',
+              // Which messenger this session came through (telegram or max), for the profile.
+              authProvider: typeof session === 'object' && session?.provider ? session.provider : null
             },
             tenant,
             preferences: { locale: 'ru-RU', currency: 'RUB' },

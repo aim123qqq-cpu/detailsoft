@@ -1544,3 +1544,13 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
 .first-steps small { color: var(--muted); font-size: 12px; line-height: 1.4; }
 .first-steps li.done i { color: var(--success); background: rgba(54,201,150,.18); }
 .first-steps li.done b { color: var(--muted); text-decoration: line-through; }
+
+.account-card { display: grid; gap: 14px; margin-top: 14px; padding: 16px; border: 1px solid #303d47; border-radius: 16px; background: #121920; }
+.account-head { display: flex; align-items: center; gap: 12px; }
+.account-head > div { display: grid; gap: 2px; min-width: 0; }
+.account-head span:not(.provider-icon) { color: #8a97a1; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.account-head strong { font-size: 15px; }
+.provider-icon.code { color: #c8d0d6; background: #1d2730; }
+.account-actions { display: grid; gap: 8px; }
+.account-primary { min-height: 46px; border: 1px solid #394550; border-radius: 11px; color: #e6ebee; background: #18212a; font-size: 13px; font-weight: 800; cursor: pointer; }
+.account-delete { min-height: 44px; border: 0; background: transparent; color: #e98a8a; font-size: 12px; font-weight: 700; cursor: pointer; }

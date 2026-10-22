@@ -121,7 +121,7 @@ export type CatalogVariant = {
 export type ApiError = { error: { code: string; message: string } };
 
 export type SessionContext = {
-  actor: { displayName: string; roles: string[]; roleNames: string[]; memberId: string | null; authMethod: 'demo' | 'messenger' | 'access_token' };
+  actor: { displayName: string; roles: string[]; roleNames: string[]; memberId: string | null; authMethod: 'demo' | 'messenger' | 'access_token'; authProvider?: 'telegram' | 'max' | null };
   tenant: { id: string; name: string; timezone: string };
   preferences: { locale: string; currency: string };
   features: { qualityControl: boolean };

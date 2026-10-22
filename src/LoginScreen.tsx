@@ -223,7 +223,7 @@ function Countdown({ expiresAt }: { expiresAt: string }) {
   </span>;
 }
 
-function ProviderIcon({ provider }: { provider: AuthProvider['provider'] }) {
+export function ProviderIcon({ provider }: { provider: AuthProvider['provider'] }) {
   return provider === 'telegram'
     ? <span className="provider-icon telegram" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M20.7 4.3 3.6 10.9c-1.2.5-1.2 1.1-.2 1.4l4.4 1.4 1.7 5.2c.2.6.1.8.7.8.5 0 .7-.2 1-.5l2.1-2 4.4 3.2c.8.4 1.4.2 1.6-.8l2.9-13.6c.3-1.2-.4-1.7-1.5-1.3Zm-3 3.3-8.2 7.4-.3 3.3-1.4-4.6 9.4-6.4c.4-.3.8-.1.5.3Z"/></svg></span>
     : <span className="provider-icon max" aria-hidden="true">M</span>;

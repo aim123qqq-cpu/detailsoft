@@ -122,6 +122,7 @@ test('owner invite links a Telegram account and the employee signs in after expl
   assert.equal(me.actor.displayName, 'Анна Смирнова');
   assert.equal(me.actor.memberId, 'member_demo_owner');
   assert.equal(me.actor.authMethod, 'messenger');
+  assert.equal(me.actor.authProvider, 'telegram', 'the session knows which messenger it came through');
   assert.deepEqual(me.actor.roles, ['owner', 'admin']);
   assert.equal(me.tenant.id, 'tenant_demo');
   assert.equal((await api('/api/customers?phone=9131234567', { token: session.token })).status, 200);

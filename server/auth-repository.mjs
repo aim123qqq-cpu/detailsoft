@@ -170,11 +170,11 @@ export class AuthRepository {
 
   authenticateSession(token) {
     if (typeof token !== 'string' || !token.startsWith('dfs_')) return null;
-    const row = this.db.prepare(`SELECT s.tenant_id, s.member_id, m.display_name, m.roles_json
+    const row = this.db.prepare(`SELECT s.tenant_id, s.member_id, s.provider, m.display_name, m.roles_json
       FROM auth_sessions s
       JOIN tenant_members m ON m.id = s.member_id AND m.tenant_id = s.tenant_id
       WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ? AND m.status = 'active'`).get(hash(token), nowSql());
-    return row ? { tenantId: row.tenant_id, memberId: row.member_id, displayName: row.display_name, roles: JSON.parse(row.roles_json) } : null;
+    return row ? { tenantId: row.tenant_id, memberId: row.member_id, provider: row.provider, displayName: row.display_name, roles: JSON.parse(row.roles_json) } : null;
   }
 
   revokeSession(token) {

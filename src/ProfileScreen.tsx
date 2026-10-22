@@ -3,7 +3,7 @@ import { api, authSession } from './api';
 import { CatalogScreen } from './CatalogScreen';
 import { CenterSettingsScreen } from './CenterSettingsScreen';
 import { wipeOfflineData } from './offline/store';
-import { androidApp } from './platform';
+import { ProviderIcon } from './LoginScreen';
 import { TeamScreen } from './TeamScreen';
 import type { SessionContext } from './types';
 
@@ -34,11 +34,12 @@ function timezoneLabel(timezone: string) {
   return timezone === 'Europe/Moscow' ? 'Москва · UTC+3' : timezone;
 }
 
-const authMethodLabels: Record<SessionContext['actor']['authMethod'], string> = {
-  demo: 'Демо-доступ локальной версии',
-  messenger: 'Вход через мессенджер',
-  access_token: 'Код доступа сотрудника'
-};
+/** How this person is signed in, in words: the messenger by name when the server knows it. */
+function signedInWith(actor: SessionContext['actor']) {
+  if (actor.authMethod === 'demo') return 'Демо-доступ';
+  if (actor.authMethod === 'access_token') return 'Вы вошли по коду доступа';
+  return actor.authProvider === 'max' ? 'Вы вошли через MAX' : actor.authProvider === 'telegram' ? 'Вы вошли через Telegram' : 'Вы вошли через мессенджер';
+}
 
 export function ProfileScreen({ onSignIn, open }: { onSignIn: () => void; open?: 'catalog' | 'team' | 'settings' }) {
   const [signingOut, setSigningOut] = useState(false);
@@ -125,50 +126,50 @@ export function ProfileScreen({ onSignIn, open }: { onSignIn: () => void; open?:
         <span><i>👥</i><b>Команда</b><small>Сотрудники, роли и блокировка доступа</small></span><strong>Открыть →</strong>
       </button>}
 
-      <section className="profile-signin" data-testid="profile-signin" aria-label="Вход в систему">
-        <div><span>Вход в систему</span><strong>{authMethodLabels[session.actor.authMethod]}</strong></div>
-        {session.actor.authMethod === 'messenger'
-          ? <button data-testid="sign-out" disabled={signingOut} onClick={async () => {
-              setSigningOut(true);
-              try { await api.logout(); } catch { /* the session is dropped locally anyway */ }
-              authSession.clear();
-              window.location.reload();
-            }}>{signingOut ? 'Выходим…' : 'Выйти'}</button>
-          : <button data-testid="sign-in-messenger" onClick={onSignIn}>Войти через мессенджер</button>}
-      </section>
-
-      {androidApp() && <section className="profile-signin" data-testid="profile-server" aria-label="Сервер">
-        <div><span>Сервер</span><strong>{androidApp()!.serverUrl()}</strong></div>
-        <button onClick={() => androidApp()!.changeServer()}>Сменить</button>
-      </section>}
-
-      {session.actor.memberId && <section className="profile-account" data-testid="profile-account" aria-label="Аккаунт">
-        {!confirmDelete
-          ? <button className="profile-delete-link" data-testid="delete-account" onClick={() => { setDeleteError(''); setConfirmDelete(true); }}>Удалить аккаунт</button>
-          : <div className="profile-delete-confirm" role="alertdialog" aria-labelledby="delete-account-title" aria-describedby="delete-account-text">
-              <h3 id="delete-account-title">Удалить аккаунт в «{session.tenant.name}»?</h3>
-              <div id="delete-account-text">
-                <p>Удалим ваше имя, привязку к Telegram или MAX, коды доступа и все входы. Войти в этот центр снова будет нельзя.</p>
-                <p>Заказы, акты и история работ останутся у центра: это его рабочие документы. На этом устройстве удалится сохранённая копия данных.</p>
-              </div>
-              {deleteError && <p className="inline-error" role="alert">{deleteError}</p>}
-              <div className="profile-delete-actions">
-                <button className="secondary-button" disabled={deleting} onClick={() => setConfirmDelete(false)}>Отмена</button>
-                <button className="danger-button" data-testid="confirm-delete-account" disabled={deleting} onClick={async () => {
-                  setDeleting(true); setDeleteError('');
-                  try {
-                    await api.deleteAccount();
-                    await wipeOfflineData();
-                    authSession.clear();
-                    window.location.reload();
-                  } catch (requestError) {
-                    setDeleteError((requestError as Error).message);
-                    setDeleting(false);
-                  }
-                }}>{deleting ? 'Удаляем…' : 'Удалить навсегда'}</button>
-              </div>
+      <section className="account-card" data-testid="profile-signin" aria-label="Аккаунт">
+        <div className="account-head">
+          {session.actor.authProvider ? <ProviderIcon provider={session.actor.authProvider}/> : <span className="provider-icon code" aria-hidden="true">{session.actor.authMethod === 'demo' ? 'Д' : '#'}</span>}
+          <div>
+            <span>Аккаунт</span>
+            <strong>{signedInWith(session.actor)}</strong>
+          </div>
+        </div>
+        {session.actor.authMethod === 'demo'
+          ? <button className="account-primary" data-testid="sign-in-messenger" onClick={onSignIn}>Войти через мессенджер</button>
+          : <div className="account-actions">
+              <button className="account-primary" data-testid="sign-out" disabled={signingOut} onClick={async () => {
+                setSigningOut(true);
+                // A messenger session is revoked on the server; an access code is only forgotten here.
+                if (session.actor.authMethod === 'messenger') { try { await api.logout(); } catch { /* the session is dropped locally anyway */ } }
+                authSession.clear();
+                window.location.reload();
+              }}>{signingOut ? 'Выходим…' : 'Выйти'}</button>
+              {session.actor.memberId && !confirmDelete && <button className="account-delete" data-testid="delete-account" onClick={() => { setDeleteError(''); setConfirmDelete(true); }}>Удалить аккаунт</button>}
             </div>}
-      </section>}
+        {session.actor.memberId && confirmDelete && <div className="profile-delete-confirm" data-testid="profile-account" role="alertdialog" aria-labelledby="delete-account-title" aria-describedby="delete-account-text">
+          <h3 id="delete-account-title">Удалить аккаунт в «{session.tenant.name}»?</h3>
+          <div id="delete-account-text">
+            <p>Удалим ваше имя, привязку к Telegram или MAX, коды доступа и все входы. Войти в этот центр снова будет нельзя.</p>
+            <p>Заказы, акты и история работ останутся у центра: это его рабочие документы. На этом устройстве удалится сохранённая копия данных.</p>
+          </div>
+          {deleteError && <p className="inline-error" role="alert">{deleteError}</p>}
+          <div className="profile-delete-actions">
+            <button className="secondary-button" disabled={deleting} onClick={() => setConfirmDelete(false)}>Отмена</button>
+            <button className="danger-button" data-testid="confirm-delete-account" disabled={deleting} onClick={async () => {
+              setDeleting(true); setDeleteError('');
+              try {
+                await api.deleteAccount();
+                await wipeOfflineData();
+                authSession.clear();
+                window.location.reload();
+              } catch (requestError) {
+                setDeleteError((requestError as Error).message);
+                setDeleting(false);
+              }
+            }}>{deleting ? 'Удаляем…' : 'Удалить навсегда'}</button>
+          </div>
+        </div>}
+      </section>
 
       <p className="profile-version"><a href="/privacy/" target="_blank" rel="noopener" data-testid="privacy-link">Политика конфиденциальности</a> · DetailFlow</p>
     </section>

@@ -103,7 +103,7 @@ test('mobile messenger sign-in: owner invite, bot confirmation, session and sign
     await page.getByTestId('sign-out').waitFor();
     const profile = await page.getByTestId('profile-screen').innerText();
     assert.match(profile, /Анна Смирнова/);
-    assert.match(profile, /Вход через мессенджер/);
+    assert.match(profile, /Вы вошли через Telegram/, 'the profile names the messenger of this session');
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.ok(overflow <= 0, `profile has no horizontal overflow (got ${overflow}px)`);
     await settle(page);
