@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { api } from './api';
 import { CarDiagram, findingMarks } from './intake/CarDiagram';
 import { BODY_TYPES, carLayout, normalizeBodyType } from './shared/carLayouts';
+import { contractorLine } from './shared/orderDocuments';
 import type { OrderDocument, OrderDocumentContent, OrderDocumentType, WorkOrder } from './types';
 
 const documentTitles: Record<OrderDocumentType, string> = {
@@ -34,6 +35,7 @@ export function DocumentPaper({ content, number, pendingNumber, signerName, sign
     <article className="document-paper" data-testid="document-paper">
       <header>
         <span>{content.center.name}</span>
+        {contractorLine(content.center) && <small className="document-contractor">Исполнитель: {contractorLine(content.center)}</small>}
         <h2>{content.title}</h2>
         <p>{number ? `№ ${number}` : pendingNumber ? 'Сохранён на телефоне · номер присвоится при отправке' : 'Предпросмотр · номер присвоится при сохранении'} · заказ #{content.order.number}</p>
       </header>
@@ -78,6 +80,7 @@ export function DocumentPaper({ content, number, pendingNumber, signerName, sign
         {content.photos && <p className="document-meta">Фото до работ: {content.photos.intake} · после работ: {content.photos.result}</p>}
       </>}
 
+      {content.warranty && <p className="document-meta">Гарантия: {content.warranty}</p>}
       <p className="document-statement">{content.statement}</p>
 
       <footer className="document-signatures">

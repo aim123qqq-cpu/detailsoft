@@ -1,3 +1,4 @@
+import type { CenterRequisites } from './shared/orderDocuments';
 export type Vehicle = {
   id: string;
   catalogVariantId?: string | null;
@@ -123,7 +124,7 @@ export type ApiError = { error: { code: string; message: string } };
 export type SessionContext = {
   actor: { displayName: string; roles: string[]; roleNames: string[]; memberId: string | null; authMethod: 'demo' | 'messenger' | 'access_token'; authProvider?: 'telegram' | 'max' | null; legalAccepted?: boolean };
   legalVersion?: string;
-  tenant: { id: string; name: string; timezone: string };
+  tenant: { id: string; name: string; timezone: string; requisites?: CenterRequisites };
   preferences: { locale: string; currency: string };
   features: { qualityControl: boolean };
   capabilities: {
@@ -469,11 +470,13 @@ export type OrderDocumentSummary = {
 
 export type OrderDocumentContent = {
   title: string;
-  center: { name: string };
+  center: { name: string; legalName?: string; inn?: string; ogrn?: string; address?: string; phone?: string };
   order: { id: string; number: string; createdAt: string };
   customer: { name: string; phoneDisplay: string };
   vehicle: { make: string; model: string; generation: string | null; plate: string; color: string };
   statement: string;
+  warranty?: string;
+  erased?: boolean;
   intake?: {
     bodyType?: string;
     conditionSummary: string;

@@ -7,8 +7,12 @@ import { findLayoutElement, normalizeBodyType } from './carLayouts.ts';
 
 export type DocumentType = 'intake_act' | 'handover_act';
 
+/** The center as the contractor in its documents (Government Decree No. 780 of 29.05.2025); empty fields are not printed. */
+export type CenterRequisites = { legalName: string; inn: string; ogrn: string; address: string; phone: string; warranty: string };
+
 export type DocumentParties = {
   centerName: string;
+  requisites?: CenterRequisites | null;
   customer: { name: string; phoneDisplay: string };
   vehicle: { make: string; model: string; generation: string | null | undefined; plate: string; color: string };
 };
@@ -37,7 +41,11 @@ export type DocumentOrder = {
 
 export function buildDocumentContent(order: DocumentOrder, parties: DocumentParties, type: DocumentType) {
   const base = {
-    center: { name: parties.centerName },
+    center: {
+      name: parties.centerName,
+      legalName: parties.requisites?.legalName ?? '', inn: parties.requisites?.inn ?? '', ogrn: parties.requisites?.ogrn ?? '',
+      address: parties.requisites?.address ?? '', phone: parties.requisites?.phone ?? ''
+    },
     order: { id: order.id, number: order.id.replace(/^order_/, '').slice(0, 8), createdAt: order.createdAt },
     customer: { name: parties.customer.name, phoneDisplay: parties.customer.phoneDisplay },
     vehicle: { make: parties.vehicle.make, model: parties.vehicle.model, generation: parties.vehicle.generation ?? null, plate: parties.vehicle.plate, color: parties.vehicle.color }
@@ -82,8 +90,16 @@ export function buildDocumentContent(order: DocumentOrder, parties: DocumentPart
       ? { responsible: order.handover.responsible, note: order.handover.note, handedOverAt: order.handover.handedOverAt }
       : null,
     photos: { intake: photoCount('intake'), result: photoCount('result') },
-    statement: 'Работы выполнены по согласованной смете. Клиент осмотрел автомобиль и принял его. Сумма указана по согласованной смете и не подтверждает расчёты.'
+    warranty: parties.requisites?.warranty ?? '',
+    statement: 'Работы выполнены по согласованной смете. Клиент осмотрел автомобиль и принял его. Сумма указана по согласованной смете и не подтверждает расчёты. Документ не является кассовым чеком.'
   } };
+}
+
+/** The contractor line of an act: what the center filled in, in the order a customer reads it. Old acts have none. */
+export function contractorLine(center: { legalName?: string; inn?: string; ogrn?: string; address?: string; phone?: string }) {
+  const ogrnLabel = center.ogrn?.length === 15 ? 'ОГРНИП' : 'ОГРН';
+  return [center.legalName, center.inn ? `ИНН ${center.inn}` : '', center.ogrn ? `${ogrnLabel} ${center.ogrn}` : '', center.address, center.phone]
+    .filter(Boolean).join(' · ');
 }
 
 /** The same signature check as the server: a PNG data URL up to 200 KB and a signer name. */

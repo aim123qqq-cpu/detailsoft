@@ -1,4 +1,5 @@
 import type { AuthProvider, CatalogOperation, LoginRequest, LoginStatus, MessengerProvider } from './types';
+import type { CenterRequisites } from './shared/orderDocuments';
 import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogSection, CatalogVariant, CenterRole, CenterSettings, Customer, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, OrderDocument, OrderDocumentContent, OrderDocumentType, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, Permission, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, SimpleServiceInput, TeamMember, TeamRole, Vehicle, VehicleProfile, WorkOrder } from './types';
 
 import { ApiRequestError } from './apiError';
@@ -270,6 +271,9 @@ export const api = {
     return request<LoginRequest>('/api/auth/login-requests', { method: 'POST', body: JSON.stringify({ provider, purpose }) });
   },
   /** A confirmed sign-up request becomes a new center; the answer is the owner's session. */
+  eraseCustomer(customerId: string) {
+    return request<{ kind: 'erased'; orders: number; documents: number; photos: number }>(`/api/customers/${encodeURIComponent(customerId)}/erase`, { method: 'POST' });
+  },
   acceptLegal(version: string) {
     return request<{ accepted: true; version: string }>('/api/legal/accept', { method: 'POST', body: JSON.stringify({ version }) });
   },
@@ -435,6 +439,12 @@ export const api = {
   },
   getManagedCatalog(signal?: AbortSignal) {
     return request<ManagedCatalog>('/api/tenants/current/catalog', { signal });
+  },
+  getCenterRequisites(signal?: AbortSignal) {
+    return request<CenterRequisites>('/api/tenants/current/requisites', { signal });
+  },
+  updateCenterRequisites(input: CenterRequisites) {
+    return request<CenterRequisites>('/api/tenants/current/requisites', { method: 'PUT', body: JSON.stringify(input) });
   },
   getCenterSetup(signal?: AbortSignal) {
     return request<{ services: number; members: number; bookings: number }>('/api/tenants/current/setup', { signal });

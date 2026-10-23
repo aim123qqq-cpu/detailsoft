@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { BODY_TYPES, carLayout, normalizeBodyType } from '@df/shared/carLayouts';
+import { contractorLine } from '@df/shared/orderDocuments';
 import type { OrderDocumentContent, OrderDocumentType } from '@df/types';
 import { money } from '@/lib/format';
 import { radius, space } from '@/lib/theme';
@@ -28,6 +29,7 @@ export function DocumentPaper({ content, number, signerName, signatureDataUrl, s
   return (
     <View style={styles.paper}>
       <Text style={styles.center}>{content.center.name}</Text>
+      {contractorLine(content.center) ? <Text style={styles.meta}>Исполнитель: {contractorLine(content.center)}</Text> : null}
       <Text style={styles.title}>{content.title}</Text>
       <Text style={styles.meta}>{number ? `№ ${number}` : 'Предпросмотр · номер присвоится при сохранении'} · заказ #{content.order.number}</Text>
 
@@ -69,6 +71,7 @@ export function DocumentPaper({ content, number, signerName, signatureDataUrl, s
         {content.photos ? <Text style={styles.small}>Фото до работ: {content.photos.intake} · после работ: {content.photos.result}</Text> : null}
       </> : null}
 
+      {content.warranty ? <Text style={styles.meta}>Гарантия: {content.warranty}</Text> : null}
       <Text style={styles.statement}>{content.statement}</Text>
 
       <View style={styles.signatures}>

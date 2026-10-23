@@ -3,6 +3,7 @@ import type {
   AnalyticsOverview, AuthProvider, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogSection, CatalogVariant, CenterRole, CenterSettings, Customer, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, LoginRequest, LoginStatus, ManagedCatalog, ManagedCatalogItem,
   OrderDocument, OrderDocumentContent, OrderDocumentType, OrderListItem, OrderRecommendation, Permission, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, SimpleServiceInput, TeamMember, Vehicle, WorkOrder
 } from '@df/types';
+import type { CenterRequisites } from '@df/shared/orderDocuments';
 import { ApiRequestError } from '@df/apiError';
 import { localAvailability, localBooking, localCreateCustomer, localCreateVehicle, localQuote, localSearchCustomers, localSearchVehicles, localServicesCatalog, type BookingPack } from '@df/offline/bookingLocal';
 import { localAddPhoto, localAssignMaster, localCloseOrder, localCompleteWork, localCreateEstimate, localCreateOrder, localDecideEstimate, localSaveIntake, localSetPause, localStartWork, localUpdateOperation } from '@df/offline/orderLocal';
@@ -243,6 +244,7 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
     if (!session || !customer || !vehicle) return null;
     return {
       centerName: session.tenant.name,
+      requisites: session.tenant.requisites ?? null,
       customer: { name: customer.name, phoneDisplay: customer.phoneDisplay },
       vehicle: { make: vehicle.make, model: vehicle.model, generation: vehicle.generation, plate: vehicle.plate, color: vehicle.color }
     };
@@ -261,6 +263,7 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
     createLoginRequest: (provider: AuthProvider['provider'], purpose: 'login' | 'signup' = 'login') =>
       request<LoginRequest>('/api/auth/login-requests', { method: 'POST', body: { provider, purpose } }),
     /** A confirmed sign-up request becomes a new center; the answer is the owner's session. */
+    eraseCustomer: (customerId: string) => request<{ kind: 'erased'; orders: number; documents: number; photos: number }>(`/api/customers/${encodeURIComponent(customerId)}/erase`, { method: 'POST' }),
     acceptLegal: (version: string) => request<{ accepted: true; version: string }>('/api/legal/accept', { method: 'POST', body: { version } }),
     createCenter: (login: LoginRequest, input: { centerName: string; ownerName: string; acceptedLegal: string }) =>
       request<{ token: string; expiresAt: string; tenant: { id: string; name: string } }>(`/api/auth/login-requests/${encodeURIComponent(login.id)}/center`, {
@@ -419,6 +422,8 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
     updateSimpleService: (serviceId: string, input: SimpleServiceInput & { active: boolean }) =>
       request<ManagedCatalogItem>(`/api/tenants/current/catalog/simple-services/${encodeURIComponent(serviceId)}`, { method: 'PUT', body: input }),
     settings: (signal?: AbortSignal) => request<CenterSettings>('/api/tenants/current/settings', { signal }),
+    centerRequisites: (signal?: AbortSignal) => request<CenterRequisites>('/api/tenants/current/requisites', { signal }),
+    updateCenterRequisites: (input: CenterRequisites) => request<CenterRequisites>('/api/tenants/current/requisites', { method: 'PUT', body: input }),
     centerSetup: (signal?: AbortSignal) => request<{ services: number; members: number; bookings: number }>('/api/tenants/current/setup', { signal }),
     updateSettings: (input: Omit<CenterSettings, 'timezone'>) => request<CenterSettings>('/api/tenants/current/settings', { method: 'PATCH', body: input }),
     team: (signal?: AbortSignal) => request<{ items: TeamMember[] }>('/api/tenants/current/team', { signal }),

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from './api';
+import { RequisitesPanel } from './RequisitesPanel';
 import type { CenterSettings } from './types';
 
 const days = [
@@ -92,6 +93,7 @@ export function CenterSettingsScreen({ onBack }: { onBack: () => void }) {
       {error && <p className="form-error">{error}</p>}
       {saved && <div className="settings-saved" role="status">✓ График сохранён. Новые слоты уже пересчитаны.</div>}
       <button className="primary-button settings-save" data-testid="save-center-settings" disabled={!valid || saving} onClick={save}>{saving ? 'Сохраняем…' : 'Сохранить настройки'}</button>
+      <RequisitesPanel/>
     </>}
   </section>;
 }

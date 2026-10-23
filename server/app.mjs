@@ -350,6 +350,19 @@ export function createDetailFlowServer({
           });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите имя от 2 до 120 символов и корректный телефон' } });
         }
+        const customerErase = url.pathname.match(/^\/api\/customers\/([^/]+)\/erase$/);
+        if (request.method === 'POST' && customerErase) {
+          // A customer's request to destroy their data: the owner or an administrator does it (152-FZ art. 21).
+          if (!capabilities.manageSettings) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Удалить данные клиента может владелец или администратор центра' }
+          });
+          const result = repository.eraseCustomer(tenantId, customerErase[1], actorName);
+          if (result.kind === 'erased') return sendJson(response, 200, result);
+          if (result.kind === 'active_work') return sendJson(response, 409, {
+            error: { code: 'customer_has_active_work', message: 'У клиента есть активные записи, заказы или обращения. Завершите или отмените их, затем удалите данные', details: result.details }
+          });
+          return sendJson(response, 404, { error: { code: 'customer_not_found', message: 'Клиент не найден' } });
+        }
         const customerArchive = url.pathname.match(/^\/api\/customers\/([^/]+)\/(archive|reactivate)$/);
         if (request.method === 'POST' && customerArchive) {
           if (!capabilities.manageCustomers) return sendJson(response, 403, {
@@ -359,6 +372,7 @@ export function createDetailFlowServer({
             ? repository.archiveCustomer(tenantId, customerArchive[1], actorName)
             : repository.reactivateCustomer(tenantId, customerArchive[1], actorName);
           if (result.kind === 'updated') return sendJson(response, 200, result.profile);
+          if (result.kind === 'erased') return sendJson(response, 409, { error: { code: 'customer_erased', message: 'Данные этого клиента удалены по его просьбе, вернуть его нельзя' } });
           if (result.kind === 'active_work') return sendJson(response, 409, {
             error: {
               code: 'customer_has_active_work',
@@ -554,6 +568,16 @@ export function createDetailFlowServer({
           return settings
             ? sendJson(response, 200, settings)
             : sendJson(response, 404, { error: { code: 'tenant_not_found', message: 'Центр не найден' } });
+        }
+        if (url.pathname === '/api/tenants/current/requisites' && (request.method === 'GET' || request.method === 'PUT')) {
+          if (!capabilities.manageSettings) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Реквизиты центра меняет владелец или администратор' }
+          });
+          if (request.method === 'GET') return sendJson(response, 200, repository.getTenantRequisites(tenantId));
+          const result = repository.updateTenantRequisites(tenantId, await readJson(request));
+          if (result.kind === 'updated') return sendJson(response, 200, result.requisites);
+          return sendJson(response, 422, { error: { code: 'validation_error', field: result.field,
+            message: result.field === 'inn' ? 'ИНН — 10 цифр у организации или 12 у ИП' : 'ОГРН — 13 цифр, ОГРНИП — 15' } });
         }
         if (request.method === 'GET' && url.pathname === '/api/tenants/current/setup') {
           if (!capabilities.manageSettings) return sendJson(response, 403, {

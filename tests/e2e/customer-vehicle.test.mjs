@@ -226,6 +226,11 @@ test('mobile customer → vehicle → services → booking flow works end to end
     assert.match(await page.getByTestId('order-closed').innerText(), /заказ закрыт/i);
     await page.screenshot({ path: resolve(artifacts, '15-order-closed.png'), fullPage: true });
 
+    // Dates a month ahead: the calendar treats today and tomorrow specially, and a fixed date grows old.
+    const day = (offset) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+    const bookingDay = day(30);
+    const movedDay = day(33);
+    const movedLabel = new Date(`${movedDay}T12:00:00+03:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' });
     const manageableResponse = await fetch(`http://127.0.0.1:${port}/api/bookings`, {
       method: 'POST',
       headers: {
@@ -235,7 +240,7 @@ test('mobile customer → vehicle → services → booking flow works end to end
       },
       body: JSON.stringify({
         customerId: 'cust_alexey', vehicleId: 'veh_mazda', channel: 'call',
-        startAt: '2026-10-24T09:00:00+03:00',
+        startAt: `${bookingDay}T09:00:00+03:00`,
         selections: [{ type: 'service', id: 'service_wash' }]
       })
     });
@@ -250,7 +255,7 @@ test('mobile customer → vehicle → services → booking flow works end to end
     await page.screenshot({ path: resolve(artifacts, '16-bookings-workspace.png'), fullPage: true });
 
     await page.getByRole('tab', { name: 'День' }).click();
-    await page.getByLabel('Дата календаря').fill('2026-10-24');
+    await page.getByLabel('Дата календаря').fill(bookingDay);
     await page.getByTestId(`calendar-booking-${manageableBooking.id}`).waitFor();
     assert.match(await page.getByTestId('booking-calendar').innerText(), /1\s+визит/);
     await page.screenshot({ path: resolve(artifacts, '43-booking-calendar-day.png'), fullPage: true });
@@ -266,12 +271,12 @@ test('mobile customer → vehicle → services → booking flow works end to end
     assert.equal(await page.getByTestId('booking-details').isVisible(), true);
     await page.screenshot({ path: resolve(artifacts, '18-booking-details.png'), fullPage: true });
     await page.getByRole('button', { name: 'Перенести запись' }).click();
-    await page.getByLabel('Новая дата').fill('2026-10-27');
+    await page.getByLabel('Новая дата').fill(movedDay);
     await page.getByRole('button', { name: '12:00' }).click();
     await page.waitForTimeout(400);
     await page.screenshot({ path: resolve(artifacts, '19-booking-reschedule.png'), fullPage: true });
     await page.getByRole('button', { name: 'Подтвердить перенос' }).click();
-    await page.waitForFunction(() => document.querySelector('[data-testid="booking-details"]')?.textContent?.includes('27 октября'));
+    await page.waitForFunction((label) => document.querySelector('[data-testid="booking-details"]')?.textContent?.includes(label), movedLabel);
     await page.getByRole('button', { name: 'Отменить запись' }).click();
     await page.getByRole('button', { name: 'Да, отменить' }).click();
     await page.waitForFunction(() => document.querySelector('[data-testid="booking-details"]')?.textContent?.includes('Отменена'));

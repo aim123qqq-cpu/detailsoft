@@ -250,6 +250,60 @@ export const customersMethods = {
     return { confirmedBookings: row.confirmed_bookings, openOrders: row.open_orders, activeLeads: row.active_leads };
   },
 
+  /**
+   * Destroys a customer's personal data on their request (152-FZ art. 21), keeping the center's work
+   * records anonymous: name and phone, the plates of cars nobody else owns, photos of their cars, the
+   * name and phone in act snapshots and the signatures go; orders, amounts and works stay. Cannot be undone.
+   */
+  eraseCustomer(tenantId, customerId, actorName = null) {
+    const customer = this.db.prepare('SELECT id FROM customers WHERE id = ? AND tenant_id = ?').get(customerId, tenantId);
+    if (!customer) return { kind: 'not_found' };
+    const activeWork = this.getCustomerActiveWork(tenantId, customerId);
+    if (activeWork.confirmedBookings || activeWork.openOrders || activeWork.activeLeads) return { kind: 'active_work', details: activeWork };
+    const erased = 'Удалённый клиент';
+    const orders = this.db.prepare('SELECT id, vehicle_id FROM orders WHERE tenant_id = ? AND customer_id = ?').all(tenantId, customerId);
+    // Cars of this customer that no other customer of the center is linked to.
+    const vehicles = this.db.prepare(`SELECT DISTINCT cv.vehicle_id AS id FROM customer_vehicles cv
+      WHERE cv.tenant_id = ? AND cv.customer_id = ? AND NOT EXISTS (
+        SELECT 1 FROM customer_vehicles other WHERE other.tenant_id = cv.tenant_id AND other.vehicle_id = cv.vehicle_id AND other.customer_id <> cv.customer_id)`)
+      .all(tenantId, customerId).map((row) => row.id);
+    let documents = 0;
+    let photos = 0;
+    this.db.exec('BEGIN');
+    try {
+      const phone = this.db.prepare('SELECT phone_normalized FROM customers WHERE id = ?').get(customerId).phone_normalized;
+      this.db.prepare(`UPDATE customers SET name = ?, phone_display = '', phone_normalized = ?, archived_at = COALESCE(archived_at, CURRENT_TIMESTAMP)
+        WHERE id = ? AND tenant_id = ?`).run(erased, `erased:${customerId}`, customerId, tenantId);
+      this.db.prepare(`UPDATE leads SET contact_name = ?, phone_display = '', phone_normalized = ?, note = ''
+        WHERE tenant_id = ? AND (customer_id = ? OR phone_normalized = ?)`).run(erased, `erased:${customerId}`, tenantId, customerId, phone);
+      for (const vehicleId of vehicles) {
+        this.db.prepare(`UPDATE vehicles SET plate_display = '—', plate_normalized = ? WHERE id = ? AND tenant_id = ?`).run(`erased:${vehicleId}`, vehicleId, tenantId);
+        this.db.prepare(`UPDATE vehicle_audit_events SET details_json = '{}' WHERE tenant_id = ? AND vehicle_id = ?`).run(tenantId, vehicleId);
+      }
+      this.db.prepare('DELETE FROM customer_audit_events WHERE tenant_id = ? AND customer_id = ?').run(tenantId, customerId);
+      for (const { id: orderId, vehicle_id: orderVehicle } of orders) {
+        this.db.prepare('DELETE FROM order_result_photos WHERE tenant_id = ? AND order_id = ?').run(tenantId, orderId);
+        photos += this.db.prepare('DELETE FROM order_photos WHERE tenant_id = ? AND order_id = ?').run(tenantId, orderId).changes;
+        for (const document of this.db.prepare('SELECT id, content_json FROM order_documents WHERE tenant_id = ? AND order_id = ?').all(tenantId, orderId)) {
+          const content = JSON.parse(document.content_json);
+          content.customer = { name: erased, phoneDisplay: '' };
+          if (content.vehicle && vehicles.includes(orderVehicle)) content.vehicle.plate = '—';
+          content.erased = true;
+          this.db.prepare(`UPDATE order_documents SET content_json = ?, signer_name = NULL, signature_data_url = NULL WHERE id = ?`)
+            .run(JSON.stringify(content), document.id);
+          documents += 1;
+        }
+      }
+      this.db.prepare(`INSERT OR REPLACE INTO customer_erasures (tenant_id, customer_id, actor_name, orders, documents, photos)
+        VALUES (?, ?, ?, ?, ?, ?)`).run(tenantId, customerId, actorName, orders.length, documents, photos);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'erased', orders: orders.length, documents, photos };
+  },
+
   archiveCustomer(tenantId, customerId, actorName = null) {
     const customer = this.db.prepare('SELECT id, archived_at FROM customers WHERE id = ? AND tenant_id = ?').get(customerId, tenantId);
     if (!customer) return { kind: 'not_found' };
@@ -277,6 +331,8 @@ export const customersMethods = {
     const customer = this.db.prepare('SELECT id, archived_at FROM customers WHERE id = ? AND tenant_id = ?').get(customerId, tenantId);
     if (!customer) return { kind: 'not_found' };
     if (customer.archived_at === null) return { kind: 'updated', profile: this.getCustomerProfile(tenantId, customerId) };
+    // Erased data cannot come back: there is nobody to return.
+    if (this.db.prepare('SELECT 1 FROM customer_erasures WHERE tenant_id = ? AND customer_id = ?').get(tenantId, customerId)) return { kind: 'erased' };
     this.db.exec('BEGIN');
     try {
       this.db.prepare(`UPDATE customers SET archived_at = NULL WHERE id = ? AND tenant_id = ?`).run(customerId, tenantId);

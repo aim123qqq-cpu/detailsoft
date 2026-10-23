@@ -541,6 +541,7 @@ export const ordersMethods = {
     // The same builder runs on a phone that prepares and signs the act offline.
     return buildDocumentContent(order, {
       centerName: parties.tenant_name,
+      requisites: this.getTenantRequisites(tenantId),
       customer: { name: parties.customer_name, phoneDisplay: parties.phone_display },
       vehicle: { make: parties.make, model: parties.model, generation: parties.generation, plate: parties.plate_display, color: parties.color }
     }, type);

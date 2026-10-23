@@ -46,7 +46,8 @@ test('session describes the authenticated employee, tenant and effective capabil
   assert.deepEqual(session.tenant, {
     id: 'tenant_demo',
     name: 'DetailFlow Studio',
-    timezone: 'Europe/Moscow'
+    timezone: 'Europe/Moscow',
+    requisites: { legalName: '', inn: '', ogrn: '', address: '', phone: '', warranty: '' }
   });
   assert.deepEqual(session.preferences, { locale: 'ru-RU', currency: 'RUB' });
   assert.deepEqual(session.features, { qualityControl: false });

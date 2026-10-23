@@ -22,7 +22,7 @@ export class DetailFlowRepository {
 
   getTenant(tenantId) {
     const tenant = this.db.prepare('SELECT id, name, timezone FROM tenants WHERE id = ?').get(tenantId);
-    return tenant ? { id: tenant.id, name: tenant.name, timezone: tenant.timezone } : null;
+    return tenant ? { id: tenant.id, name: tenant.name, timezone: tenant.timezone, requisites: this.getTenantRequisites(tenantId) } : null;
   }
 }
 

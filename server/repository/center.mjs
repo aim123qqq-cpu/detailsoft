@@ -125,6 +125,30 @@ export const centerMethods = {
     return { kind: 'updated', settings: this.getCenterSettings(tenantId) };
   },
 
+  /** The center as the contractor in its documents; empty strings until the owner fills them in. */
+  getTenantRequisites(tenantId) {
+    const row = this.db.prepare('SELECT legal_name, inn, ogrn, address, phone, warranty FROM tenant_requisites WHERE tenant_id = ?').get(tenantId);
+    return { legalName: row?.legal_name ?? '', inn: row?.inn ?? '', ogrn: row?.ogrn ?? '', address: row?.address ?? '', phone: row?.phone ?? '', warranty: row?.warranty ?? '' };
+  },
+
+  updateTenantRequisites(tenantId, input) {
+    const text = (value, max) => String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, max);
+    const digits = (value) => String(value ?? '').replace(/\D/g, '');
+    const next = {
+      legalName: text(input?.legalName, 200), inn: digits(input?.inn), ogrn: digits(input?.ogrn),
+      address: text(input?.address, 300), phone: text(input?.phone, 40), warranty: String(input?.warranty ?? '').trim().slice(0, 600)
+    };
+    // INN: 10 digits for an organisation, 12 for a person; OGRN 13, OGRNIP 15. Empty means not printed.
+    if (next.inn && ![10, 12].includes(next.inn.length)) return { kind: 'invalid', field: 'inn' };
+    if (next.ogrn && ![13, 15].includes(next.ogrn.length)) return { kind: 'invalid', field: 'ogrn' };
+    this.db.prepare(`INSERT INTO tenant_requisites (tenant_id, legal_name, inn, ogrn, address, phone, warranty, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(tenant_id) DO UPDATE SET legal_name = excluded.legal_name, inn = excluded.inn, ogrn = excluded.ogrn,
+        address = excluded.address, phone = excluded.phone, warranty = excluded.warranty, updated_at = CURRENT_TIMESTAMP`)
+      .run(tenantId, next.legalName, next.inn, next.ogrn, next.address, next.phone, next.warranty);
+    return { kind: 'updated', requisites: this.getTenantRequisites(tenantId) };
+  },
+
   /** How far a new center has got: services to book, a team besides the owner, a first booking. */
   getCenterSetup(tenantId) {
     const count = (sql) => this.db.prepare(sql).get(tenantId).count;

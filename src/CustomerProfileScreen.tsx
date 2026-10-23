@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { ApiRequestError, api } from './api';
+import { SessionInfo } from './session';
 import type { BookingStatus, Customer, CustomerMatch, CustomerProfile, Vehicle, WorkOrder } from './types';
 
 const dateFormat = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -84,6 +85,8 @@ export function CustomerProfileScreen({ customerId, backLabel, onBack, onOpenVeh
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [blockers, setBlockers] = useState<null | { confirmedBookings: number; openOrders: number; activeLeads: number }>(null);
   const [revision, setRevision] = useState(0);
+  const [eraseOpen, setEraseOpen] = useState(false);
+  const canErase = Boolean(useContext(SessionInfo)?.capabilities.manageSettings);
   const nameInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -149,6 +152,22 @@ export function CustomerProfileScreen({ customerId, backLabel, onBack, onOpenVeh
     } catch (requestError) {
       if (requestError instanceof ApiRequestError && requestError.code === 'possible_duplicate') {
         setDuplicates((requestError.details.matches as CustomerMatch[] | undefined) ?? []);
+      } else setError((requestError as Error).message);
+    } finally { setBusy(false); }
+  };
+
+  // The customer asked to destroy their data (152-FZ art. 21): only an owner or an administrator, after a warning.
+  const erase = async () => {
+    setBusy(true); setError(''); setBlockers(null);
+    try {
+      await api.eraseCustomer(customer.id);
+      setEraseOpen(false);
+      setSuccess('Данные клиента удалены. Заказы остались без персональных данных.');
+      setRevision((value) => value + 1);
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    } catch (requestError) {
+      if (requestError instanceof ApiRequestError && requestError.code === 'customer_has_active_work') {
+        setBlockers(requestError.details as { confirmedBookings: number; openOrders: number; activeLeads: number });
       } else setError((requestError as Error).message);
     } finally { setBusy(false); }
   };
@@ -301,7 +320,7 @@ export function CustomerProfileScreen({ customerId, backLabel, onBack, onOpenVeh
       </article>}
 
       <article className="customer-section customer-archive-zone">
-        {customer.archived ? <>
+        {customer.archived && customer.name === 'Удалённый клиент' ? <p>Данные клиента удалены по его просьбе. Заказы сохранены без персональных данных.</p> : customer.archived ? <>
           <p>Возврат из архива снова покажет клиента в поиске и позволит создавать записи.</p>
           <button className="customer-secondary" data-testid="reactivate-customer" disabled={busy} onClick={() => changeArchive(false)}>{busy ? 'Возвращаем…' : 'Вернуть из архива'}</button>
         </> : !archiveOpen ? (
@@ -323,6 +342,26 @@ export function CustomerProfileScreen({ customerId, backLabel, onBack, onOpenVeh
           </div>
         </div>}
       </article>
+
+      {canErase && customer.name !== 'Удалённый клиент' && <article className="customer-section customer-archive-zone">
+        {!eraseOpen ? <button className="customer-danger" data-testid="open-erase-customer" onClick={() => { setEraseOpen(true); setArchiveOpen(false); setBlockers(null); setSuccess(''); }}>Удалить данные клиента</button>
+        : <div className="customer-archive-confirm" data-testid="erase-confirm">
+          <strong>Удалить персональные данные клиента?</strong>
+          <p>Так исполняется просьба клиента удалить его данные. Будут удалены имя и телефон, госномера его автомобилей, фото автомобилей в его заказах, имя и подпись в актах. Заказы, суммы и выполненные работы останутся без персональных данных. Отменить нельзя; из резервных копий данные исчезнут через 7 дней.</p>
+          {blockers && <div className="customer-note blocker-note" role="alert">
+            <strong>Сейчас удалить нельзя</strong>
+            <span>{[
+              blockers.confirmedBookings ? `подтверждённых записей: ${blockers.confirmedBookings}` : '',
+              blockers.openOrders ? `незакрытых заказов: ${blockers.openOrders}` : '',
+              blockers.activeLeads ? `активных обращений: ${blockers.activeLeads}` : ''
+            ].filter(Boolean).join(', ')}. Завершите или отмените их.</span>
+          </div>}
+          <div className="customer-edit-actions">
+            <button onClick={() => { setEraseOpen(false); setBlockers(null); }}>Не удалять</button>
+            <button className="danger" data-testid="confirm-erase-customer" disabled={busy || Boolean(blockers)} onClick={erase}>{busy ? 'Удаляем…' : 'Удалить навсегда'}</button>
+          </div>
+        </div>}
+      </article>}
     </section>
   );
 }

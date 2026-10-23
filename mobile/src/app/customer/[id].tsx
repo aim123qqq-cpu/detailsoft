@@ -1,5 +1,5 @@
-import { useCallback } from 'react';
-import { Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { Alert, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { VehicleRow } from '@/features/booking-ui';
 import { useBookingDraft } from '@/lib/booking-draft';
@@ -18,6 +18,8 @@ export default function CustomerScreen() {
   const today = dayKey(new Date(), timeZone);
   const { reset } = useBookingDraft();
   const { data, error, reload, refreshing } = useResource(useCallback((signal: AbortSignal) => api.customerProfile(id, signal), [api, id]));
+  const [erasing, setErasing] = useState(false);
+  const [eraseError, setEraseError] = useState('');
 
   if (!data && !error) return <Loading label="Загружаем клиента…"/>;
   if (!data) return <Screen><Notice>{error}</Notice><Button title="Повторить" tone="secondary" onPress={reload}/></Screen>;
@@ -85,6 +87,20 @@ export default function CustomerScreen() {
       </View> : null}
 
       <Body muted>Изменить имя, телефон, архив и владельца автомобиля можно в веб-версии.</Body>
+
+      {session.capabilities.manageSettings && customer.name !== 'Удалённый клиент' ? <>
+        {eraseError ? <Notice>{eraseError}</Notice> : null}
+        <Button title="Удалить данные клиента" tone="dangerQuiet" busy={erasing} testID="erase-customer" onPress={() => Alert.alert(
+          'Удалить персональные данные клиента?',
+          'Так исполняется просьба клиента удалить его данные. Будут удалены имя и телефон, госномера его автомобилей, фото автомобилей в его заказах, имя и подпись в актах. Заказы, суммы и работы останутся без персональных данных. Отменить нельзя.',
+          [{ text: 'Не удалять', style: 'cancel' }, { text: 'Удалить навсегда', style: 'destructive', onPress: async () => {
+            setErasing(true); setEraseError('');
+            try { await api.eraseCustomer(customer.id); reload(); }
+            catch (failure) { setEraseError((failure as Error).message); }
+            finally { setErasing(false); }
+          } }]
+        )}/>
+      </> : null}
     </Screen>
   );
 }

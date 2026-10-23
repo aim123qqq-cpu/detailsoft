@@ -1,4 +1,5 @@
 import { BODY_TYPES, carLayout, normalizeBodyType } from '@df/shared/carLayouts';
+import { contractorLine } from '@df/shared/orderDocuments';
 import type { OrderDocument } from '@df/types';
 import { money } from '@/lib/format';
 import { PALETTES, findingMarks } from './car-diagram';
@@ -38,7 +39,8 @@ export function documentHtml(document: OrderDocument) {
   const vehicle = [content.vehicle.make, content.vehicle.model, content.vehicle.generation].filter(Boolean).join(' ');
   const intake = content.intake;
   const parts: string[] = [];
-  parts.push(`<p class="muted">${escape(content.center.name)}</p><h1>${escape(content.title)}</h1><p class="muted">№ ${escape(document.number)} · заказ #${escape(content.order.number)}</p>`);
+  const contractor = contractorLine(content.center);
+  parts.push(`<p class="muted">${escape(content.center.name)}</p>${contractor ? `<p class="muted">Исполнитель: ${escape(contractor)}</p>` : ''}<h1>${escape(content.title)}</h1><p class="muted">№ ${escape(document.number)} · заказ #${escape(content.order.number)}</p>`);
   parts.push(`<table class="parties"><tr><td>Клиент<br><b>${escape(content.customer.name)}</b></td><td>Телефон<br><b>${escape(content.customer.phoneDisplay)}</b></td></tr>`
     + `<tr><td>Автомобиль<br><b>${escape(vehicle)}</b></td><td>Госномер<br><b>${escape(content.vehicle.plate)}</b></td></tr>`
     + `<tr><td>Цвет<br><b>${escape(content.vehicle.color)}</b></td><td>Заказ открыт<br><b>${escape(documentDate(content.order.createdAt))}</b></td></tr></table>`);
@@ -57,6 +59,7 @@ export function documentHtml(document: OrderDocument) {
     if (content.estimate?.approvedAt) parts.push(`<p class="muted">Смета согласована ${escape(documentDate(content.estimate.approvedAt))} ${escape(METHOD_WORDS[content.estimate.approvalMethod ?? ''] ?? '')}${content.estimate.approvedBy ? ` · ответственный: ${escape(content.estimate.approvedBy)}` : ''}</p>`);
     if (content.handover) parts.push(`<p class="muted">Выдача: ${escape(documentDate(content.handover.handedOverAt))} · выдал: ${escape(content.handover.responsible)} · ${escape(content.handover.note)}</p>`);
   }
+  if (content.warranty) parts.push(`<p>Гарантия: ${escape(content.warranty)}</p>`);
   parts.push(`<p class="statement">${escape(content.statement)}</p>`);
   parts.push(`<table class="signatures"><tr><td>Клиент<div class="sign">${document.signatureDataUrl ? `<img src="${document.signatureDataUrl}">` : ''}</div>${escape(document.signerName ? `${document.signerName}${document.signedAt ? ` · ${documentDate(document.signedAt)}` : ''}` : 'подпись / ФИО')}</td>`
     + `<td>Сотрудник центра<div class="sign"></div>${escape(document.actorName ?? 'подпись / ФИО')}</td></tr></table>`);
