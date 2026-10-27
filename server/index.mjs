@@ -22,6 +22,7 @@ const server = createDetailFlowServer({
   staticDir: resolve('dist'),
   features: { qualityControl: process.env.ENABLE_QC === 'true' },
   messengers,
+  backupDirectory,
   ...demoAuthOptions()
 });
 if (messengers.length) console.log(`Messenger sign-in: ${messengers.map((adapter) => adapter.title).join(', ')}`);
@@ -30,7 +31,10 @@ if (backupIntervalHours > 0) {
   const timer = setInterval(() => {
     backupDatabaseFile(databasePath, backupDirectory, { reason: 'daily', keep: backupKeep })
       .then((file) => console.log(`Scheduled backup: ${file}`))
-      .catch((error) => console.error('Scheduled backup failed:', error.message));
+      .catch((error) => {
+        console.error('Scheduled backup failed:', error.message);
+        void server.notifyAdmins(`⚠️ DetailFlow: резервная копия базы не создалась — ${error.message}`, 'backup');
+      });
   }, backupIntervalHours * 60 * 60 * 1000);
   server.on('close', () => clearInterval(timer));
 }

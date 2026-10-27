@@ -195,12 +195,51 @@ export class AuthRepository {
       const logins = this.db.prepare('DELETE FROM login_requests WHERE expires_at < ?').run(dayAgo).changes;
       const sessions = this.db.prepare('DELETE FROM auth_sessions WHERE expires_at < ? OR revoked_at < ?').run(monthAgo, monthAgo).changes;
       const invites = this.db.prepare('DELETE FROM messenger_invites WHERE expires_at < ? OR used_at < ?').run(monthAgo, monthAgo).changes;
+      this.db.prepare('DELETE FROM admin_sessions WHERE expires_at < ? OR revoked_at < ?').run(monthAgo, monthAgo);
       this.db.exec('COMMIT');
       return { logins, sessions, invites };
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  /** The owner of the DetailFlow service: messenger accounts let into /admin (scripts/platform-admin.mjs). */
+  isPlatformAdmin(provider, externalUserId) {
+    return Boolean(this.db.prepare('SELECT 1 FROM platform_admins WHERE provider = ? AND external_user_id = ?').get(provider, String(externalUserId)));
+  }
+
+  listPlatformAdmins() {
+    return this.db.prepare('SELECT provider, external_user_id AS externalUserId FROM platform_admins ORDER BY added_at').all();
+  }
+
+  /** A sign-in confirmed in the bot by an admin account becomes an admin session (12 hours). */
+  createAdminSession(id, pollSecret) {
+    const status = this.getLoginStatus(id, pollSecret);
+    if (!status) return { kind: 'not_found' };
+    if (status.status !== 'CONFIRMED') return { kind: 'conflict', code: 'login_not_confirmed', message: 'Вход ещё не подтверждён в мессенджере' };
+    const row = this.db.prepare('SELECT provider, external_user_id FROM login_requests WHERE id = ?').get(id);
+    if (!this.isPlatformAdmin(row.provider, row.external_user_id)) return { kind: 'forbidden' };
+    const consumed = this.db.prepare(`UPDATE login_requests SET status = 'CONSUMED' WHERE id = ? AND status = 'CONFIRMED'`).run(id);
+    if (consumed.changes !== 1) return { kind: 'conflict', code: 'login_already_consumed', message: 'Этот вход уже использован' };
+    const token = `dfa_${randomBytes(32).toString('hex')}`;
+    const expiresAt = sqlTime(new Date(Date.now() + 12 * 60 * 60 * 1000));
+    this.db.prepare('INSERT INTO admin_sessions (token_hash, provider, external_user_id, expires_at) VALUES (?, ?, ?, ?)')
+      .run(hash(token), row.provider, row.external_user_id, expiresAt);
+    return { kind: 'created', token, expiresAt: apiTime(expiresAt) };
+  }
+
+  authenticateAdmin(token) {
+    if (typeof token !== 'string' || !token.startsWith('dfa_')) return null;
+    const row = this.db.prepare(`SELECT s.provider, s.external_user_id FROM admin_sessions s
+      JOIN platform_admins a ON a.provider = s.provider AND a.external_user_id = s.external_user_id
+      WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ?`).get(hash(token), nowSql());
+    return row ? { provider: row.provider, externalUserId: row.external_user_id } : null;
+  }
+
+  revokeAdminSession(token) {
+    if (typeof token !== 'string') return false;
+    return this.db.prepare('UPDATE admin_sessions SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL').run(nowSql(), hash(token)).changes === 1;
   }
 
   revokeSession(token) {

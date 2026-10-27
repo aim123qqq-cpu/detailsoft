@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <title>DetailFlow · Админка</title>
+  <link rel="stylesheet" href="/fonts/fonts.css">
+  <style>
+    :root { --ground: #0b1016; --surface: #121920; --raised: #1a232c; --line: #26313b; --ink: #eef1f3; --muted: #95a2af; --soft: #6f7c87;
+      --accent: #ff7939; --ok: #36c996; --warn: #f2c14e; --bad: #e95d5d; --bar: #3987e5; --bar2: #ff7939; --bar3: #36c996; color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.5 Manrope, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+    main { width: min(100% - 32px, 1180px); margin: 0 auto; padding: max(24px, env(safe-area-inset-top)) 0 48px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+    h1 { margin: 0; font-size: 22px; letter-spacing: -.01em; }
+    h1 small { display: block; color: var(--muted); font-size: 13px; font-weight: 500; }
+    h2 { margin: 0 0 12px; font-size: 15px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+    button { min-height: 40px; padding: 0 14px; border: 1px solid #394550; border-radius: 10px; color: var(--ink); background: var(--raised); font: inherit; font-weight: 700; cursor: pointer; }
+    button.primary { border: 0; color: #1b110d; background: var(--accent); }
+    a { color: var(--accent); }
+    .grid { display: grid; gap: 14px; }
+    .kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 14px; }
+    .card { padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); min-width: 0; }
+    .kpi strong { display: block; font-size: 30px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .kpi span { color: var(--muted); font-size: 13px; }
+    .kpi small { display: block; margin-top: 4px; color: var(--soft); font-size: 12px; }
+    .two { grid-template-columns: 1.6fr 1fr; margin-bottom: 14px; }
+    @media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+    .chart svg { width: 100%; height: auto; display: block; }
+    .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+    .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+    .rows { display: grid; gap: 8px; }
+    .row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+    .row span { color: var(--muted); }
+    .row b { font-variant-numeric: tabular-nums; text-align: right; }
+    .meter { height: 6px; margin-top: 4px; border-radius: 3px; background: var(--raised); overflow: hidden; }
+    .meter i { display: block; height: 100%; background: var(--ok); }
+    .meter i.warn { background: var(--warn); } .meter i.bad { background: var(--bad); }
+    .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .pill.ok { color: var(--ok); background: rgba(54,201,150,.14); } .pill.bad { color: var(--bad); background: rgba(233,93,93,.14); }
+    .table { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    th { color: var(--muted); font-size: 12px; font-weight: 700; }
+    th:first-child, td:first-child { text-align: left; white-space: normal; }
+    td small { display: block; color: var(--soft); font-size: 12px; }
+    .muted { color: var(--muted); }
+    .login { max-width: 420px; margin: 12vh auto 0; display: grid; gap: 14px; text-align: center; }
+    .code { display: flex; justify-content: center; gap: 6px; font: 800 30px/1 Manrope, monospace; letter-spacing: .08em; }
+    .error { color: var(--bad); }
+    footer { margin-top: 18px; color: var(--soft); font-size: 12px; }
+  </style>
+</head>
+<body>
+<main id="app"><p class="muted">Загрузка…</p></main>
+<script>
+// The DetailFlow service owner's admin: counts across centers and the server's health. Sign-in goes through
+// the same Telegram/MAX bot; only accounts listed on the server (scripts/platform-admin.mjs) get in.
+const app = document.getElementById('app');
+const TOKEN_KEY = 'detailflow.admin';
+const token = () => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } };
+const setToken = (value) => { try { value ? localStorage.setItem(TOKEN_KEY, value) : localStorage.removeItem(TOKEN_KEY); } catch {} };
+const esc = (text) => String(text ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const num = (value) => Number(value ?? 0).toLocaleString('ru-RU');
+const bytes = (value) => value >= 1024 ** 3 ? `${(value / 1024 ** 3).toFixed(1)} ГБ` : `${Math.round(value / 1024 ** 2)} МБ`;
+const when = (iso) => iso ? new Date(iso.includes('T') ? iso : `${iso.replace(' ', 'T')}Z`).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }) : '—';
+const duration = (seconds) => seconds >= 86400 ? `${Math.floor(seconds / 86400)} дн ${Math.floor(seconds % 86400 / 3600)} ч` : seconds >= 3600 ? `${Math.floor(seconds / 3600)} ч ${Math.floor(seconds % 3600 / 60)} мин` : `${Math.floor(seconds / 60)} мин`;
+let refreshTimer = null;
+
+async function api(path, init = {}) {
+  const response = await fetch(path, { ...init, headers: { 'content-type': 'application/json', ...(token() ? { authorization: `Bearer ${token()}` } : {}), ...(init.headers ?? {}) } });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) { const error = new Error(body.error?.message ?? `Ошибка ${response.status}`); error.status = response.status; throw error; }
+  return body;
+}
+
+async function showLogin(message = '') {
+  clearInterval(refreshTimer);
+  const providers = (await api('/api/auth/providers').catch(() => ({ items: [] }))).items;
+  app.innerHTML = `<section class="login card">
+    <h1>DetailFlow · Админка</h1>
+    <p class="muted">Вход для владельца сервиса: подтвердите в боте, как при обычном входе.</p>
+    ${message ? `<p class="error">${esc(message)}</p>` : ''}
+    ${providers.length ? providers.map((p) => `<button class="primary" data-provider="${esc(p.provider)}">Войти через ${esc(p.title)}</button>`).join('') : '<p class="error">Боты сейчас недоступны — вход невозможен.</p>'}
+  </section>`;
+  app.querySelectorAll('[data-provider]').forEach((button) => button.addEventListener('click', () => startLogin(button.dataset.provider)));
+}
+
+async function startLogin(provider) {
+  let login;
+  try { login = await api('/api/auth/login-requests', { method: 'POST', body: JSON.stringify({ provider }) }); }
+  catch (error) { return showLogin(error.message); }
+  app.innerHTML = `<section class="login card">
+    <h1>Подтвердите в боте</h1>
+    <div class="code">${esc(login.shortCode)}</div>
+    ${login.deepLink ? `<a class="primary" href="${esc(login.deepLink)}" target="_blank" rel="noopener"><button class="primary" style="width:100%">Открыть бота</button></a>` : ''}
+    <p class="muted" id="login-status">Ждём подтверждения…</p>
+    <button id="cancel">Отмена</button>
+  </section>`;
+  let stopped = false;
+  document.getElementById('cancel').addEventListener('click', () => { stopped = true; showLogin(); });
+  const headers = { 'x-login-secret': login.pollSecret };
+  while (!stopped) {
+    await new Promise((done) => setTimeout(done, 1500));
+    let status;
+    try { status = await api(`/api/auth/login-requests/${login.id}`, { headers }); } catch { continue; }
+    if (status.status === 'CONFIRMED') {
+      try {
+        const session = await api(`/api/admin/login-requests/${login.id}/session`, { method: 'POST', headers });
+        setToken(session.token);
+        return showDashboard();
+      } catch (error) { return showLogin(error.status === 403 ? 'Этот аккаунт не владелец сервиса DetailFlow.' : error.message); }
+    }
+    if (['DENIED', 'EXPIRED', 'CONSUMED'].includes(status.status)) return showLogin(status.status === 'DENIED' ? 'Вход отклонён в боте.' : 'Время входа истекло, начните заново.');
+  }
+}
+
+/** Grouped daily bars for bookings, orders and acts; a plain SVG, no library. */
+function activityChart(days) {
+  const width = 640, height = 180, pad = 22, groupWidth = (width - pad) / days.length;
+  const max = Math.max(1, ...days.flatMap((day) => [day.bookings, day.orders, day.documents]));
+  const series = [['bookings', 'var(--bar)'], ['orders', 'var(--bar2)'], ['documents', 'var(--bar3)']];
+  const barWidth = Math.max(2, (groupWidth - 4) / 3);
+  const bars = days.map((day, index) => series.map(([key, color], s) => {
+    const h = (day[key] / max) * (height - pad - 6);
+    return h ? `<rect x="${pad + index * groupWidth + 2 + s * barWidth}" y="${height - pad - h}" width="${barWidth - 0.5}" height="${h}" rx="1.5" fill="${color}"><title>${day.day}: ${key === 'bookings' ? 'записей' : key === 'orders' ? 'заказов' : 'актов'} ${day[key]}</title></rect>` : '';
+  }).join('')).join('');
+  const labels = days.map((day, index) => index % 5 === 0 ? `<text x="${pad + index * groupWidth}" y="${height - 6}" fill="var(--soft)" font-size="10">${day.day.slice(8)}.${day.day.slice(5, 7)}</text>` : '').join('');
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Записи, заказы и акты по дням за 30 дней">
+    <line x1="${pad}" x2="${width}" y1="${height - pad}" y2="${height - pad}" stroke="var(--line)"/>
+    <text x="0" y="12" fill="var(--soft)" font-size="10">${max}</text>${bars}${labels}</svg>`;
+}
+
+function requestsChart(minutes) {
+  const width = 640, height = 120, max = Math.max(1, ...minutes.map((m) => m.requests));
+  const step = width / (minutes.length - 1);
+  const line = minutes.map((m, i) => `${(i * step).toFixed(1)},${(height - 14 - (m.requests / max) * (height - 24)).toFixed(1)}`).join(' ');
+  const errors = minutes.map((m, i) => m.errors ? `<circle cx="${i * step}" cy="${height - 14 - (m.requests / max) * (height - 24)}" r="3" fill="var(--bad)"><title>${m.errors} ошибок</title></circle>` : '').join('');
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Запросы в минуту за последний час">
+    <polyline points="${line}" fill="none" stroke="var(--bar)" stroke-width="2" stroke-linejoin="round"/>${errors}
+    <text x="0" y="10" fill="var(--soft)" font-size="10">${max}/мин</text><text x="${width}" y="${height - 2}" text-anchor="end" fill="var(--soft)" font-size="10">сейчас</text><text x="0" y="${height - 2}" fill="var(--soft)" font-size="10">−60 мин</text></svg>`;
+}
+
+const meter = (share) => `<div class="meter"><i class="${share > 0.9 ? 'bad' : share > 0.75 ? 'warn' : ''}" style="width:${Math.min(100, Math.round(share * 100))}%"></i></div>`;
+
+function render(stats) {
+  const s = stats.system, u = stats.users, lastHour = stats.requests.reduce((sum, m) => sum + m.requests, 0), errors = stats.requests.reduce((sum, m) => sum + m.errors, 0);
+  const load = s.loadAverage[0] / s.cpuCount, memUsed = 1 - s.memory.freeBytes / s.memory.totalBytes, diskUsed = s.disk ? 1 - s.disk.freeBytes / s.disk.totalBytes : 0;
+  const lastWeek = stats.activity.slice(-7);
+  const sum = (key) => lastWeek.reduce((total, day) => total + day[key], 0);
+  app.innerHTML = `
+    <header><h1>DetailFlow · Админка<small>Обновлено ${when(stats.generatedAt)} · версия ${esc(stats.version)}</small></h1><button id="logout">Выйти</button></header>
+    <section class="grid kpis">
+      <div class="card kpi"><span>Центров</span><strong>${num(stats.centers.total)}</strong><small>активны за неделю: ${num(stats.centers.activeWeek)}</small></div>
+      <div class="card kpi"><span>Сотрудников</span><strong>${num(u.members)}</strong><small>входили за сутки: ${num(u.signedInDay)}, за неделю: ${num(u.signedInWeek)}</small></div>
+      <div class="card kpi"><span>Записей за 7 дней</span><strong>${num(sum('bookings'))}</strong><small>всего: ${num(stats.totals.bookings)}</small></div>
+      <div class="card kpi"><span>Заказов за 7 дней</span><strong>${num(sum('orders'))}</strong><small>актов: ${num(sum('documents'))} · всего заказов ${num(stats.totals.orders)}</small></div>
+      <div class="card kpi"><span>Запросов за час</span><strong>${num(lastHour)}</strong><small>${errors ? `<span class="pill bad">ошибок: ${errors}</span>` : 'ошибок нет'}</small></div>
+    </section>
+    <section class="grid two">
+      <div class="card chart"><h2>Активность за 30 дней</h2>${activityChart(stats.activity)}
+        <div class="legend"><span><i style="background:var(--bar)"></i>записи</span><span><i style="background:var(--bar2)"></i>заказы</span><span><i style="background:var(--bar3)"></i>акты</span></div></div>
+      <div class="card"><h2>Сервер</h2><div class="rows">
+        <div><div class="row"><span>Нагрузка (1 мин)</span><b>${s.loadAverage[0].toFixed(2)} на ${s.cpuCount} ядр.</b></div>${meter(load)}</div>
+        <div><div class="row"><span>Память</span><b>${bytes(s.memory.totalBytes - s.memory.freeBytes)} из ${bytes(s.memory.totalBytes)}</b></div>${meter(memUsed)}</div>
+        ${s.disk ? `<div><div class="row"><span>Диск</span><b>свободно ${bytes(s.disk.freeBytes)} из ${bytes(s.disk.totalBytes)}</b></div>${meter(diskUsed)}</div>` : ''}
+        <div class="row"><span>База данных</span><b>${bytes(s.databaseBytes)}</b></div>
+        <div class="row"><span>Резервные копии</span><b>${num(s.backups.count)} · последняя ${when(s.backups.latestAt)}</b></div>
+        <div class="row"><span>DetailFlow работает</span><b>${duration(s.processUptimeSeconds)}</b></div>
+        <div class="row"><span>Сервер включён</span><b>${duration(s.systemUptimeSeconds)}</b></div>
+        ${Object.entries(stats.bots).map(([provider, bot]) => `<div class="row"><span>Бот ${provider === 'max' ? 'MAX' : 'Telegram'}</span><b>${bot.status === 'ready' ? '<span class="pill ok">работает</span>' : `<span class="pill bad">недоступен с ${when(bot.downSince)}</span>`}</b></div>`).join('')}
+      </div></div>
+    </section>
+    <section class="card chart" style="margin-bottom:14px"><h2>Запросы в минуту, последний час</h2>${requestsChart(stats.requests)}</section>
+    <section class="card"><h2>Центры</h2><div class="table"><table>
+      <thead><tr><th>Центр</th><th>Сотрудников</th><th>Услуг</th><th>Клиентов</th><th>Записей</th><th>Заказов</th><th>Актов</th><th>Активность</th></tr></thead>
+      <tbody>${stats.centers.list.map((c) => `<tr><td>${esc(c.name)}<small>${c.signedUpAt ? `создан ${when(c.signedUpAt)} через ${c.signedUpWith === 'max' ? 'MAX' : 'Telegram'}` : 'создан вручную'}</small></td>
+        <td>${num(c.members)}</td><td>${num(c.services)}</td><td>${num(c.customers)}</td><td>${num(c.bookings)}</td><td>${num(c.orders)}</td><td>${num(c.documents)}</td><td>${when(c.lastActivityAt)}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">Центров пока нет</td></tr>'}</tbody>
+    </table></div></section>
+    <footer>Входы по мессенджерам: ${u.byProvider.map((p) => `${p.provider === 'max' ? 'MAX' : 'Telegram'} — ${num(p.accounts)}`).join(', ') || 'нет'} · кодов доступа: ${num(u.accessCodes)}. Данные клиентов центров здесь не показываются. Обновляется каждые 30 секунд.</footer>`;
+  document.getElementById('logout').addEventListener('click', async () => { await api('/api/admin/logout', { method: 'POST' }).catch(() => {}); setToken(null); showLogin(); });
+}
+
+async function showDashboard() {
+  clearInterval(refreshTimer);
+  const load = async () => {
+    try { render(await api('/api/admin/stats')); }
+    catch (error) { if (error.status === 401) { setToken(null); showLogin('Сессия закончилась, войдите снова.'); } }
+  };
+  await load();
+  refreshTimer = setInterval(load, 30_000);
+}
+
+token() ? showDashboard() : showLogin();
+</script>
+</body>
+</html>

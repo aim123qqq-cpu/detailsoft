@@ -19,7 +19,8 @@ export function createBotDialog({ auth, adapters, logger = console }) {
         `Создание центра в DetailFlow\nКод на экране: ${login.short_code}\n\nПодтверждайте, только если вы сами сейчас создаёте центр и код совпадает. Вы станете его владельцем.`,
         [[{ text: 'Это я, продолжить', payload: `login_ok:${login.id}` }, { text: 'Отклонить', payload: `login_no:${login.id}` }]]);
     }
-    if (!auth.membershipsFor(event.provider, event.userId).length) {
+    // The service owner signs in to /admin with the same bot, with or without a center of their own.
+    if (!auth.membershipsFor(event.provider, event.userId).length && !auth.isPlatformAdmin(event.provider, event.userId)) {
       return reply(event, 'Этот аккаунт ещё не привязан к сотруднику центра. Попросите владельца прислать приглашение в разделе «Команда» или создайте свой центр на экране входа DetailFlow.');
     }
     auth.markLoginAwaiting(login.id, event.userId);

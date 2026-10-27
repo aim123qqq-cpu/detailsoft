@@ -10,6 +10,8 @@ import { PERMISSIONS } from './roles-repository.mjs';
 import { createIdempotency } from './idempotency.mjs';
 import { buildBookingPack } from './offline-pack.mjs';
 import { LEGAL_VERSION, hasAcceptedLegal, recordLegalAcceptance } from './legal.mjs';
+import { createRequestMetrics, platformStats } from './platform-stats.mjs';
+import { createAdminNotifier } from './admin-notify.mjs';
 
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -65,7 +67,8 @@ export function createDetailFlowServer({
     ['other-session-token', { tenantId: 'tenant_other', displayName: 'Администратор', roles: ['admin', 'intake', 'master', 'qc'] }]
   ]),
   messengers = [],
-  botRetryMs = 5_000
+  botRetryMs = 5_000,
+  backupDirectory = process.env.BACKUP_DIR ?? resolve('data/backups')
 } = {}) {
   const db = openDatabase(databasePath, { seed });
   const repository = new DetailFlowRepository(db);
@@ -81,12 +84,14 @@ export function createDetailFlowServer({
   // A bot that cannot start (no network yet after a reboot, the proxy still starting) is tried again,
   // 5 s, 10 s, 20 s… then every minute, instead of staying unavailable until the next restart.
   const botRetries = new Set();
+  const botDownSince = new Map();
   let closed = false;
   const startBot = (adapter, attempt = 0) => adapter.start(botDialog)
-    .then(() => { readyProviders.add(adapter.provider); botProblems.delete(adapter.provider); })
+    .then(() => { readyProviders.add(adapter.provider); botProblems.delete(adapter.provider); botDownSince.delete(adapter.provider); })
     .catch((error) => {
       if (closed) return;
       botProblems.set(adapter.provider, String(error.message).slice(0, 200));
+      if (!botDownSince.has(adapter.provider)) botDownSince.set(adapter.provider, Date.now());
       const delay = Math.min(60_000, botRetryMs * 2 ** attempt);
       console.error(`${adapter.provider} bot is unavailable, next try in ${delay / 1000} s:`, error.message);
       const timer = setTimeout(() => { botRetries.delete(timer); startBot(adapter, attempt + 1); }, delay);
@@ -107,7 +112,20 @@ export function createDetailFlowServer({
     try { return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return 'unknown'; }
   })();
 
+  // The service owner's view (/admin): requests per minute, and messages through the bots.
+  const metrics = createRequestMetrics();
+  const notifier = createAdminNotifier({ db, auth, adapters, readyProviders, botDownSince, metrics, databasePath, backupDirectory });
+  const healthTimer = setInterval(() => { notifier.check().catch((error) => console.error('Health check failed:', error.message)); }, 60_000);
+  healthTimer.unref?.();
+  const botStates = () => Object.fromEntries([...adapters.keys()].map((provider) => [provider, {
+    status: readyProviders.has(provider) ? 'ready' : 'unavailable',
+    problem: readyProviders.has(provider) ? null : botProblems.get(provider) ?? null,
+    downSince: botDownSince.has(provider) ? new Date(botDownSince.get(provider)).toISOString() : null
+  }]));
+
   const server = createServer(async (request, response) => {
+    const startedAt = Date.now();
+    response.on('finish', () => metrics.record(response.statusCode, Date.now() - startedAt));
     try {
       const url = new URL(request.url, 'http://localhost');
       if (url.pathname === '/api/health') return sendJson(response, 200, { status: 'ok' });
@@ -158,7 +176,11 @@ export function createDetailFlowServer({
           error: { code: 'too_many_requests', message: 'Слишком много попыток. Подождите минуту' }
         });
         const result = auth.createCenterFromLogin(signup[1], request.headers['x-login-secret'], await readJson(request));
-        if (result.kind === 'created') return sendJson(response, 201, result.session);
+        if (result.kind === 'created') {
+          const total = db.prepare('SELECT COUNT(*) AS count FROM tenants').get().count;
+          void notifier.notify(`🎉 Новый центр в DetailFlow: «${result.session.tenant.name}». Всего центров: ${total}`);
+          return sendJson(response, 201, result.session);
+        }
         if (result.kind === 'invalid') return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите название центра и своё имя (от 2 символов)' } });
         if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
         return sendJson(response, 404, { error: { code: 'login_not_found', message: 'Запрос не найден' } });
@@ -180,6 +202,23 @@ export function createDetailFlowServer({
           if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
           return sendJson(response, 404, { error: { code: 'login_not_found', message: 'Запрос входа не найден' } });
         }
+      }
+
+      // The service owner's admin: a confirmed sign-in of an admin account becomes an admin session.
+      const adminLogin = url.pathname.match(/^\/api\/admin\/login-requests\/([^/]+)\/session$/);
+      if (adminLogin && request.method === 'POST') {
+        const result = auth.createAdminSession(adminLogin[1], request.headers['x-login-secret']);
+        if (result.kind === 'created') return sendJson(response, 201, { token: result.token, expiresAt: result.expiresAt });
+        if (result.kind === 'forbidden') return sendJson(response, 403, { error: { code: 'not_an_admin', message: 'Этот аккаунт не владелец сервиса DetailFlow' } });
+        if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+        return sendJson(response, 404, { error: { code: 'login_not_found', message: 'Запрос входа не найден' } });
+      }
+      if (url.pathname === '/api/admin/stats' || url.pathname === '/api/admin/logout') {
+        const authorization = request.headers.authorization;
+        const adminToken = typeof authorization === 'string' && authorization.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : '';
+        if (!auth.authenticateAdmin(adminToken)) return sendJson(response, 401, { error: { code: 'admin_unauthorized', message: 'Войдите как владелец сервиса' } });
+        if (url.pathname === '/api/admin/logout' && request.method === 'POST') return sendJson(response, 200, { revoked: auth.revokeAdminSession(adminToken) });
+        if (request.method === 'GET') return sendJson(response, 200, platformStats({ db, databasePath, backupDirectory, version, bots: botStates(), metrics }));
       }
 
       if (url.pathname.startsWith('/api/')) {
@@ -1039,8 +1078,11 @@ export function createDetailFlowServer({
     closed = true;
     for (const timer of botRetries) clearTimeout(timer);
     clearInterval(purgeTimer);
+    clearInterval(healthTimer);
     for (const adapter of adapters.values()) adapter.stop();
     db.close();
   });
+  // For server/index.mjs: a failed scheduled backup is reported to the service owner too.
+  server.notifyAdmins = notifier.notify;
   return server;
 }

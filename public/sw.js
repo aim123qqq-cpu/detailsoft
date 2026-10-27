@@ -38,7 +38,7 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
-const isAppPage = (url) => !/^\/(api|landing|landing22|privacy|terms|consent|licenses)(\/|$)/.test(url.pathname) && !/\.[a-z0-9]+$/i.test(url.pathname);
+const isAppPage = (url) => !/^\/(api|landing|landing22|privacy|terms|consent|licenses|admin)(\/|$)/.test(url.pathname) && !/\.[a-z0-9]+$/i.test(url.pathname);
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
