@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
 import { openDatabase } from './db.mjs';
 import { DetailFlowRepository } from './repository.mjs';
-import { AuthRepository, MESSENGER_PROVIDERS } from './auth-repository.mjs';
+import { AuthRepository, MESSENGER_PROVIDERS, normalizeEmail } from './auth-repository.mjs';
+import { signInLetter } from './mailer.mjs';
 import { createBotDialog } from './messenger/bot-dialog.mjs';
 import { PERMISSIONS } from './roles-repository.mjs';
 import { createIdempotency } from './idempotency.mjs';
@@ -67,6 +68,8 @@ export function createDetailFlowServer({
     ['other-session-token', { tenantId: 'tenant_other', displayName: 'Администратор', roles: ['admin', 'intake', 'master', 'qc'] }]
   ]),
   messengers = [],
+  // Sends sign-in codes by email (server/mailer.mjs); without it there is no sign-in by email.
+  mailer = null,
   botRetryMs = 5_000,
   backupDirectory = process.env.BACKUP_DIR ?? resolve('data/backups')
 } = {}) {
@@ -80,6 +83,9 @@ export function createDetailFlowServer({
   const botDialog = createBotDialog({ auth, adapters });
   const allowLoginRequest = createRateLimiter(20, 60_000);
   const allowCenterSignup = createRateLimiter(20, 60_000);
+  // Letters to one address: a few in 10 minutes, so the form cannot flood someone's mailbox.
+  const allowEmailLetter = createRateLimiter(3, 10 * 60_000);
+  const allowEmailCode = createRateLimiter(20, 60_000);
   const idempotency = createIdempotency(db);
   // A bot that cannot start (no network yet after a reboot, the proxy still starting) is tried again,
   // 5 s, 10 s, 20 s… then every minute, instead of staying unavailable until the next restart.
@@ -149,8 +155,50 @@ export function createDetailFlowServer({
           items: [...readyProviders].map((provider) => ({
             provider, title: adapters.get(provider).title, botName: adapters.get(provider).botName
           })),
-          demo: authTokens.has('demo-session-token')
+          demo: authTokens.has('demo-session-token'),
+          email: Boolean(mailer)
         });
+      }
+      // Sign-in by email: a 6-digit code goes to the address. Once the code is confirmed, the request opens a
+      // session or a new center through the same routes as a messenger sign-in.
+      if (url.pathname === '/api/auth/email-requests' && request.method === 'POST') {
+        if (!mailer) return sendJson(response, 422, { error: { code: 'provider_unavailable', message: 'Вход по email не настроен' } });
+        if (!allowLoginRequest(request.socket.remoteAddress ?? 'unknown')) return sendJson(response, 429, {
+          error: { code: 'too_many_requests', message: 'Слишком много попыток входа. Подождите минуту' }
+        });
+        const input = await readJson(request);
+        const email = normalizeEmail(input.email);
+        if (!email) return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте адрес почты' } });
+        if (!allowEmailLetter(email)) return sendJson(response, 429, {
+          error: { code: 'too_many_letters', message: 'На этот адрес уже отправлено несколько писем. Проверьте почту или подождите 10 минут' }
+        });
+        const login = auth.createEmailLogin(email, input.purpose === 'signup' ? 'signup' : 'login');
+        try {
+          await mailer.send(signInLetter(login));
+        } catch (error) {
+          console.error('Sign-in letter was not sent:', error.message);
+          return sendJson(response, 502, { error: { code: 'email_not_sent', message: 'Не удалось отправить письмо. Попробуйте ещё раз или войдите через мессенджер' } });
+        }
+        return sendJson(response, 201, {
+          id: login.id, provider: 'email', purpose: login.purpose, email: login.email, shortCode: '', pollSecret: login.pollSecret,
+          expiresAt: login.expiresAt, botName: null, deepLink: null
+        });
+      }
+      const emailConfirm = url.pathname.match(/^\/api\/auth\/email-requests\/([^/]+)\/confirm$/);
+      if (emailConfirm && request.method === 'POST') {
+        if (!allowEmailCode(request.socket.remoteAddress ?? 'unknown')) return sendJson(response, 429, {
+          error: { code: 'too_many_requests', message: 'Слишком много попыток. Подождите минуту' }
+        });
+        const result = auth.confirmEmailLogin(emailConfirm[1], request.headers['x-login-secret'], (await readJson(request)).code);
+        if (result.kind === 'confirmed') return sendJson(response, 200, result.status);
+        if (result.kind === 'wrong_code') return sendJson(response, 422, {
+          error: { code: 'wrong_code', message: `Код не подошёл. Осталось попыток: ${result.attemptsLeft}`, details: { attemptsLeft: result.attemptsLeft } }
+        });
+        if (result.kind === 'closed') return sendJson(response, 409, { error: {
+          code: 'login_closed',
+          message: result.status === 'DENIED' ? 'Слишком много неверных кодов. Запросите новый' : result.status === 'EXPIRED' ? 'Код истёк. Запросите новый' : 'Этот код уже использован'
+        } });
+        return sendJson(response, 404, { error: { code: 'login_not_found', message: 'Запрос входа не найден' } });
       }
       if (url.pathname === '/api/auth/login-requests' && request.method === 'POST') {
         if (!allowLoginRequest(request.socket.remoteAddress ?? 'unknown')) return sendJson(response, 429, {
@@ -306,7 +354,7 @@ export function createDetailFlowServer({
               roleNames: repository.roles.listRoles(tenantId).filter((role) => roles.includes(role.key)).map((role) => role.name),
               memberId: session?.memberId ?? null,
               authMethod: authTokens.has(token) ? 'demo' : token.startsWith('dfs_') ? 'messenger' : 'access_token',
-              // Which messenger this session came through (telegram or max), for the profile.
+              // How this session was confirmed (telegram, max or email), for the profile.
               authProvider: typeof session === 'object' && session?.provider ? session.provider : null,
               // A person (not the demo) sees the agreement and the consent until they accept this edition.
               legalAccepted: session?.memberId ? hasAcceptedLegal(db, session.memberId) : true
@@ -696,6 +744,18 @@ export function createDetailFlowServer({
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'member_not_found', message: 'Сотрудник не найден' } });
           if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
           return sendJson(response, 422, { error: { code: 'validation_error', message: 'Выберите Telegram или MAX' } });
+        }
+        // The address a member signs in with by email (removed like a messenger link).
+        const teamEmail = url.pathname.match(/^\/api\/tenants\/current\/team\/([^/]+)\/email$/);
+        if (request.method === 'PUT' && teamEmail) {
+          if (!capabilities.manageTeam) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Email сотрудника задаёт только владелец центра' }
+          });
+          const result = auth.setMemberEmail(tenantId, teamEmail[1], (await readJson(request)).email);
+          if (result.kind === 'updated') return sendJson(response, 200, { email: result.email });
+          if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'member_not_found', message: 'Сотрудник не найден' } });
+          if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте адрес почты' } });
         }
         const teamLink = url.pathname.match(/^\/api\/tenants\/current\/team\/([^/]+)\/messenger-links\/([^/]+)$/);
         if (request.method === 'DELETE' && teamLink) {

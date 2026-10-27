@@ -9,7 +9,7 @@ import { colors, radius, space } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Card, Field, Label, Loading, Notice, Screen } from '@/ui';
 
-const PROVIDERS = { telegram: 'Telegram', max: 'MAX' } as const;
+const PROVIDERS = { telegram: 'Telegram', max: 'MAX', email: 'Email' } as const;
 type Invite = { provider: AuthProvider['provider']; code: string; deepLink: string | null; botName: string | null; expiresAt: string };
 
 /** A member of the team: roles, sign-in through a messenger, blocking. `new` adds one and shows the access code once. */
@@ -17,14 +17,14 @@ export default function MemberScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { api } = useSession();
   const { data, error, reload } = useResource(useCallback(async (signal: AbortSignal) => {
-    const [team, roles, providers] = await Promise.all([api.team(signal), api.roles(signal), api.authProviders(signal).catch(() => ({ items: [] as AuthProvider[] }))]);
-    return { member: team.items.find((item) => item.id === id) ?? null, roles: roles.items, permissions: roles.permissions, providers: providers.items };
+    const [team, roles, providers] = await Promise.all([api.team(signal), api.roles(signal), api.authProviders(signal).catch(() => ({ items: [] as AuthProvider[], email: false }))]);
+    return { member: team.items.find((item) => item.id === id) ?? null, roles: roles.items, permissions: roles.permissions, providers: providers.items, emailSignIn: providers.email === true };
   }, [api, id]));
   if (!data && !error) return <Loading label="Загружаем…"/>;
   if (!data) return <Screen><Notice>{error}</Notice><Button title="Повторить" tone="secondary" onPress={reload}/></Screen>;
   if (id === 'new') return <NewMember roles={data.roles} permissions={data.permissions}/>;
   if (!data.member) return <Screen><Body muted>Сотрудник не найден.</Body></Screen>;
-  return <EditMember key={data.member.updatedAt} member={data.member} roles={data.roles} permissions={data.permissions} providers={data.providers} onChanged={reload}/>;
+  return <EditMember key={data.member.updatedAt} member={data.member} roles={data.roles} permissions={data.permissions} providers={data.providers} emailSignIn={data.emailSignIn} onChanged={reload}/>;
 }
 
 function roleOptions(roles: CenterRole[], permissions: Permission[], keep: string[] = []) {
@@ -76,13 +76,14 @@ function NewMember({ roles, permissions }: { roles: CenterRole[]; permissions: P
   );
 }
 
-function EditMember({ member, roles, permissions, providers, onChanged }: { member: TeamMember; roles: CenterRole[]; permissions: Permission[]; providers: AuthProvider[]; onChanged: () => void }) {
+function EditMember({ member, roles, permissions, providers, emailSignIn, onChanged }: { member: TeamMember; roles: CenterRole[]; permissions: Permission[]; providers: AuthProvider[]; emailSignIn: boolean; onChanged: () => void }) {
   const { api } = useSession();
   const [picked, setPicked] = useState(member.roles);
   const [invite, setInvite] = useState<Invite | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [email, setEmail] = useState('');
   const toggle = (key: string) => { setSaved(false); setPicked((list) => list.includes(key) ? list.filter((item) => item !== key) : [...list, key]); };
 
   const run = async (key: string, action: () => Promise<unknown>) => {
@@ -99,6 +100,8 @@ function EditMember({ member, roles, permissions, providers, onChanged }: { memb
       onPress: async () => { if (await run('status', () => api.updateMember(member.id, { status: member.status === 'active' ? 'blocked' : 'active' }))) onChanged(); } }]
   );
   const createInvite = (provider: AuthProvider['provider']) => run(`invite-${provider}`, async () => setInvite(await api.messengerInvite(member.id, provider)));
+  // The address the member signs in with: a code goes there at each sign-in.
+  const saveEmail = () => run('email', async () => { await api.setMemberEmail(member.id, email.trim()); setEmail(''); onChanged(); });
   const unlink = (linkId: string) => run(`unlink-${linkId}`, async () => { await api.removeMessengerLink(member.id, linkId); onChanged(); });
   const inviteText = invite ? [`Вход в DetailFlow через ${PROVIDERS[invite.provider]}.`, invite.deepLink ? `Откройте ссылку: ${invite.deepLink}` : null,
     `Или отправьте боту${invite.botName ? ` @${invite.botName}` : ''} код: ${invite.code}`].filter(Boolean).join('\n') : '';
@@ -113,13 +116,19 @@ function EditMember({ member, roles, permissions, providers, onChanged }: { memb
       <Button title="Сохранить роли" busy={busy === 'roles'} disabled={!picked.length || busy !== null} onPress={() => void saveRoles()}/>
 
       <Card>
-        <Label>Вход через мессенджер</Label>
+        <Label>{emailSignIn ? 'Вход через мессенджер или email' : 'Вход через мессенджер'}</Label>
         {member.messengerLinks?.length ? member.messengerLinks.map((link) => (
           <View key={link.id} style={styles.link}>
             <Text style={styles.linkText}>{PROVIDERS[link.provider]}{link.externalName ? ` · ${link.externalName}` : ''}</Text>
             <Button title="Отвязать" tone="quiet" busy={busy === `unlink-${link.id}`} onPress={() => void unlink(link.id)} style={styles.unlink}/>
           </View>
-        )) : <Body muted>Мессенджер не привязан. Отправьте сотруднику приглашение.</Body>}
+        )) : <Body muted>Мессенджер не привязан. Отправьте сотруднику приглашение{emailSignIn ? ' или укажите его email' : ''}.</Body>}
+        {member.status === 'active' && emailSignIn ? <View style={styles.invite}>
+          <Field label={member.messengerLinks?.some((link) => link.provider === 'email') ? 'Сменить email для входа' : 'Email для входа'} value={email} onChangeText={setEmail}
+            placeholder="name@mail.ru" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} testID="member-email"/>
+          <Button title="Сохранить email" tone="secondary" busy={busy === 'email'} disabled={!/^S+@S+.S+$/.test(email.trim()) || busy !== null} onPress={() => void saveEmail()}/>
+          <Body muted>Сотрудник введёт этот адрес на экране входа и получит код в письме.</Body>
+        </View> : null}
         {member.status === 'active' ? (['telegram', 'max'] as const).map((provider) => {
           const configured = providers.some((item) => item.provider === provider);
           return <Button key={provider} title={`Пригласить в ${PROVIDERS[provider]}${configured ? '' : ' · бот не настроен'}`} tone="secondary"

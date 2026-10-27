@@ -28,6 +28,10 @@ export default function LoginScreen() {
   const [legal, setLegal] = useState<LegalState>({ terms: false, consent: false });
   const [providers, setProviders] = useState<AuthProvider[] | null>(null);
   const [demo, setDemo] = useState(false);
+  // Sign-in by email: a 6-digit code comes by letter and is typed here (no bot to poll).
+  const [emailEnabled, setEmailEnabled] = useState(false);
+  const [email, setEmail] = useState('');
+  const [emailCode, setEmailCode] = useState('');
   const [login, setLogin] = useState<LoginRequest | null>(null);
   const [status, setStatus] = useState<LoginStatus['status'] | null>(null);
   const [memberships, setMemberships] = useState<LoginMembership[]>([]);
@@ -40,7 +44,7 @@ export default function LoginScreen() {
   useEffect(() => {
     const controller = new AbortController();
     api.authProviders(controller.signal)
-      .then((result) => { setProviders(result.items); setDemo(result.demo); })
+      .then((result) => { setProviders(result.items); setDemo(result.demo); setEmailEnabled(result.email === true); })
       .catch((requestError: Error) => { if (requestError.name !== 'AbortError') { setProviders([]); setError(requestError.message); } });
     return () => controller.abort();
   }, [api]);
@@ -60,7 +64,7 @@ export default function LoginScreen() {
 
   // Polls for the whole life of the login request; coming back from the messenger checks at once.
   useEffect(() => {
-    if (!login) return;
+    if (!login || login.provider === 'email') return;
     const controller = new AbortController();
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -101,6 +105,31 @@ export default function LoginScreen() {
     finally { setBusy(false); }
   };
 
+  const startEmail = async () => {
+    setBusy(true); setError(''); setMemberships([]); setEmailCode('');
+    try {
+      setLogin(await api.createEmailLogin(email.trim(), mode));
+      setStatus('AWAITING_CONFIRMATION');
+    } catch (requestError) { setError((requestError as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  // The code from the letter confirms the request; then it goes on like a confirmation in a bot.
+  const confirmEmail = async () => {
+    if (!login) return;
+    setBusy(true); setError('');
+    try {
+      const next = await api.confirmEmailLogin(login, emailCode);
+      setStatus(next.status);
+      if (login.purpose === 'signup') setConfirmed(true);
+      else if (next.memberships.length > 1) setMemberships(next.memberships);
+      else void openSession(login);
+    } catch (requestError) {
+      setError((requestError as Error).message);
+      if (requestError instanceof ApiError && requestError.code === 'login_closed') setStatus('DENIED');
+    } finally { setBusy(false); }
+  };
+
   const createCenter = async () => {
     if (!login) return;
     setBusy(true); setError('');
@@ -125,7 +154,8 @@ export default function LoginScreen() {
   };
 
   const finished = status === 'DENIED' || status === 'EXPIRED' || status === 'CONSUMED';
-  const providerTitle = login ? providers?.find((item) => item.provider === login.provider)?.title ?? login.provider : '';
+  const byEmail = login?.provider === 'email';
+  const providerTitle = byEmail ? 'Email' : login ? providers?.find((item) => item.provider === login.provider)?.title ?? login.provider : '';
 
   return (
     <Screen contentStyle={{ paddingTop: 64 }}>
@@ -134,8 +164,8 @@ export default function LoginScreen() {
         <Title>{mode === 'signup' ? 'Новый центр' : 'Вход в DetailFlow'}</Title>
       </Pressable>
       <Body muted>{mode === 'signup'
-        ? 'Подтвердите себя в мессенджере, затем назовите центр. Вы станете его владельцем и сами пригласите команду.'
-        : 'Войдите через мессенджер, к которому вас привязал владелец центра, или по коду доступа.'}</Body>
+        ? `Подтвердите себя ${emailEnabled ? 'в мессенджере или по email' : 'в мессенджере'}, затем назовите центр. Вы станете его владельцем и сами пригласите команду.`
+        : `Войдите через ${emailEnabled ? 'мессенджер или email' : 'мессенджер'}, к которому вас привязал владелец центра, или по коду доступа.`}</Body>
       {error ? <Notice>{error}</Notice> : null}
 
       {!login && <>
@@ -143,13 +173,25 @@ export default function LoginScreen() {
         {providers?.map((provider) => (
           <Button key={provider.provider} title={`${mode === 'signup' ? 'Продолжить' : 'Войти'} через ${provider.title}`} busy={busy} onPress={() => start(provider)} testID={`login-${provider.provider}`}/>
         ))}
+        {emailEnabled && <Card>
+          <Field label="Email" value={email} onChangeText={setEmail} placeholder="name@mail.ru" keyboardType="email-address" autoCapitalize="none"
+            autoCorrect={false} autoComplete="email" returnKeyType="send" onSubmitEditing={startEmail} testID="login-email"/>
+          <Button title={mode === 'signup' ? 'Продолжить с email' : 'Получить код на почту'} tone="secondary" busy={busy}
+            disabled={!/^\S+@\S+\.\S+$/.test(email.trim())} onPress={startEmail} testID="login-email-submit"/>
+        </Card>}
       </>}
 
       {login && (
         <Card>
           <Label>{providerTitle}</Label>
-          <Text style={styles.code} accessibilityLabel={`Код ${login.shortCode.split('').join(' ')}`} testID="login-code">{login.shortCode}</Text>
-          <Body muted>{confirmed ? 'Подтверждено. Осталось назвать центр.'
+          {!byEmail && <Text style={styles.code} accessibilityLabel={`Код ${login.shortCode.split('').join(' ')}`} testID="login-code">{login.shortCode}</Text>}
+          {byEmail && !confirmed && !finished && status !== 'CONFIRMED' && <View style={{ gap: space.m }}>
+            <Body muted>Код отправлен на {login.email}. Письмо приходит за минуту — если его нет, загляните в «Спам».</Body>
+            <Field label="Код из письма" value={emailCode} onChangeText={(value) => setEmailCode(value.replace(/\D/g, ''))} placeholder="000000"
+              keyboardType="number-pad" maxLength={6} autoComplete="one-time-code" textContentType="oneTimeCode" returnKeyType="go" onSubmitEditing={confirmEmail} testID="login-email-code"/>
+            <Button title="Подтвердить" busy={busy} disabled={emailCode.length !== 6} onPress={confirmEmail} testID="login-email-confirm"/>
+          </View>}
+          <Body muted>{byEmail && !confirmed && status !== 'CONFIRMED' ? '' : confirmed ? 'Подтверждено. Осталось назвать центр.'
             : status === 'AWAITING_CONFIRMATION' && login.purpose === 'signup' ? 'Подтвердите кнопкой «Это я, продолжить» в боте.'
             : status ? statusText[status] : ''}</Body>
           {confirmed && <View style={{ gap: space.m }}>

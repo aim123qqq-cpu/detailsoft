@@ -63,6 +63,9 @@
 | `POST` | `/api/auth/login-requests` | Публично: начать вход через `telegram` или `max`; ограничено 20 запросами в минуту с адреса |
 | `GET` | `/api/auth/login-requests/{id}` | Публично, с заголовком `x-login-secret`: статус входа |
 | `POST` | `/api/auth/login-requests/{id}/session` | Публично, с `x-login-secret`: получить сессию после подтверждения в боте |
+| `POST` | `/api/auth/email-requests` | Публично: `{ email, purpose? }` — отправить на адрес письмо с 6-значным кодом; отвечает как `login-requests` (`provider: "email"`, без `shortCode` и `deepLink`). Не больше 3 писем на адрес за 10 минут; `502 email_not_sent`, если почта не приняла письмо |
+| `POST` | `/api/auth/email-requests/{id}/confirm` | Публично, с `x-login-secret`: `{ code }`; верный код подтверждает запрос (дальше `…/session` или `…/center`), неверный — `422 wrong_code` с `attemptsLeft`, после 5 неверных — `409 login_closed` |
+| `PUT` | `/api/tenants/current/team/{memberId}/email` | `manageTeam`: `{ email }` — адрес для входа сотрудника по email (убирается как привязка мессенджера) |
 | `POST` | `/api/auth/logout` | Отозвать текущую сессию |
 | `DELETE` | `/api/me` | Сотрудник удаляет свой аккаунт в текущем центре (см. ниже) |
 | `GET` | `/api/session` | Текущий сотрудник (`actor.displayName`, `roles`, `memberId`, `authMethod`), центр и права |

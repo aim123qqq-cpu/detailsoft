@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { View } from 'react-native';
 import type { CenterRequisites } from '@df/shared/orderDocuments';
 import { useSession } from '@/lib/session';
@@ -13,18 +13,19 @@ import { Body, Button, Field, Label, Notice } from '@/ui';
 export function RequisitesForm() {
   const { api, reload: reloadSession } = useSession();
   const loaded = useResource(useCallback((signal: AbortSignal) => api.centerRequisites(signal), [api]));
-  const [value, setValue] = useState<CenterRequisites | null>(null);
+  // What the owner has typed; until then the saved requisites.
+  const [edited, setEdited] = useState<CenterRequisites | null>(null);
+  const value = edited ?? loaded.data ?? null;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
-  useEffect(() => { if (loaded.data && !value) setValue(loaded.data); }, [loaded.data, value]);
 
   if (!value) return loaded.error ? <Notice>{loaded.error}</Notice> : null;
-  const set = (key: keyof CenterRequisites) => (text: string) => { setValue({ ...value, [key]: text }); setSaved(false); };
+  const set = (key: keyof CenterRequisites) => (text: string) => { setEdited({ ...value, [key]: text }); setSaved(false); };
   const save = async () => {
     setSaving(true); setError('');
     // The session carries the requisites too: acts signed offline on this phone print the new ones.
-    try { setValue(await api.updateCenterRequisites(value)); setSaved(true); await reloadSession(); }
+    try { setEdited(await api.updateCenterRequisites(value)); setSaved(true); await reloadSession(); }
     catch (failure) { setError((failure as Error).message); }
     finally { setSaving(false); }
   };

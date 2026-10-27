@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createDetailFlowServer } from './app.mjs';
 import { backupDatabaseFile } from './backup.mjs';
+import { mailerFromEnv } from './mailer.mjs';
 import { demoAuthOptions, messengersFromEnv } from './messenger/from-env.mjs';
 
 mkdirSync(resolve('data'), { recursive: true });
@@ -22,6 +23,7 @@ const server = createDetailFlowServer({
   staticDir: resolve('dist'),
   features: { qualityControl: process.env.ENABLE_QC === 'true' },
   messengers,
+  mailer: mailerFromEnv(),
   backupDirectory,
   ...demoAuthOptions()
 });

@@ -19,6 +19,7 @@
 | `HOST` | `127.0.0.1` | Адрес прослушивания. За reverse proxy на той же машине оставьте по умолчанию; `0.0.0.0` открывает порт в сеть |
 | `DATABASE_PATH` | `data/detailflow.db` | Файл базы |
 | `TELEGRAM_BOT_TOKEN`, `MAX_BOT_TOKEN` | — | Токены ботов для входа сотрудников |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | —, `465`, —, —, `SMTP_USER` | Почтовый ящик для писем с кодом входа (вход по email). Без них вход по email выключен |
 | `DEMO_AUTH` | `true` | `false` убирает демо-доступ и кнопку «Продолжить в демо-режиме» |
 | `SEED_DEMO` | `true` | `false` не создаёт демо-центр с примерами данных |
 | `BACKUP_DIR` | `data/backups` | Папка резервных копий |
@@ -131,6 +132,24 @@ curl -fsSL https://raw.githubusercontent.com/aim123qqq-cpu/detailsoft/main/deplo
 ```
 
 Таймер `detailflow-update.timer` раз в 2 минуты проверяет `main` на GitHub; если он ушёл вперёд — собирает (`deploy/update.sh`, при ошибке сборки возврат к прежней версии) и перезапускает службу (`deploy/self-update.sh`). Выкладка — это `git push` в `main`, поэтому в `main` попадает только проверенное. Журнал: `journalctl -u detailflow-update`. Выключить: `systemctl disable --now detailflow-update.timer`.
+
+### Вход по email
+
+Вход и создание центра по коду из письма — для тех, у кого нет Telegram и MAX (и требование RuStore: вход не только через мессенджеры). Письма уходят с обычного почтового ящика через SMTP по TLS (порт 465). Для mail.ru:
+
+1. В почте: «Настройки» → «Безопасность» → «Пароли для внешних приложений» → создать пароль с доступом к SMTP.
+2. В `/opt/detailflow/.env` на сервере (`nano`, не в чат и не в git):
+   ```
+   SMTP_HOST=smtp.mail.ru
+   SMTP_PORT=465
+   SMTP_USER=detailfow@mail.ru
+   SMTP_PASSWORD=<пароль для внешних приложений>
+   ```
+3. `systemctl restart detailflow`. В ответе `/api/auth/providers` появится `"email": true`, на экране входа — поле email.
+
+Если письма не уходят, причина — в журнале: `journalctl -u detailflow -n 30 | grep "Sign-in letter"` (ответ почтового сервера, без пароля). Хостинг может закрывать исходящие порты почты: проверка — `timeout 5 bash -c '</dev/tcp/smtp.mail.ru/465' && echo open`; если не `open`, попросите поддержку хостинга открыть исходящий 465.
+
+Владелец центра задаёт email сотрудника в «Профиль → Команда»; сотрудник вводит его на экране входа и получает код. Код — 6 цифр, действует 10 минут, после 5 неверных попыток нужен новый; на один адрес — не больше 3 писем за 10 минут.
 
 ### Telegram из российского дата-центра
 

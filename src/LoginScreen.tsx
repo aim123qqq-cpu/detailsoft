@@ -3,7 +3,9 @@ import { ApiRequestError, api, authSession, demoAuthEnabled } from './api';
 import { iosBrowserTab } from './platform';
 import { LEGAL_VERSION } from './legal';
 import { LegalChecks, type LegalState } from './LegalGate';
-import type { AuthProvider, LoginMembership, LoginRequest, LoginStatus } from './types';
+import type { AuthProvider, LoginMembership, LoginRequest, LoginStatus, SignInProvider } from './types';
+
+const EMAIL_SHAPE = /^\S+@\S+\.\S+$/;
 
 const statusText: Record<LoginStatus['status'], string> = {
   PENDING: 'Откройте бота и нажмите «Старт» или отправьте ему код.',
@@ -26,12 +28,16 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
   const [centerName, setCenterName] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [legal, setLegal] = useState<LegalState>({ terms: false, consent: false });
+  // Sign-in by email: a 6-digit code comes by letter and is typed here (no bot to poll).
+  const [emailEnabled, setEmailEnabled] = useState(false);
+  const [email, setEmail] = useState('');
+  const [emailCode, setEmailCode] = useState('');
   const opening = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
     api.getAuthProviders(controller.signal)
-      .then((result) => setProviders(result.items))
+      .then((result) => { setProviders(result.items); setEmailEnabled(result.email === true); })
       .catch((requestError: Error) => { if (requestError.name !== 'AbortError') { setProviders([]); setError(requestError.message); } });
     return () => controller.abort();
   }, []);
@@ -53,7 +59,7 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
   // Polls on a timer for the whole life of the login request. Polling must not depend on the
   // status changing: repeated PENDING/AWAITING answers are the normal case while the user is in the bot.
   useEffect(() => {
-    if (!login) return;
+    if (!login || login.provider === 'email') return;
     const controller = new AbortController();
     let stopped = false;
     let timer = 0;
@@ -101,6 +107,32 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
     finally { setBusy(false); }
   };
 
+  const startEmail = async () => {
+    setBusy(true); setError(''); setMemberships([]); setEmailCode('');
+    try {
+      setLogin(await api.createEmailLogin(email.trim(), mode));
+      setStatus('AWAITING_CONFIRMATION');
+    } catch (requestError) { setError((requestError as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  // The code from the letter confirms the request; then it goes on like a confirmation in a bot.
+  const confirmEmail = async () => {
+    if (!login) return;
+    setBusy(true); setError('');
+    try {
+      const next = await api.confirmEmailLogin(login.id, login.pollSecret, emailCode);
+      setStatus(next.status);
+      if (login.purpose !== 'signup') {
+        if (next.memberships.length > 1) setMemberships(next.memberships);
+        else void openSession(login);
+      }
+    } catch (requestError) {
+      setError((requestError as Error).message);
+      if (requestError instanceof ApiRequestError && requestError.code === 'login_closed') setStatus('DENIED');
+    } finally { setBusy(false); }
+  };
+
   const createCenter = async () => {
     if (!login) return;
     setBusy(true); setError('');
@@ -113,6 +145,7 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
   };
 
   const signup = mode === 'signup';
+  const byEmail = login?.provider === 'email';
   const providerTitle = login ? providers?.find((item) => item.provider === login.provider)?.title ?? login.provider : '';
   const finished = status === 'DENIED' || status === 'EXPIRED' || status === 'CONSUMED';
   const reset = () => { setLogin(null); setStatus(null); setError(''); setMemberships([]); };
@@ -130,20 +163,20 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
           <span className="login-kicker">{signup ? 'Новый центр' : 'Рабочее место'}</span>
           <h1>{signup ? 'Создайте свой центр' : 'Вход для сотрудников'}</h1>
           <p>{signup
-            ? 'Подтвердите себя в мессенджере и назовите центр. Вы станете его владельцем и сами пригласите команду.'
-            : 'Без паролей и SMS. Подтвердите вход одной кнопкой в мессенджере, к которому вас привязал владелец центра.'}</p>
+            ? `Подтвердите себя ${emailEnabled ? 'в мессенджере или по email' : 'в мессенджере'} и назовите центр. Вы станете его владельцем и сами пригласите команду.`
+            : `Без паролей и SMS. Подтвердите вход одной кнопкой в мессенджере${emailEnabled ? ' или кодом из письма' : ''} — тем, к которому вас привязал владелец центра.`}</p>
         </div>
-        <div className="login-preview">
+        {!byEmail && <div className="login-preview">
           <BotPreview
             code={login?.shortCode ?? 'K7M2PQ'}
             provider={login?.provider ?? providers?.[0]?.provider ?? 'telegram'}
             botName={login?.botName ?? providers?.[0]?.botName ?? null}
           />
-        </div>
+        </div>}
 
         <div className="login-card">
           {!login && <>
-            <h2>Выберите мессенджер</h2>
+            <h2>{emailEnabled ? 'Выберите способ входа' : 'Выберите мессенджер'}</h2>
             <div className="login-providers">
               {providers === null && <div className="login-loading"><span className="spinner"/> Проверяем доступные способы входа</div>}
               {providers?.map((provider) => (
@@ -153,11 +186,15 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
                   <i className="login-provider-arrow" aria-hidden="true">→</i>
                 </button>
               ))}
-              {providers?.length === 0 && <div className="login-note" role="note">
+              {providers?.length === 0 && !emailEnabled && <div className="login-note" role="note">
                 <strong>Вход через мессенджер ещё не настроен</strong>
                 <span>Администратору сервера нужно указать токен бота в файле .env и перезапустить DetailFlow.</span>
               </div>}
             </div>
+            {emailEnabled && <form className="login-signup login-email" onSubmit={(event) => { event.preventDefault(); if (EMAIL_SHAPE.test(email.trim())) void startEmail(); }}>
+              <label>{providers?.length ? 'Или по email' : 'Email'}<input type="email" data-testid="login-email" value={email} autoComplete="email" placeholder="name@mail.ru" onChange={(event) => setEmail(event.target.value)}/></label>
+              <button className="login-secondary" data-testid="login-email-submit" disabled={busy || !EMAIL_SHAPE.test(email.trim())}>{signup ? 'Продолжить с email' : 'Получить код на почту'}</button>
+            </form>}
             <ol className="login-how" aria-label="Как проходит вход">
               <li><b>1</b><span>Откройте бота по кнопке или отправьте ему код с экрана</span></li>
               <li><b>2</b><span>Сверьте код и нажмите «{signup ? 'Это я, продолжить' : 'Это я, войти'}»</span></li>
@@ -168,22 +205,31 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
           {login && <div className="login-progress" data-testid="login-progress" aria-live="polite">
             <div className="login-progress-head">
               <ProviderIcon provider={login.provider}/>
-              <span><b>{signup ? 'Подтверждение' : 'Вход'} через {providerTitle}</b><small>{login.botName ? `@${login.botName}` : 'бот центра'}</small></span>
+              <span><b>{signup ? 'Подтверждение' : 'Вход'} {byEmail ? 'по email' : `через ${providerTitle}`}</b><small>{byEmail ? login.email : login.botName ? `@${login.botName}` : 'бот центра'}</small></span>
               {!finished && status !== 'CONFIRMED' && <Countdown expiresAt={login.expiresAt}/>}
             </div>
-            <span className="login-code-label">Код для бота</span>
-            <div className="login-code" data-testid="login-code" data-code={login.shortCode} role="img" aria-label={`Код ${login.shortCode.split('').join(' ')}`}>
-              {login.shortCode.split('').map((char, index) => <span key={index}>{char}</span>)}
-            </div>
+            {!byEmail && <>
+              <span className="login-code-label">Код для бота</span>
+              <div className="login-code" data-testid="login-code" data-code={login.shortCode} role="img" aria-label={`Код ${login.shortCode.split('').join(' ')}`}>
+                {login.shortCode.split('').map((char, index) => <span key={index}>{char}</span>)}
+              </div>
+            </>}
+            {byEmail && !finished && status !== 'CONFIRMED' && <form className="login-signup" onSubmit={(event) => { event.preventDefault(); if (emailCode.length === 6) void confirmEmail(); }}>
+              <label>Код из письма<input data-testid="login-email-code" value={emailCode} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="000000"
+                onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, ''))}/></label>
+              <button className="primary-button" data-testid="login-email-confirm" disabled={busy || emailCode.length !== 6}>Подтвердить</button>
+            </form>}
             {login.deepLink && !finished && status !== 'CONFIRMED' && <a className="primary-button login-open-bot" href={login.deepLink} target="_blank" rel="noopener noreferrer" data-testid="open-bot">Открыть {login.botName ? `@${login.botName}` : `бота ${providerTitle}`}</a>}
             <ol className={`login-steps ${finished ? 'failed' : ''}`} aria-label="Ход входа">
-              {['Бот открыт', 'Подтверждение', signup ? 'Название центра' : 'Вход выполнен'].map((label, index) => {
+              {[byEmail ? 'Письмо отправлено' : 'Бот открыт', byEmail ? 'Код из письма' : 'Подтверждение', signup ? 'Название центра' : 'Вход выполнен'].map((label, index) => {
                 const position = index + 1;
                 const state = finished ? (position < step ? 'done' : position === step ? 'failed' : '') : position < step || status === 'CONFIRMED' ? 'done' : position === step ? 'current' : '';
                 return <li key={label} className={state}><i>{state === 'done' ? '✓' : state === 'failed' ? '!' : position}</i><span>{label}</span></li>;
               })}
             </ol>
-            <div className={`login-status ${status ?? ''}`} data-testid="login-status">{signup && status === 'CONFIRMED' ? 'Подтверждено. Осталось назвать центр.'
+            <div className={`login-status ${status ?? ''}`} data-testid="login-status">{byEmail && status === 'AWAITING_CONFIRMATION' ? `Код отправлен на ${login.email}. Письмо приходит за минуту — если его нет, загляните в «Спам».`
+              : byEmail && finished ? 'Запросите новый код.'
+              : signup && status === 'CONFIRMED' ? 'Подтверждено. Осталось назвать центр.'
               : signup && status === 'AWAITING_CONFIRMATION' ? 'Подтвердите кнопкой «Это я, продолжить» в боте.' : status ? statusText[status] : ''}</div>
             {signup && status === 'CONFIRMED' && <div className="login-signup" data-testid="login-signup">
               <label>Название центра<input data-testid="center-name" value={centerName} maxLength={120} placeholder="Например, Детейлинг Север" onChange={(event) => setCenterName(event.target.value)}/></label>
@@ -195,8 +241,9 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
               <strong>Выберите центр</strong>
               {memberships.map((membership) => <button key={membership.tenant.id} onClick={() => openSession(login, membership.tenant.id)}><b>{membership.tenant.name}</b><small>{membership.member.displayName}</small></button>)}
             </div>}
-            <p className="login-hint">Бот покажет тот же код. Подтверждайте, только если коды совпадают и вы входите сами.</p>
-            {(finished || status === 'PENDING' || status === 'AWAITING_CONFIRMATION') && <button className={finished ? 'primary-button login-retry' : 'login-secondary'} onClick={reset}>{finished ? 'Начать заново' : 'Выбрать другой мессенджер'}</button>}
+            {!byEmail && <p className="login-hint">Бот покажет тот же код. Подтверждайте, только если коды совпадают и вы входите сами.</p>}
+            {/* A confirmed account with no center to open is a dead end too: offer to start over. */}
+            {(finished || status === 'PENDING' || status === 'AWAITING_CONFIRMATION' || (status === 'CONFIRMED' && error && !signup)) && <button className={finished || error ? 'primary-button login-retry' : 'login-secondary'} onClick={reset}>{finished || error ? 'Начать заново' : byEmail ? 'Выбрать другой способ' : 'Выбрать другой мессенджер'}</button>}
           </div>}
 
           {error && <p className="form-error" role="alert">{error}</p>}
@@ -227,7 +274,8 @@ function Countdown({ expiresAt }: { expiresAt: string }) {
   </span>;
 }
 
-export function ProviderIcon({ provider }: { provider: AuthProvider['provider'] }) {
+export function ProviderIcon({ provider }: { provider: SignInProvider }) {
+  if (provider === 'email') return <span className="provider-icon email" aria-hidden="true">@</span>;
   return provider === 'telegram'
     ? <span className="provider-icon telegram" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M20.7 4.3 3.6 10.9c-1.2.5-1.2 1.1-.2 1.4l4.4 1.4 1.7 5.2c.2.6.1.8.7.8.5 0 .7-.2 1-.5l2.1-2 4.4 3.2c.8.4 1.4.2 1.6-.8l2.9-13.6c.3-1.2-.4-1.7-1.5-1.3Zm-3 3.3-8.2 7.4-.3 3.3-1.4-4.6 9.4-6.4c.4-.3.8-.1.5.3Z"/></svg></span>
     : <span className="provider-icon max" aria-hidden="true">M</span>;
@@ -238,7 +286,7 @@ function CarMark() {
 }
 
 /** A static preview of the bot message, so the employee knows what to expect before opening the messenger. */
-function BotPreview({ code, provider, botName }: { code: string; provider: AuthProvider['provider']; botName: string | null }) {
+function BotPreview({ code, provider, botName }: { code: string; provider: SignInProvider; botName: string | null }) {
   return <figure className={`bot-preview ${provider}`} aria-label="Так выглядит сообщение бота">
     <div className="bot-preview-head"><ProviderIcon provider={provider}/><span><b>{botName ? `@${botName}` : 'Бот центра'}</b><small>бот DetailFlow</small></span></div>
     <div className="bot-preview-bubble">

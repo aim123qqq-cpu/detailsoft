@@ -1,6 +1,6 @@
 // The current edition of the user agreement (/terms/) and of the consent to the processing of personal
 // data (/consent/). Changing either document means a new edition here: everyone is asked to accept again.
-export const LEGAL_VERSION = '2026-10-22';
+export const LEGAL_VERSION = '2026-10-27';
 
 /** Records that a member accepted both documents of the current edition (idempotent). */
 export function recordLegalAcceptance(db, tenantId, memberId, method) {

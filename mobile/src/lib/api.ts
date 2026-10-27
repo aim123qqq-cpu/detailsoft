@@ -259,7 +259,12 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
   }
 
   return {
-    authProviders: (signal?: AbortSignal) => request<{ items: AuthProvider[]; demo: boolean }>('/api/auth/providers', { signal }),
+    authProviders: (signal?: AbortSignal) => request<{ items: AuthProvider[]; demo: boolean; email?: boolean }>('/api/auth/providers', { signal }),
+    /** Sends a 6-digit code to the address; confirmEmailLogin with that code confirms the request. */
+    createEmailLogin: (email: string, purpose: 'login' | 'signup' = 'login') =>
+      request<LoginRequest>('/api/auth/email-requests', { method: 'POST', body: { email, purpose } }),
+    confirmEmailLogin: (login: LoginRequest, code: string) =>
+      request<LoginStatus>(`/api/auth/email-requests/${encodeURIComponent(login.id)}/confirm`, { method: 'POST', headers: { 'x-login-secret': login.pollSecret }, body: { code } }),
     createLoginRequest: (provider: AuthProvider['provider'], purpose: 'login' | 'signup' = 'login') =>
       request<LoginRequest>('/api/auth/login-requests', { method: 'POST', body: { provider, purpose } }),
     /** A confirmed sign-up request becomes a new center; the answer is the owner's session. */
@@ -434,6 +439,8 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
     messengerInvite: (memberId: string, provider: AuthProvider['provider']) =>
       request<{ code: string; provider: AuthProvider['provider']; expiresAt: string; botName: string | null; deepLink: string | null }>(
         `/api/tenants/current/team/${encodeURIComponent(memberId)}/messenger-invites`, { method: 'POST', body: { provider } }),
+    setMemberEmail: (memberId: string, email: string) =>
+      request<{ email: string }>(`/api/tenants/current/team/${encodeURIComponent(memberId)}/email`, { method: 'PUT', body: { email } }),
     removeMessengerLink: (memberId: string, linkId: string) =>
       request<{ removed: boolean }>(`/api/tenants/current/team/${encodeURIComponent(memberId)}/messenger-links/${encodeURIComponent(linkId)}`, { method: 'DELETE' }),
     roles: (signal?: AbortSignal) => request<{ permissions: Permission[]; items: CenterRole[] }>('/api/tenants/current/roles?includeArchived=true', { signal }),

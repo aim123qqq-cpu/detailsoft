@@ -11,8 +11,42 @@ export function openDatabase(databasePath, { seed = false } = {}) {
   for (const migration of readdirSync(migrationsDirectory).filter((name) => name.endsWith('.sql')).sort()) {
     db.exec(readFileSync(resolve(migrationsDirectory, migration), 'utf8'));
   }
+  allowEmailSignIn(db);
   if (seed) seedDatabase(db);
   return db;
+}
+
+const MESSENGERS_ONLY = "CHECK(provider IN ('telegram', 'max'))";
+
+/**
+ * Sign-in by email uses the same requests, links and sign-up records as the messengers, but those tables
+ * were created allowing only Telegram and MAX. SQLite cannot change a CHECK, so each such table is rebuilt
+ * once with 'email' added: same columns and rows, its indexes recreated.
+ */
+function allowEmailSignIn(db) {
+  const tables = ['login_requests', 'member_messenger_links', 'center_signups']
+    .map((name) => ({ name, sql: db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)?.sql ?? '' }))
+    .filter((table) => table.sql.includes(MESSENGERS_ONLY));
+  if (!tables.length) return;
+  // Dropping login_requests with foreign keys on would cascade to login_request_purposes.
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN');
+  try {
+    for (const { name, sql } of tables) {
+      const indexes = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL").all(name);
+      db.exec(sql.replace(/^CREATE TABLE\s+"?\w+"?/, `CREATE TABLE ${name}_rebuilt`).replace(MESSENGERS_ONLY, "CHECK(provider IN ('telegram', 'max', 'email'))"));
+      db.exec(`INSERT INTO ${name}_rebuilt SELECT * FROM ${name}`);
+      db.exec(`DROP TABLE ${name}`);
+      db.exec(`ALTER TABLE ${name}_rebuilt RENAME TO ${name}`);
+      for (const index of indexes) db.exec(index.sql);
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
 }
 
 function insertMany(db, sql, rows) {

@@ -2,7 +2,12 @@ import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 
 import { LEGAL_VERSION, recordLegalAcceptance } from './legal.mjs';
 
 export const MESSENGER_PROVIDERS = ['telegram', 'max'];
+/** Ways a person proves who they are: a button in a messenger bot, or a code sent by email. */
+export const SIGN_IN_PROVIDERS = [...MESSENGER_PROVIDERS, 'email'];
 const LOGIN_TTL_MS = 5 * 60 * 1000;
+// A letter can take a minute or two to arrive, so an emailed code lives longer than a bot request.
+const EMAIL_LOGIN_TTL_MS = 10 * 60 * 1000;
+const EMAIL_CODE_ATTEMPTS = 5;
 const INVITE_TTL_MS = 24 * 60 * 60 * 1000;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -14,6 +19,12 @@ const hash = (value) => createHash('sha256').update(String(value)).digest('hex')
 const sqlTime = (date) => date.toISOString().replace('T', ' ').slice(0, 19);
 const nowSql = () => sqlTime(new Date());
 const apiTime = (value) => value ? new Date(`${value.replace(' ', 'T')}Z`).toISOString() : null;
+
+/** A plain shape check of an address, lower-cased; the code sent to it is the real proof. */
+export function normalizeEmail(value) {
+  const email = String(value ?? '').trim().toLowerCase();
+  return email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
 
 function sameSecret(expectedHash, secret) {
   const actual = Buffer.from(hash(secret), 'hex');
@@ -29,7 +40,7 @@ export class AuthRepository {
 
   /** `purpose: 'signup'` opens a request for creating a new center instead of signing in to an existing one. */
   createLoginRequest(provider, purpose = 'login') {
-    if (!MESSENGER_PROVIDERS.includes(provider) || !['login', 'signup'].includes(purpose)) return null;
+    if (!SIGN_IN_PROVIDERS.includes(provider) || !['login', 'signup'].includes(purpose)) return null;
     const id = `lr_${randomUUID()}`;
     const startToken = randomBytes(16).toString('hex');
     const pollSecret = randomBytes(32).toString('hex');
@@ -43,6 +54,45 @@ export class AuthRepository {
       VALUES (?, ?, ?, ?, ?, ?)`).run(id, provider, hash(startToken), shortCode, hash(pollSecret), expiresAt);
     if (purpose === 'signup') this.db.prepare("INSERT INTO login_request_purposes (login_request_id, purpose) VALUES (?, 'signup')").run(id);
     return { id, startToken, shortCode, pollSecret, expiresAt: apiTime(expiresAt), purpose };
+  }
+
+  /**
+   * A sign-in (or sign-up) request confirmed by a 6-digit code sent to the address. The request waits for
+   * the code from the start; the address is its account id, as a messenger account id is for the bots.
+   * The caller sends the returned code and never shows it.
+   */
+  createEmailLogin(address, purpose = 'login') {
+    const email = normalizeEmail(address);
+    if (!email) return null;
+    const login = this.createLoginRequest('email', purpose);
+    if (!login) return null;
+    const code = String(randomInt(1_000_000)).padStart(6, '0');
+    const expiresAt = sqlTime(new Date(Date.now() + EMAIL_LOGIN_TTL_MS));
+    this.db.prepare(`UPDATE login_requests SET status = 'AWAITING_CONFIRMATION', external_user_id = ?, expires_at = ? WHERE id = ?`).run(email, expiresAt, login.id);
+    this.db.prepare('UPDATE login_request_purposes SET external_name = ? WHERE login_request_id = ?').run(email, login.id);
+    this.db.prepare('INSERT INTO email_login_codes (login_request_id, code_hash) VALUES (?, ?)').run(login.id, hash(code));
+    return { id: login.id, pollSecret: login.pollSecret, expiresAt: apiTime(expiresAt), purpose: login.purpose, email, code };
+  }
+
+  /** The code from the letter confirms the request; after a few wrong codes the request is closed. */
+  confirmEmailLogin(id, pollSecret, code) {
+    const status = this.getLoginStatus(id, pollSecret);
+    if (!status || status.provider !== 'email') return { kind: 'not_found' };
+    if (status.status !== 'AWAITING_CONFIRMATION') return { kind: 'closed', status: status.status };
+    const row = this.db.prepare('SELECT code_hash, attempts FROM email_login_codes WHERE login_request_id = ?').get(id);
+    if (!row) return { kind: 'not_found' };
+    const typed = String(code ?? '').replace(/\D/g, '');
+    if (typed.length === 6 && sameSecret(row.code_hash, typed)) {
+      this.db.prepare(`UPDATE login_requests SET status = 'CONFIRMED' WHERE id = ? AND status = 'AWAITING_CONFIRMATION'`).run(id);
+      return { kind: 'confirmed', status: this.getLoginStatus(id, pollSecret) };
+    }
+    const attempts = row.attempts + 1;
+    this.db.prepare('UPDATE email_login_codes SET attempts = ? WHERE login_request_id = ?').run(attempts, id);
+    if (attempts >= EMAIL_CODE_ATTEMPTS) {
+      this.db.prepare(`UPDATE login_requests SET status = 'DENIED' WHERE id = ?`).run(id);
+      return { kind: 'closed', status: 'DENIED' };
+    }
+    return { kind: 'wrong_code', attemptsLeft: EMAIL_CODE_ATTEMPTS - attempts };
   }
 
   findOpenLogin(provider, { startToken, shortCode }) {
@@ -106,7 +156,9 @@ export class AuthRepository {
     if (status.status !== 'CONFIRMED') return { kind: 'conflict', code: 'login_not_confirmed', message: 'Вход ещё не подтверждён в мессенджере' };
     const options = status.memberships;
     const chosen = tenantId ? options.find((option) => option.tenant.id === tenantId) : options.length === 1 ? options[0] : null;
-    if (!options.length) return { kind: 'conflict', code: 'no_active_membership', message: 'Аккаунт не привязан к активному сотруднику' };
+    if (!options.length) return { kind: 'conflict', code: 'no_active_membership', message: status.provider === 'email'
+      ? 'Этот email не привязан к сотруднику центра. Попросите владельца указать его в «Профиль → Команда» или создайте свой центр'
+      : 'Аккаунт не привязан к активному сотруднику' };
     if (!chosen) return tenantId
       ? { kind: 'conflict', code: 'tenant_not_available', message: 'Этот центр недоступен для аккаунта' }
       : { kind: 'choose_tenant', memberships: options };
@@ -325,6 +377,36 @@ export class AuthRepository {
       throw error;
     }
     return { kind: 'deleted' };
+  }
+
+  /**
+   * The owner sets the address a member signs in with. Nothing is sent: signing in still needs the code
+   * that goes to this address, so a wrong address only means no sign-in. Changing it ends email sessions.
+   */
+  setMemberEmail(tenantId, memberId, address) {
+    const email = normalizeEmail(address);
+    if (!email) return { kind: 'invalid' };
+    const member = this.db.prepare('SELECT status FROM tenant_members WHERE id = ? AND tenant_id = ?').get(memberId, tenantId);
+    if (!member) return { kind: 'not_found' };
+    if (member.status !== 'active') return { kind: 'conflict', code: 'member_blocked', message: 'Сотрудник заблокирован' };
+    const taken = this.db.prepare(`SELECT 1 FROM member_messenger_links WHERE tenant_id = ? AND provider = 'email' AND external_user_id = ? AND member_id <> ?`)
+      .get(tenantId, email, memberId);
+    if (taken) return { kind: 'conflict', code: 'email_taken', message: 'Этот email уже у другого сотрудника центра' };
+    const current = this.db.prepare(`SELECT external_user_id FROM member_messenger_links WHERE member_id = ? AND provider = 'email'`).get(memberId);
+    if (current?.external_user_id === email) return { kind: 'updated', email };
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare(`DELETE FROM member_messenger_links WHERE member_id = ? AND provider = 'email'`).run(memberId);
+      this.db.prepare(`INSERT INTO member_messenger_links (id, tenant_id, member_id, provider, external_user_id, external_name)
+        VALUES (?, ?, ?, 'email', ?, ?)`).run(`ml_${randomUUID()}`, tenantId, memberId, email, email);
+      if (current) this.db.prepare(`UPDATE auth_sessions SET revoked_at = ? WHERE tenant_id = ? AND member_id = ? AND provider = 'email' AND revoked_at IS NULL`)
+        .run(nowSql(), tenantId, memberId);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+    return { kind: 'updated', email };
   }
 
   /** Unlinking also ends the member's sessions opened through that messenger. */

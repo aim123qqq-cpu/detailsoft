@@ -265,7 +265,7 @@ const orderUrl = (orderId: string, suffix: string) => `/api/orders/${encodeURICo
 
 export const api = {
   getAuthProviders(signal?: AbortSignal) {
-    return request<{ items: AuthProvider[]; demo: boolean }>('/api/auth/providers', { signal });
+    return request<{ items: AuthProvider[]; demo: boolean; email?: boolean }>('/api/auth/providers', { signal });
   },
   createLoginRequest(provider: MessengerProvider, purpose: 'login' | 'signup' = 'login') {
     return request<LoginRequest>('/api/auth/login-requests', { method: 'POST', body: JSON.stringify({ provider, purpose }) });
@@ -280,6 +280,15 @@ export const api = {
   createCenter(loginId: string, pollSecret: string, input: { centerName: string; ownerName: string; acceptedLegal: string }) {
     return request<{ token: string; expiresAt: string; tenant: { id: string; name: string } }>(`/api/auth/login-requests/${encodeURIComponent(loginId)}/center`, {
       method: 'POST', headers: { 'x-login-secret': pollSecret }, body: JSON.stringify(input)
+    });
+  },
+  /** Sends a 6-digit code to the address; confirmEmailLogin with that code confirms the request. */
+  createEmailLogin(email: string, purpose: 'login' | 'signup' = 'login') {
+    return request<LoginRequest>('/api/auth/email-requests', { method: 'POST', body: JSON.stringify({ email, purpose }) });
+  },
+  confirmEmailLogin(loginId: string, pollSecret: string, code: string) {
+    return request<LoginStatus>(`/api/auth/email-requests/${encodeURIComponent(loginId)}/confirm`, {
+      method: 'POST', headers: { 'x-login-secret': pollSecret }, body: JSON.stringify({ code })
     });
   },
   getLoginStatus(loginId: string, pollSecret: string, signal?: AbortSignal) {
@@ -300,6 +309,9 @@ export const api = {
     return request<{ code: string; provider: MessengerProvider; expiresAt: string; botName: string | null; deepLink: string | null }>(
       `/api/tenants/current/team/${encodeURIComponent(memberId)}/messenger-invites`, { method: 'POST', body: JSON.stringify({ provider }) }
     );
+  },
+  setMemberEmail(memberId: string, email: string) {
+    return request<{ email: string }>(`/api/tenants/current/team/${encodeURIComponent(memberId)}/email`, { method: 'PUT', body: JSON.stringify({ email }) });
   },
   removeMessengerLink(memberId: string, linkId: string) {
     return request<{ removed: boolean }>(`/api/tenants/current/team/${encodeURIComponent(memberId)}/messenger-links/${encodeURIComponent(linkId)}`, { method: 'DELETE' });

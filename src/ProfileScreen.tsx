@@ -38,7 +38,8 @@ function timezoneLabel(timezone: string) {
 function signedInWith(actor: SessionContext['actor']) {
   if (actor.authMethod === 'demo') return 'Демо-доступ';
   if (actor.authMethod === 'access_token') return 'Вы вошли по коду доступа';
-  return actor.authProvider === 'max' ? 'Вы вошли через MAX' : actor.authProvider === 'telegram' ? 'Вы вошли через Telegram' : 'Вы вошли через мессенджер';
+  return actor.authProvider === 'max' ? 'Вы вошли через MAX' : actor.authProvider === 'telegram' ? 'Вы вошли через Telegram'
+    : actor.authProvider === 'email' ? 'Вы вошли по email' : 'Вы вошли через мессенджер';
 }
 
 export function ProfileScreen({ onSignIn, open }: { onSignIn: () => void; open?: 'catalog' | 'team' | 'settings' }) {

@@ -19,9 +19,10 @@ const capabilityLabels: [keyof SessionContext['capabilities'], string][] = [
 function signedInWith(actor: SessionContext['actor']) {
   if (actor.authMethod === 'demo') return 'Демо-режим';
   if (actor.authMethod === 'access_token') return 'Вы вошли по коду доступа';
-  return actor.authProvider === 'max' ? 'Вы вошли через MAX' : actor.authProvider === 'telegram' ? 'Вы вошли через Telegram' : 'Вы вошли через мессенджер';
+  return actor.authProvider === 'max' ? 'Вы вошли через MAX' : actor.authProvider === 'telegram' ? 'Вы вошли через Telegram'
+    : actor.authProvider === 'email' ? 'Вы вошли по email' : 'Вы вошли через мессенджер';
 }
-const badges = { telegram: { mark: '✈', color: '#229ed9' }, max: { mark: 'M', color: '#5b4cf0' }, other: { mark: '#', color: colors.surfaceRaised } };
+const badges = { telegram: { mark: '✈', color: '#229ed9' }, max: { mark: 'M', color: '#5b4cf0' }, email: { mark: '@', color: '#e8622a' }, other: { mark: '#', color: colors.surfaceRaised } };
 
 export default function ProfileScreen() {
   const { api, server, signOut } = useSession();

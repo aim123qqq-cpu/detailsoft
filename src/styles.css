@@ -1269,6 +1269,12 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
 .provider-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 13px; color: #fff; font-size: 19px; font-weight: 900; }
 .provider-icon.telegram { background: linear-gradient(160deg, #37bbfe, #229ed9); }
 .provider-icon.max { background: linear-gradient(135deg, #5b4cf0, #2fa3f2); }
+.provider-icon.email { background: linear-gradient(160deg, #ff8a4c, #e8622a); }
+.login-email { margin-top: 4px; padding-top: 14px; border-top: 1px solid #26313a; }
+.member-email { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; margin-top: 12px; }
+.member-email label { display: grid; gap: 6px; color: #a7b2bb; font-size: 12px; font-weight: 800; }
+.member-email input { min-height: 42px; padding: 0 12px; border: 1px solid #394550; border-radius: 10px; color: #eef2f5; background: #10171d; font-size: 14px; }
+.member-email small { grid-column: 1 / -1; color: #8a97a1; font-size: 12px; }
 .login-how { display: grid; gap: 10px; margin: 0; padding: 14px 0 0; border-top: 1px solid #27323c; list-style: none; }
 .login-how li { display: grid; grid-template-columns: 24px minmax(0,1fr); gap: 10px; align-items: start; color: #b7c1c9; font-size: 13px; line-height: 1.45; }
 .login-how b { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; color: #ff9d70; background: rgba(255,121,57,.12); font-size: 12px; }

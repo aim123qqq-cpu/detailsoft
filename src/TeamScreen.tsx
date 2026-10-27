@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
 import { RolesPanel } from './RolesPanel';
-import type { AuthProvider, CenterRole, MessengerProvider, TeamMember, TeamRole } from './types';
+import type { AuthProvider, CenterRole, MessengerProvider, SignInProvider, TeamMember, TeamRole } from './types';
 
-const providerTitles: Record<MessengerProvider, string> = { telegram: 'Telegram', max: 'MAX' };
+const providerTitles: Record<SignInProvider, string> = { telegram: 'Telegram', max: 'MAX', email: 'Email' };
 const linkedAt = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
 
-function MessengerAccess({ member, providers, onChanged }: { member: TeamMember; providers: AuthProvider[] | null; onChanged: () => void }) {
+function MessengerAccess({ member, providers, emailSignIn, onChanged }: { member: TeamMember; providers: AuthProvider[] | null; emailSignIn: boolean; onChanged: () => void }) {
   const [invite, setInvite] = useState<null | { provider: MessengerProvider; code: string; deepLink: string | null; botName: string | null; expiresAt: string }>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const links = member.messengerLinks ?? [];
+  const [email, setEmail] = useState('');
 
   const createInvite = async (provider: MessengerProvider) => {
     setBusy(true); setError(''); setCopied(false);
@@ -25,12 +26,19 @@ function MessengerAccess({ member, providers, onChanged }: { member: TeamMember;
     catch (requestError) { setError((requestError as Error).message); }
     finally { setBusy(false); }
   };
+  // The address the member signs in with: a code goes there at each sign-in.
+  const saveEmail = async () => {
+    setBusy(true); setError('');
+    try { await api.setMemberEmail(member.id, email.trim()); setEmail(''); onChanged(); }
+    catch (requestError) { setError((requestError as Error).message); }
+    finally { setBusy(false); }
+  };
   const copy = async (text: string) => {
     try { await navigator.clipboard.writeText(text); setCopied(true); } catch { setCopied(false); }
   };
 
   return <section className="messenger-access" data-testid="messenger-access" aria-label="Вход через мессенджер">
-    <div className="messenger-access-heading"><strong>Вход через мессенджер</strong><span>без пароля</span></div>
+    <div className="messenger-access-heading"><strong>{emailSignIn ? 'Вход через мессенджер или email' : 'Вход через мессенджер'}</strong><span>без пароля</span></div>
     {links.length ? <ul className="messenger-links">{links.map((link) => <li key={link.id} data-testid={`messenger-link-${link.provider}`}>
       <span><b>{providerTitles[link.provider]}</b><small>{link.externalName ?? 'аккаунт привязан'} · с {linkedAt.format(new Date(link.linkedAt))}</small></span>
       <button disabled={busy} onClick={() => unlink(link.id)}>Отвязать</button>
@@ -43,6 +51,13 @@ function MessengerAccess({ member, providers, onChanged }: { member: TeamMember;
         </button>;
       })}
     </div>}
+    {member.status === 'active' && emailSignIn && <form className="member-email" onSubmit={(event) => { event.preventDefault(); if (email.trim()) void saveEmail(); }}>
+      <label>{links.some((link) => link.provider === 'email') ? 'Сменить email для входа' : 'Email для входа'}
+        <input type="email" data-testid="member-email" value={email} placeholder="name@mail.ru" autoComplete="off" onChange={(event) => setEmail(event.target.value)}/>
+      </label>
+      <button data-testid="member-email-save" disabled={busy || !/^S+@S+.S+$/.test(email.trim())}>Сохранить</button>
+      <small>Сотрудник введёт этот адрес на экране входа и получит код в письме.</small>
+    </form>}
     {invite && <div className="messenger-invite" role="status" data-testid="messenger-invite">
       <strong>Приглашение в {providerTitles[invite.provider]} готово</strong>
       <span>Отправьте ссылку сотруднику лично. Она одноразовая и действует до {new Date(invite.expiresAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}.</span>
@@ -68,10 +83,11 @@ export function TeamScreen({ onBack }: { onBack: () => void }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [providers, setProviders] = useState<AuthProvider[] | null>(null);
+  const [emailSignIn, setEmailSignIn] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
-    api.getAuthProviders(controller.signal).then((result) => setProviders(result.items)).catch(() => setProviders([]));
+    api.getAuthProviders(controller.signal).then((result) => { setProviders(result.items); setEmailSignIn(result.email === true); }).catch(() => setProviders([]));
     return () => controller.abort();
   }, []);
 
@@ -186,7 +202,7 @@ export function TeamScreen({ onBack }: { onBack: () => void }) {
       <RolePicker options={centerRoles.filter((role) => !role.archived || roles.includes(role.key))} roles={roles} onToggle={toggleRole} note={roleNote}/>
       {error && <p className="form-error">{error}</p>}
       <button className="primary-button" data-testid="save-team-member" disabled={saving || !roles.length} onClick={() => update({ roles })}>{saving ? 'Сохраняем…' : 'Сохранить роли'}</button>
-      <MessengerAccess member={selected} providers={providers} onChanged={() => load()}/>
+      <MessengerAccess member={selected} providers={providers} emailSignIn={emailSignIn} onChanged={() => load()}/>
       <button className={`team-status-action ${selected.status}`} disabled={saving} onClick={() => update({ status: selected.status === 'active' ? 'blocked' : 'active' })}>{selected.status === 'active' ? 'Заблокировать доступ' : 'Восстановить доступ'}</button>
     </div>}
   </section>;

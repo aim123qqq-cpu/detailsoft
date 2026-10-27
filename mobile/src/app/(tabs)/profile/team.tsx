@@ -7,7 +7,7 @@ import { colors, radius, space } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Loading, Notice, Pill, Screen } from '@/ui';
 
-const PROVIDERS = { telegram: 'Telegram', max: 'MAX' } as const;
+const PROVIDERS = { telegram: 'Telegram', max: 'MAX', email: 'Email' } as const;
 const people = (count: number) => count % 10 === 1 && count % 100 !== 11 ? 'сотрудник' : [2, 3, 4].includes(count % 10) && ![12, 13, 14].includes(count % 100) ? 'сотрудника' : 'сотрудников';
 
 /** The team (who works here, with which roles) and the roles with their permissions. */

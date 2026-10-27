@@ -122,7 +122,7 @@ export type CatalogVariant = {
 export type ApiError = { error: { code: string; message: string } };
 
 export type SessionContext = {
-  actor: { displayName: string; roles: string[]; roleNames: string[]; memberId: string | null; authMethod: 'demo' | 'messenger' | 'access_token'; authProvider?: 'telegram' | 'max' | null; legalAccepted?: boolean };
+  actor: { displayName: string; roles: string[]; roleNames: string[]; memberId: string | null; authMethod: 'demo' | 'messenger' | 'access_token'; authProvider?: SignInProvider | null; legalAccepted?: boolean };
   legalVersion?: string;
   tenant: { id: string; name: string; timezone: string; requisites?: CenterRequisites };
   preferences: { locale: string; currency: string };
@@ -171,11 +171,13 @@ export type TeamMember = {
 };
 
 export type MessengerProvider = 'telegram' | 'max';
-export type MessengerLink = { id: string; memberId: string; provider: MessengerProvider; externalName: string | null; linkedAt: string };
+/** How a person confirms a sign-in: a button in a messenger bot, or a code sent by email. */
+export type SignInProvider = MessengerProvider | 'email';
+export type MessengerLink = { id: string; memberId: string; provider: SignInProvider; externalName: string | null; linkedAt: string };
 export type AuthProvider = { provider: MessengerProvider; title: string; botName: string | null };
 export type LoginRequest = {
   id: string;
-  provider: MessengerProvider;
+  provider: SignInProvider;
   shortCode: string;
   pollSecret: string;
   expiresAt: string;
@@ -183,11 +185,13 @@ export type LoginRequest = {
   deepLink: string | null;
   /** "signup": opened to create a new center; the person becomes its owner. */
   purpose?: 'login' | 'signup';
+  /** For a sign-in by email: the address the code went to. */
+  email?: string;
 };
 export type LoginMembership = { tenant: { id: string; name: string }; member: { id: string; displayName: string; roles: string[] } };
 export type LoginStatus = {
   id: string;
-  provider: MessengerProvider;
+  provider: SignInProvider;
   status: 'PENDING' | 'AWAITING_CONFIRMATION' | 'CONFIRMED' | 'DENIED' | 'CONSUMED' | 'EXPIRED';
   expiresAt: string;
   memberships: LoginMembership[];
