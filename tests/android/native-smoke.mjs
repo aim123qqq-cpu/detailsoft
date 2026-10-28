@@ -21,7 +21,9 @@ const telegram = {
   async sendMessage(userId, text, buttons) { this.sent.push({ userId, text, buttons }); },
   async answerCallback() {}
 };
-const server = createDetailFlowServer({ databasePath: ':memory:', seed: true, staticDir: resolve('dist'), messengers: [telegram] });
+// A stand-in for the mailbox: letters with sign-in codes are kept for the test to read.
+const mailer = { letters: [], async send(letter) { this.letters.push(letter); } };
+const server = createDetailFlowServer({ databasePath: ':memory:', seed: true, staticDir: resolve('dist'), messengers: [telegram], mailer });
 // The app reaches the server through a proxy on PORT; switching the proxy off is the phone losing the network.
 const SERVER_PORT = PORT + 1;
 await new Promise((done) => server.listen(SERVER_PORT, '127.0.0.1', done));
@@ -512,6 +514,37 @@ try {
   const after = await fetch(`http://127.0.0.1:${SERVER_PORT}/api/session`, { headers: { authorization: `Bearer ${created.accessToken}` } });
   assert.equal(after.status, 401, 'the access code no longer works');
   screenshot(resolve(out, '07-after-delete.png'));
+
+  step('a new owner creates a center from the sign-in screen by email, without a messenger');
+  await tap('Создать свой центр');
+  await waitFor('Новый центр');
+  await tapNode(await scrollTo('name@mail.ru'));
+  await type('owner@example.test');
+  back(); // hide the keyboard
+  await tapNode(await scrollTo('Продолжить с email'));
+  await waitFor('Код из письма', { timeout: 20_000 });
+  const letter = mailer.letters.at(-1);
+  assert.equal(letter.to, 'owner@example.test');
+  screenshot(resolve(out, '34-email-code.png'));
+  await tapNode(await scrollTo('000000'));
+  await type(letter.text.match(/Ваш код: (\d{6})/)[1]);
+  back();
+  await tap('Подтвердить');
+  await tapNode(await scrollTo('Например, Детейлинг Север'));
+  await type('Email Center');
+  back();
+  await tapNode(await scrollTo('Имя Фамилия'));
+  await type('Email Owner');
+  back();
+  await tapNode(await scrollTo(/^Принимаю Пользовательское соглашение$/));
+  await tap(/^Даю согласие на обработку персональных данных$/);
+  await tapNode(await scrollTo('Создать центр'));
+  await waitFor('Первые шаги', { timeout: 20_000 });
+  await tap('Профиль');
+  await scrollTo('Вы вошли по email');
+  screenshot(resolve(out, '34b-email-owner.png'));
+  await tapNode(await scrollTo(/^Выйти$/));
+  await waitFor('Вход в DetailFlow');
 
   step('a new owner creates a center from the sign-in screen through Telegram');
   await tap('Создать свой центр');
