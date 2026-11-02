@@ -464,6 +464,15 @@ export const api = {
   markNotificationsRead() {
     return request<{ marked: number }>('/api/notifications/read', { method: 'POST', body: JSON.stringify({ all: true }) });
   },
+  getPushKey() {
+    return request<{ publicKey: string }>('/api/notifications/push-key');
+  },
+  subscribePush(subscription: PushSubscriptionJSON) {
+    return request<{ subscribed: true }>('/api/notifications/push', { method: 'POST', body: JSON.stringify(subscription) });
+  },
+  unsubscribePush(endpoint: string) {
+    return request<{ removed: boolean }>('/api/notifications/push/remove', { method: 'POST', body: JSON.stringify({ endpoint }) });
+  },
   getNotificationPrefs(signal?: AbortSignal) {
     return request<NotificationPrefs>('/api/notifications/preferences', { signal });
   },

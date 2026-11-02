@@ -64,6 +64,14 @@ test('the bell shows unread reminders, the feed opens and reads them, the owner 
     assert.equal(saved.beforeMinutes, 30);
     assert.equal(saved.evening.enabled, true);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal scroll');
+
+    // A tap on a notification on the device opens the site at ?open=notifications: the feed, with the
+    // switch for notifications on this device.
+    await page.goto(`${baseUrl}/?open=notifications`, { waitUntil: 'domcontentloaded' });
+    await page.getByTestId('notifications-screen').waitFor();
+    await page.getByTestId('device-push').waitFor();
+    assert.equal(await page.getByTestId('pref-device').isChecked(), false, 'off until the person turns it on');
+    assert.equal(new URL(page.url()).search, '', 'the address is cleaned');
   } finally {
     await browser.close();
     await new Promise((done) => server.close(done));

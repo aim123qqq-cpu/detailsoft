@@ -368,6 +368,10 @@ export class AuthRepository {
       this.db.prepare('DELETE FROM member_messenger_links WHERE tenant_id = ? AND member_id = ?').run(tenantId, memberId);
       this.db.prepare('DELETE FROM messenger_invites WHERE tenant_id = ? AND member_id = ?').run(tenantId, memberId);
       this.db.prepare('DELETE FROM tenant_member_tokens WHERE tenant_id = ? AND member_id = ?').run(tenantId, memberId);
+      // Devices that got this person's notifications, and the notifications themselves, go with the account.
+      this.db.prepare('DELETE FROM push_subscriptions WHERE tenant_id = ? AND member_id = ?').run(tenantId, memberId);
+      this.db.prepare('DELETE FROM notifications WHERE tenant_id = ? AND member_id = ?').run(tenantId, memberId);
+      this.db.prepare('DELETE FROM member_notification_prefs WHERE tenant_id = ? AND member_id = ?').run(tenantId, memberId);
       this.db.prepare('UPDATE auth_sessions SET revoked_at = ? WHERE tenant_id = ? AND member_id = ? AND revoked_at IS NULL').run(now, tenantId, memberId);
       this.db.prepare(`UPDATE tenant_members SET display_name = 'Удалённый сотрудник', roles_json = '[]', status = 'blocked', updated_at = ?
         WHERE id = ? AND tenant_id = ?`).run(now, memberId, tenantId);

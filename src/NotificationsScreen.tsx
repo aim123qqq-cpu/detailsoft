@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
+import { disablePush, enablePush, pushState, type PushState } from './devicePush';
 import type { AppNotification, NotificationPrefs } from './types';
 
 const timeFormat = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -11,6 +12,15 @@ export function NotificationsScreen({ onOpenBookings, onRead }: { onOpenBookings
   const [items, setItems] = useState<AppNotification[] | null>(null);
   const [prefs, setPrefs] = useState<NotificationPrefs | null>(null);
   const [error, setError] = useState('');
+  const [device, setDevice] = useState<PushState | null>(null);
+  const [deviceBusy, setDeviceBusy] = useState(false);
+  useEffect(() => { pushState().then(setDevice, () => setDevice('unsupported')); }, []);
+  const switchDevice = async (on: boolean) => {
+    setDeviceBusy(true); setError('');
+    try { setDevice(on ? await enablePush() : await disablePush()); }
+    catch (requestError) { setError((requestError as Error).message || 'Не удалось включить уведомления на этом устройстве'); }
+    finally { setDeviceBusy(false); }
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -53,6 +63,12 @@ export function NotificationsScreen({ onOpenBookings, onRead }: { onOpenBookings
 
       {prefs && <section className="settings-panel notification-prefs" aria-label="Что присылать">
         <div className="settings-panel-heading"><span>Что присылать мне</span></div>
+        {device && device !== 'unsupported' && <label className="notification-toggle" data-testid="device-push">
+          <span><b>Уведомления на этом устройстве</b><small>{device === 'ios-tab'
+            ? 'На iPhone работают, когда DetailFlow добавлен на экран «Домой»: «Поделиться» → «На экран „Домой“».'
+            : device === 'denied' ? 'Запрещены в настройках браузера для detailflow.ru — разрешите их там.' : 'Всплывают, даже когда DetailFlow закрыт'}</small></span>
+          {(device === 'on' || device === 'off') && <input type="checkbox" role="switch" data-testid="pref-device" checked={device === 'on'} disabled={deviceBusy} onChange={(event) => void switchDevice(event.target.checked)}/>}
+        </label>}
         {([
           ['reminders', 'Напоминания о записях', 'Перед записью и план дня — как настроил центр'],
           ['news', 'Новости и опросы DetailFlow', 'Обновления сервиса и короткие вопросы о работе'],

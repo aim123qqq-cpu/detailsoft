@@ -347,6 +347,19 @@ export function createDetailFlowServer({
             const ids = body?.all === true ? 'all' : Array.isArray(body?.ids) ? body.ids.map(String).slice(0, 200) : [];
             return sendJson(response, 200, { marked: notifications.markRead(memberId, ids) });
           }
+          // Notifications on this device (Web Push): the browser asks for the key, then hands in its subscription.
+          if (request.method === 'GET' && url.pathname === '/api/notifications/push-key') {
+            return sendJson(response, 200, { publicKey: notifications.vapidKeys().publicKey });
+          }
+          if (request.method === 'POST' && url.pathname === '/api/notifications/push') {
+            const result = notifications.subscribePush(tenantId, memberId, await readJson(request), request.headers['user-agent']);
+            if (result.kind === 'subscribed') return sendJson(response, 200, { subscribed: true });
+            return sendJson(response, 422, { error: { code: 'validation_error', message: 'Браузер передал неполную подписку на уведомления' } });
+          }
+          if (request.method === 'POST' && url.pathname === '/api/notifications/push/remove') {
+            const body = await readJson(request);
+            return sendJson(response, 200, { removed: notifications.unsubscribePush(memberId, body?.endpoint) });
+          }
           if (url.pathname === '/api/notifications/preferences') {
             if (request.method === 'GET') return sendJson(response, 200, notifications.memberPrefs(memberId));
             if (request.method === 'PUT') return sendJson(response, 200, notifications.updateMemberPrefs(tenantId, memberId, await readJson(request)));

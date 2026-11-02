@@ -3,6 +3,7 @@
 // Texts go to messengers (foreign services among them), so they carry no customers' names or phones:
 // time, car model and length only; the details are one tap away in the app.
 import { randomUUID } from 'node:crypto';
+import { generateVapidKeys, sendWebPush } from './web-push.mjs';
 
 export const REMINDER_BEFORE = [15, 30, 60, 120, 180];
 const DEFAULTS = { beforeMinutes: 60, morning: { enabled: true, time: '09:00' }, evening: { enabled: false, time: '19:00' } };
@@ -25,9 +26,47 @@ const plural = (count, one, few, many) => {
 const duration = (minutes) => minutes >= 60 ? `${Math.floor(minutes / 60)} ч${minutes % 60 ? ` ${minutes % 60} мин` : ''}` : `${minutes} мин`;
 const beforeLabel = (minutes) => minutes >= 60 ? `${minutes / 60} ${plural(minutes / 60, 'час', 'часа', 'часов')}` : `${minutes} минут`;
 
-export function createNotificationCenter({ db, repository, adapters = new Map(), readyProviders = new Set(), now = () => new Date() }) {
+export function createNotificationCenter({ db, repository, adapters = new Map(), readyProviders = new Set(), now = () => new Date(), pushSender = sendWebPush, pushSubject = 'https://detailflow.ru' }) {
   const sentBefore = (key) => Boolean(db.prepare('SELECT 1 FROM notification_sends WHERE key = ?').get(key));
   const markSent = (key) => db.prepare('INSERT OR IGNORE INTO notification_sends (key) VALUES (?)').run(key);
+
+  /** The VAPID key pair: made once on the first start and kept in the database. */
+  function vapidKeys() {
+    const stored = db.prepare("SELECT value FROM app_settings WHERE key = 'vapid'").get();
+    if (stored) return JSON.parse(stored.value);
+    const keys = generateVapidKeys();
+    db.prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('vapid', ?)").run(JSON.stringify(keys));
+    return JSON.parse(db.prepare("SELECT value FROM app_settings WHERE key = 'vapid'").get().value);
+  }
+
+  function subscribePush(tenantId, memberId, input, userAgent = '') {
+    const endpoint = String(input?.endpoint ?? '');
+    const p256dh = String(input?.keys?.p256dh ?? '');
+    const auth = String(input?.keys?.auth ?? '');
+    if (!/^https:\/\//.test(endpoint) || endpoint.length > 1000 || !/^[\w-]{80,100}$/.test(p256dh) || !/^[\w-]{16,32}$/.test(auth)) return { kind: 'invalid' };
+    db.prepare(`INSERT INTO push_subscriptions (endpoint, tenant_id, member_id, p256dh, auth, user_agent) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(endpoint) DO UPDATE SET tenant_id = excluded.tenant_id, member_id = excluded.member_id, p256dh = excluded.p256dh, auth = excluded.auth, user_agent = excluded.user_agent`)
+      .run(endpoint, tenantId, memberId, p256dh, auth, String(userAgent).slice(0, 200));
+    return { kind: 'subscribed' };
+  }
+
+  function unsubscribePush(memberId, endpoint) {
+    return db.prepare('DELETE FROM push_subscriptions WHERE member_id = ? AND endpoint = ?').run(memberId, String(endpoint ?? '')).changes > 0;
+  }
+
+  /** Sends to every device of a member; a subscription the push service no longer knows is removed. */
+  async function pushToDevices(memberId, message) {
+    for (const subscription of db.prepare('SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE member_id = ?').all(memberId)) {
+      try {
+        const status = await pushSender(subscription, message, { vapid: vapidKeys(), subject: pushSubject });
+        if (status === 404 || status === 410) db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(subscription.endpoint);
+        else if (status >= 200 && status < 300) db.prepare('UPDATE push_subscriptions SET last_sent_at = CURRENT_TIMESTAMP WHERE endpoint = ?').run(subscription.endpoint);
+        else console.error(`web push answered ${status}`);
+      } catch (error) {
+        console.error('web push failed:', error.message);
+      }
+    }
+  }
 
   function reminderSettings(tenantId) {
     const row = db.prepare('SELECT * FROM tenant_reminder_settings WHERE tenant_id = ?').get(tenantId);
@@ -88,6 +127,7 @@ export function createNotificationCenter({ db, repository, adapters = new Map(),
     const insert = db.prepare(`INSERT INTO notifications (id, tenant_id, member_id, kind, title, body, link, broadcast_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
     for (const memberId of memberIds) {
       insert.run(`ntf_${randomUUID()}`, tenantId, memberId, kind, title, body, link, broadcastId);
+      await pushToDevices(memberId, { title, body, link, kind });
       if (!memberPrefs(memberId).viaMessenger) continue;
       for (const linkRow of db.prepare('SELECT provider, external_user_id FROM member_messenger_links WHERE tenant_id = ? AND member_id = ?').all(tenantId, memberId)) {
         const adapter = adapters.get(linkRow.provider);
@@ -163,5 +203,5 @@ export function createNotificationCenter({ db, repository, adapters = new Map(),
     db.prepare(`DELETE FROM notification_sends WHERE sent_at < datetime('now', '-30 days')`).run();
   }
 
-  return { reminderSettings, updateReminderSettings, memberPrefs, updateMemberPrefs, list, markRead, deliver, tick };
+  return { vapidKeys, subscribePush, unsubscribePush, reminderSettings, updateReminderSettings, memberPrefs, updateMemberPrefs, list, markRead, deliver, tick };
 }

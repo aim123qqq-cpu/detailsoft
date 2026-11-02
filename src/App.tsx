@@ -177,6 +177,19 @@ export function App() {
   }, [memberId]);
   const markedRead = useCallback(() => setUnread(0), []);
   const openNotifications = () => setOverlays((stack) => stack.some((item) => item.kind === 'notifications') ? stack : [...stack, { kind: 'notifications', id: 'feed' }]);
+  // A tap on a notification on this device opens the feed: a new window comes with ?open=notifications,
+  // an open one gets a message from the service worker.
+  useEffect(() => {
+    if (!memberId) return;
+    const open = () => setOverlays((stack) => stack.some((item) => item.kind === 'notifications') ? stack : [...stack, { kind: 'notifications', id: 'feed' }]);
+    if (new URLSearchParams(window.location.search).get('open') === 'notifications') {
+      open();
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+    const onMessage = (event: MessageEvent) => { if (event.data?.type === 'open-notifications') open(); };
+    navigator.serviceWorker?.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
+  }, [memberId]);
 
   // Lists under an overlay are refreshed on return: intake, work or handover may have changed them.
   const [workspaceRefresh, setWorkspaceRefresh] = useState(0);

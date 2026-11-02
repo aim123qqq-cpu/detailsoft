@@ -6,7 +6,7 @@
  * - App pages: network first; without a network, the last app page that was loaded.
  * - /assets/ (hashed by Vite, never change): cache first. Assets the current page no longer
  *   references are removed after each successful load of the page.
- * - Fonts: cache first, refreshed in the background.
+ * - Notifications on this device (Web Push): shown on "push", a tap opens the feed.
  * - Static pages beside the app (/landing/, /landing22/, /privacy/, /terms/, /consent/, /licenses/) are left to the network.
  */
 const SHELL = 'detailflow-shell-v1';
@@ -70,4 +70,32 @@ self.addEventListener('fetch', (event) => {
     }
     return;
   }
+});
+
+// Notifications on this device (Web Push): the server encrypts each message for this browser; it carries
+// no customers' names or phones, only what the feed shows. A tap opens the feed in the app.
+self.addEventListener('push', (event) => {
+  let message = {};
+  try { message = event.data ? event.data.json() : {}; } catch { message = { title: event.data?.text() ?? '' }; }
+  event.waitUntil(self.registration.showNotification(message.title || 'DetailFlow', {
+    body: message.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: message.link || message.kind || 'detailflow',
+    data: { link: message.link || null }
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const app = windows.find((client) => new URL(client.url).origin === self.location.origin);
+    if (app) {
+      await app.focus();
+      app.postMessage({ type: 'open-notifications' });
+      return;
+    }
+    await self.clients.openWindow('/?open=notifications');
+  })());
 });
