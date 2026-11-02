@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import { LEGAL_VERSION } from '@df/legal';
+import * as WebBrowser from 'expo-web-browser';
+import { LEGAL_VERSION, legalLinks } from '@df/legal';
 import type { AuthProvider, LoginMembership, LoginRequest, LoginStatus } from '@df/types';
 import { ApiError, createApi } from '@/lib/api';
 import { LegalChecks, type LegalState } from '@/features/legal-checks';
@@ -226,6 +227,13 @@ export default function LoginScreen() {
       </Card>}
 
       {!login && mode === 'login' && demo && <Button title="Демо-режим" tone="quiet" onPress={() => signIn('demo-session-token')} testID="login-demo"/>}
+
+      {/* Before anyone signs in: how their data is handled (AppGallery and Google Play ask for it on this screen). */}
+      <Text style={styles.legal}>
+        <Text style={styles.legalLink} onPress={() => void WebBrowser.openBrowserAsync(`${server}${legalLinks.privacy}`, { toolbarColor: colors.ground, controlsColor: colors.primary })}>Политика обработки персональных данных</Text>
+        {' · '}
+        <Text style={styles.legalLink} onPress={() => void WebBrowser.openBrowserAsync(`${server}${legalLinks.terms}`, { toolbarColor: colors.ground, controlsColor: colors.primary })}>Пользовательское соглашение</Text>
+      </Text>
     </Screen>
   );
 }
@@ -234,5 +242,7 @@ const styles = StyleSheet.create({
   code: { color: colors.text, fontSize: 40, fontWeight: '800', letterSpacing: 6, textAlign: 'center', marginVertical: space.s, fontVariant: ['tabular-nums'] },
   tenant: { backgroundColor: colors.surfaceRaised, borderRadius: radius.m, padding: space.m, overflow: 'hidden' },
   tenantName: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  tenantRole: { color: colors.muted, fontSize: 14, marginTop: 2 }
+  tenantRole: { color: colors.muted, fontSize: 14, marginTop: 2 },
+  legal: { color: colors.muted, fontSize: 13, lineHeight: 20, textAlign: 'center', marginTop: space.l },
+  legalLink: { color: colors.muted, textDecorationLine: 'underline' }
 });
