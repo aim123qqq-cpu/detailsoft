@@ -464,6 +464,9 @@ export const api = {
   markNotificationsRead() {
     return request<{ marked: number }>('/api/notifications/read', { method: 'POST', body: JSON.stringify({ all: true }) });
   },
+  answerSurvey(broadcastId: string, answer: { option: number | null; rating: number | null; comment: string }) {
+    return request<{ answered: true }>(`/api/notifications/surveys/${encodeURIComponent(broadcastId)}/answer`, { method: 'POST', body: JSON.stringify(answer) });
+  },
   getPushKey() {
     return request<{ publicKey: string }>('/api/notifications/push-key');
   },

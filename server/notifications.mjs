@@ -108,9 +108,13 @@ export function createNotificationCenter({ db, repository, adapters = new Map(),
   }
 
   function list(memberId, limit = 50) {
-    const items = db.prepare(`SELECT id, kind, title, body, link, broadcast_id, created_at, read_at FROM notifications
-      WHERE member_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`).all(memberId, limit)
-      .map((row) => ({ id: row.id, kind: row.kind, title: row.title, body: row.body, link: row.link, broadcastId: row.broadcast_id, createdAt: row.created_at, read: row.read_at !== null }));
+    // A survey from DetailFlow comes with its questions and whether this person has answered it.
+    const items = db.prepare(`SELECT n.id, n.kind, n.title, n.body, n.link, n.broadcast_id, n.created_at, n.read_at, b.survey_json,
+        EXISTS (SELECT 1 FROM broadcast_answers a WHERE a.broadcast_id = n.broadcast_id AND a.member_id = n.member_id) AS answered
+      FROM notifications n LEFT JOIN broadcasts b ON b.id = n.broadcast_id
+      WHERE n.member_id = ? ORDER BY n.created_at DESC, n.rowid DESC LIMIT ?`).all(memberId, limit)
+      .map((row) => ({ id: row.id, kind: row.kind, title: row.title, body: row.body, link: row.link, broadcastId: row.broadcast_id, createdAt: row.created_at, read: row.read_at !== null,
+        ...(row.survey_json ? { survey: JSON.parse(row.survey_json), answered: Boolean(row.answered) } : {}) }));
     const unread = db.prepare('SELECT COUNT(*) AS count FROM notifications WHERE member_id = ? AND read_at IS NULL').get(memberId).count;
     return { items, unread };
   }

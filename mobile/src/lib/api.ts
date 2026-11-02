@@ -427,6 +427,8 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
     updateSimpleService: (serviceId: string, input: SimpleServiceInput & { active: boolean }) =>
       request<ManagedCatalogItem>(`/api/tenants/current/catalog/simple-services/${encodeURIComponent(serviceId)}`, { method: 'PUT', body: input }),
     settings: (signal?: AbortSignal) => request<CenterSettings>('/api/tenants/current/settings', { signal }),
+    answerSurvey: (broadcastId: string, answer: { option: number | null; rating: number | null; comment: string }) =>
+      request<{ answered: true }>(`/api/notifications/surveys/${encodeURIComponent(broadcastId)}/answer`, { method: 'POST', body: answer }),
     notifications: (signal?: AbortSignal) => request<{ items: AppNotification[]; unread: number }>('/api/notifications', { signal }),
     markNotificationsRead: () => request<{ marked: number }>('/api/notifications/read', { method: 'POST', body: { all: true } }),
     notificationPrefs: (signal?: AbortSignal) => request<NotificationPrefs>('/api/notifications/preferences', { signal }),

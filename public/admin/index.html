@@ -50,6 +50,28 @@
     .code { display: flex; justify-content: center; gap: 6px; font: 800 30px/1 Manrope, monospace; letter-spacing: .08em; }
     .error { color: var(--bad); }
     footer { margin-top: 18px; color: var(--soft); font-size: 12px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+    .tabs button.active { border-color: var(--accent); color: var(--accent); }
+    .form { display: grid; gap: 12px; align-content: start; }
+    .form label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 700; }
+    .form input:not([type=radio]):not([type=checkbox]), .form textarea, .form select { width: 100%; padding: 10px 12px; border: 1px solid #33404d; border-radius: 10px; color: var(--ink); background: #0c1218; font: inherit; }
+    .form .check { display: flex; align-items: center; gap: 8px; color: var(--ink); font-weight: 600; }
+    .form #survey-fields { display: grid; gap: 10px; }
+    .form #survey-fields[hidden], .form #center-field[hidden] { display: none; }
+    .segmented { display: flex; gap: 6px; flex-wrap: wrap; }
+    .segmented label { display: block; cursor: pointer; }
+    .segmented input { position: absolute; opacity: 0; }
+    .segmented span { display: inline-block; padding: 8px 14px; border: 1px solid #394550; border-radius: 10px; color: var(--ink); }
+    .segmented input:checked + span { border-color: var(--accent); color: var(--accent); background: rgba(255,121,57,.08); }
+    .segmented input:focus-visible + span { outline: 2px solid var(--accent); }
+    .actions { display: flex; gap: 8px; }
+    .preview { display: grid; gap: 8px; padding: 14px; border: 1px dashed rgba(255,121,57,.5); border-radius: 12px; }
+    .preview p { margin: 0; white-space: pre-line; }
+    .ok-text { color: var(--ok); font-weight: 700; }
+    tr.clickable { cursor: pointer; }
+    tr.clickable:hover td { background: var(--raised); }
+    .comment { margin: 8px 0 0; padding: 10px; border-radius: 10px; background: var(--raised); white-space: pre-line; }
+    .comment small { display: block; margin-top: 4px; color: var(--soft); }
   </style>
 </head>
 <body>
@@ -67,6 +89,7 @@ const bytes = (value) => value >= 1024 ** 3 ? `${(value / 1024 ** 3).toFixed(1)}
 const when = (iso) => iso ? new Date(iso.includes('T') ? iso : `${iso.replace(' ', 'T')}Z`).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }) : '—';
 const duration = (seconds) => seconds >= 86400 ? `${Math.floor(seconds / 86400)} дн ${Math.floor(seconds % 86400 / 3600)} ч` : seconds >= 3600 ? `${Math.floor(seconds / 3600)} ч ${Math.floor(seconds % 3600 / 60)} мин` : `${Math.floor(seconds / 60)} мин`;
 let refreshTimer = null;
+let centersCache = [];
 
 async function api(path, init = {}) {
   const response = await fetch(path, { ...init, headers: { 'content-type': 'application/json', ...(token() ? { authorization: `Bearer ${token()}` } : {}), ...(init.headers ?? {}) } });
@@ -150,7 +173,7 @@ function render(stats) {
   const lastWeek = stats.activity.slice(-7);
   const sum = (key) => lastWeek.reduce((total, day) => total + day[key], 0);
   app.innerHTML = `
-    <header><h1>DetailFlow · Админка<small>Обновлено ${when(stats.generatedAt)} · версия ${esc(stats.version)}</small></h1><button id="logout">Выйти</button></header>
+    <header><h1>DetailFlow · Админка<small>Обновлено ${when(stats.generatedAt)} · версия ${esc(stats.version)}</small></h1>${nav('overview')}</header>
     <section class="grid kpis">
       <div class="card kpi"><span>Центров</span><strong>${num(stats.centers.total)}</strong><small>активны за неделю: ${num(stats.centers.activeWeek)}</small></div>
       <div class="card kpi"><span>Сотрудников</span><strong>${num(u.members)}</strong><small>входили за сутки: ${num(u.signedInDay)}, за неделю: ${num(u.signedInWeek)}</small></div>
@@ -179,7 +202,125 @@ function render(stats) {
         <td>${num(c.members)}</td><td>${num(c.services)}</td><td>${num(c.customers)}</td><td>${num(c.bookings)}</td><td>${num(c.orders)}</td><td>${num(c.documents)}</td><td>${when(c.lastActivityAt)}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">Центров пока нет</td></tr>'}</tbody>
     </table></div></section>
     <footer>Входы по мессенджерам: ${u.byProvider.map((p) => `${p.provider === 'max' ? 'MAX' : 'Telegram'} — ${num(p.accounts)}`).join(', ') || 'нет'} · кодов доступа: ${num(u.accessCodes)}. Данные клиентов центров здесь не показываются. Обновляется каждые 30 секунд.</footer>`;
+  centersCache = stats.centers.list.map((center) => ({ id: center.id, name: center.name }));
+  bindNav();
+}
+
+// Tabs: the overview (refreshed every 30 s) and the broadcasts (not refreshed, so a draft is never lost).
+function nav(active) {
+  return `<nav class="tabs"><button data-tab="overview" class="${active === 'overview' ? 'active' : ''}">Обзор</button><button data-tab="broadcasts" data-testid="tab-broadcasts" class="${active === 'broadcasts' ? 'active' : ''}">Рассылки</button><button id="logout">Выйти</button></nav>`;
+}
+function bindNav() {
+  document.querySelector('[data-tab="overview"]').addEventListener('click', showDashboard);
+  document.querySelector('[data-tab="broadcasts"]').addEventListener('click', showBroadcasts);
   document.getElementById('logout').addEventListener('click', async () => { await api('/api/admin/logout', { method: 'POST' }).catch(() => {}); setToken(null); showLogin(); });
+}
+
+const KIND_LABELS = { news: 'Новость', update: 'Обновление', survey: 'Опрос' };
+const AUDIENCE_LABELS = { all: 'все пользователи', admins: 'владельцы и администраторы', center: 'один центр' };
+
+function readDraft() {
+  const form = document.getElementById('broadcast-form');
+  const data = new FormData(form);
+  const kind = data.get('kind');
+  return {
+    kind, title: String(data.get('title') ?? '').trim(), body: String(data.get('body') ?? '').trim(),
+    audience: data.get('audience'), tenantId: data.get('audience') === 'center' ? data.get('tenantId') : null,
+    survey: kind === 'survey' ? { options: String(data.get('options') ?? '').split('\n').map((line) => line.trim()).filter(Boolean), rating: data.get('rating') === 'on', comment: data.get('comment') === 'on' } : null
+  };
+}
+
+async function showBroadcasts() {
+  clearInterval(refreshTimer);
+  app.innerHTML = `
+    <header><h1>DetailFlow · Рассылки<small>Новости, обновления и опросы для людей центров. Получают только те, у кого включено «Новости и опросы».</small></h1>${nav('broadcasts')}</header>
+    <section class="grid two">
+      <form class="card form" id="broadcast-form" data-testid="broadcast-form">
+        <h2>Новая рассылка</h2>
+        <div class="segmented">${Object.entries(KIND_LABELS).map(([value, label], index) => `<label><input type="radio" name="kind" value="${value}" ${index === 0 ? 'checked' : ''}><span>${label}</span></label>`).join('')}</div>
+        <label>Заголовок<input name="title" maxlength="120" required placeholder="Например: Напоминания о записях"></label>
+        <label>Текст<textarea name="body" rows="4" maxlength="2000" placeholder="Что нового и чем это поможет"></textarea></label>
+        <div id="survey-fields" hidden>
+          <label>Варианты ответа — каждый с новой строки (можно без них)<textarea name="options" rows="3" placeholder="Удобно&#10;Нормально&#10;Неудобно"></textarea></label>
+          <label class="check"><input type="checkbox" name="rating"> Оценка от 1 до 5</label>
+          <label class="check"><input type="checkbox" name="comment"> Свободный комментарий</label>
+        </div>
+        <label>Кому<select name="audience"><option value="all">Все пользователи</option><option value="admins">Только владельцы и администраторы</option><option value="center">Один центр</option></select></label>
+        <label id="center-field" hidden>Центр<select name="tenantId">${centersCache.map((center) => `<option value="${esc(center.id)}">${esc(center.name)}</option>`).join('')}</select></label>
+        <p class="error" id="broadcast-error"></p>
+        <div class="actions"><button type="button" id="preview-broadcast" data-testid="preview-broadcast">Проверить</button></div>
+        <div id="broadcast-preview"></div>
+      </form>
+      <div class="card" id="broadcast-results"><h2>Результаты</h2><p class="muted">Выберите рассылку в списке ниже.</p></div>
+    </section>
+    <section class="card"><h2>Отправленные</h2><div class="table" id="broadcast-list"><p class="muted">Загрузка…</p></div></section>`;
+  bindNav();
+  const form = document.getElementById('broadcast-form');
+  const errorBox = document.getElementById('broadcast-error');
+  const previewBox = document.getElementById('broadcast-preview');
+  form.addEventListener('change', () => {
+    const draft = readDraft();
+    document.getElementById('survey-fields').hidden = draft.kind !== 'survey';
+    document.getElementById('center-field').hidden = draft.audience !== 'center';
+    previewBox.innerHTML = '';
+  });
+  form.addEventListener('input', () => { previewBox.innerHTML = ''; });
+  document.getElementById('preview-broadcast').addEventListener('click', async () => {
+    errorBox.textContent = '';
+    const draft = readDraft();
+    if (draft.title.length < 3) { errorBox.textContent = 'Напишите заголовок — от 3 символов.'; return; }
+    try {
+      const reach = await api('/api/admin/broadcasts/preview', { method: 'POST', body: JSON.stringify({ audience: draft.audience, tenantId: draft.tenantId }) });
+      previewBox.innerHTML = `<div class="preview" data-testid="broadcast-preview">
+        <span class="muted">Так увидят в ленте:</span>
+        <b>${esc(KIND_LABELS[draft.kind])} DetailFlow: ${esc(draft.title)}</b>
+        ${draft.body ? `<p>${esc(draft.body)}</p>` : ''}
+        ${draft.survey ? `<p class="muted">${draft.survey.options.map(esc).join(' · ')}${draft.survey.rating ? ' · оценка 1–5' : ''}${draft.survey.comment ? ' · комментарий' : ''}</p>` : ''}
+        <p>Получат: <b>${num(reach.recipients)}</b> чел. в ${num(reach.centers)} центр. — в ленте, копией в мессенджер и на устройство, если включено.</p>
+        <button type="button" class="primary" id="send-broadcast" data-testid="send-broadcast" ${reach.recipients ? '' : 'disabled'}>Отправить ${num(reach.recipients)} чел.</button>
+      </div>`;
+      document.getElementById('send-broadcast').addEventListener('click', async (event) => {
+        event.target.disabled = true;
+        try {
+          const sent = await api('/api/admin/broadcasts', { method: 'POST', body: JSON.stringify(draft) });
+          form.reset();
+          form.dispatchEvent(new Event('change'));
+          previewBox.innerHTML = `<p class="ok-text" data-testid="broadcast-sent">✓ Отправлено: ${num(sent.recipients)} чел.</p>`;
+          loadList();
+        } catch (error) { errorBox.textContent = error.message; event.target.disabled = false; }
+      });
+    } catch (error) { errorBox.textContent = error.message; }
+  });
+  loadList();
+}
+
+async function loadList() {
+  const box = document.getElementById('broadcast-list');
+  try {
+    const { items } = await api('/api/admin/broadcasts');
+    box.innerHTML = items.length ? `<table><thead><tr><th>Рассылка</th><th>Кому</th><th>Получили</th><th>Прочитали</th><th>Ответили</th></tr></thead><tbody>
+      ${items.map((item) => `<tr class="clickable" data-id="${esc(item.id)}" data-testid="broadcast-row"><td>${esc(KIND_LABELS[item.kind])}: ${esc(item.title)}<small>${when(item.createdAt)}</small></td>
+        <td>${esc(item.center ?? AUDIENCE_LABELS[item.audience])}</td><td>${num(item.sent)}</td><td>${num(item.read)}</td><td>${item.kind === 'survey' ? num(item.answers) : '—'}</td></tr>`).join('')}
+      </tbody></table>` : '<p class="muted">Рассылок пока не было.</p>';
+    box.querySelectorAll('[data-id]').forEach((row) => row.addEventListener('click', () => showResults(row.dataset.id)));
+  } catch (error) {
+    if (error.status === 401) { setToken(null); showLogin('Сессия закончилась, войдите снова.'); } else box.innerHTML = `<p class="error">${esc(error.message)}</p>`;
+  }
+}
+
+async function showResults(id) {
+  const box = document.getElementById('broadcast-results');
+  const result = await api(`/api/admin/broadcasts/${encodeURIComponent(id)}`);
+  const bar = (count) => `<div class="meter"><i style="width:${result.answers ? Math.round(count / result.answers * 100) : 0}%"></i></div>`;
+  box.innerHTML = `<h2>Результаты</h2><div class="rows" data-testid="broadcast-results">
+    <b>${esc(KIND_LABELS[result.kind])}: ${esc(result.title)}</b>
+    <div class="row"><span>Получили</span><b>${num(result.sent)}</b></div>
+    ${result.kind === 'survey' ? `<div class="row"><span>Ответили</span><b>${num(result.answers)}</b></div>
+      ${result.options.map((option) => `<div><div class="row"><span>${esc(option.label)}</span><b>${num(option.count)}</b></div>${bar(option.count)}</div>`).join('')}
+      ${result.survey.rating ? `<div class="row"><span>Средняя оценка</span><b>${result.averageRating ?? '—'}</b></div>
+        <div class="row"><span>По оценкам</span><b>${result.ratings.map((item) => `${item.value}★ ${num(item.count)}`).join(' · ')}</b></div>` : ''}
+      ${result.comments.length ? `<div><span class="muted">Комментарии</span>${result.comments.map((comment) => `<p class="comment">${esc(comment.text)}<small>${esc(comment.center)} · ${when(comment.at)}</small></p>`).join('')}</div>` : ''}` : `<p class="muted">${esc(result.body)}</p>`}
+  </div>`;
 }
 
 async function showDashboard() {

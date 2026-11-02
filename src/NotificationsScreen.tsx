@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
+import { SurveyAnswer } from './SurveyAnswer';
 import { disablePush, enablePush, pushState, type PushState } from './devicePush';
 import type { AppNotification, NotificationPrefs } from './types';
 
@@ -57,6 +58,7 @@ export function NotificationsScreen({ onOpenBookings, onRead }: { onOpenBookings
                 <small>{timeFormat.format(parseTime(item.createdAt))}{item.kind === 'broadcast' ? ' · DetailFlow' : ''}</small>
               </span>
             </button>
+            {item.survey && <SurveyAnswer item={{ ...item, survey: item.survey }} onAnswered={() => setItems((list) => list?.map((entry) => entry.id === item.id ? { ...entry, answered: true } : entry) ?? null)}/>}
           </li>
         ))}
       </ol>}

@@ -6,7 +6,7 @@ import { useUnread } from '@/features/notifications';
 import { useSession } from '@/lib/session';
 import { colors, radius, space } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
-import { Body, Card, Label, Loading, Notice, Screen } from '@/ui';
+import { Body, Button, Card, Chip, Field, Label, Loading, Notice, Screen } from '@/ui';
 
 // Stored as SQLite UTC time without a zone.
 const parseTime = (value: string) => new Date(value.includes('T') ? value : `${value.replace(' ', 'T')}Z`);
@@ -21,6 +21,7 @@ export default function NotificationsScreen() {
   const prefs = useResource(useCallback((signal: AbortSignal) => api.notificationPrefs(signal), [api]));
   const [edited, setEdited] = useState<NotificationPrefs | null>(null);
   const [error, setError] = useState('');
+  const [answered, setAnswered] = useState<string[]>([]);
 
   // Opening the feed is reading it: the badge goes away, the new ones stay marked here until next time.
   useEffect(() => {
@@ -48,6 +49,9 @@ export default function NotificationsScreen() {
             <Text style={styles.title}>{item.title}</Text>
             {item.body ? <Text style={styles.body}>{item.body}</Text> : null}
             <Text style={styles.time}>{when(item.createdAt)}{item.kind === 'broadcast' ? ' · DetailFlow' : ''}</Text>
+            {item.survey ? (item.answered || answered.includes(item.id)
+              ? <Text style={styles.done}>✓ Спасибо, ответ отправлен</Text>
+              : <SurveyAnswer item={item} onAnswered={() => setAnswered((list) => [...list, item.id])}/>) : null}
           </View>
         </Pressable>
       ))}
@@ -70,7 +74,39 @@ export default function NotificationsScreen() {
   );
 }
 
+/** A survey from DetailFlow answered right in the feed: one choice, a rating, a comment — once. */
+function SurveyAnswer({ item, onAnswered }: { item: AppNotification; onAnswered: () => void }) {
+  const { api } = useSession();
+  const [option, setOption] = useState<number | null>(null);
+  const [rating, setRating] = useState<number | null>(null);
+  const [comment, setComment] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const survey = item.survey!;
+  const send = async () => {
+    setBusy(true); setError('');
+    try { await api.answerSurvey(item.broadcastId!, { option, rating, comment: comment.trim() }); onAnswered(); }
+    catch (failure) { setError((failure as Error).message); setBusy(false); }
+  };
+  return (
+    <View style={styles.survey}>
+      {survey.options.length ? <View style={styles.chips}>{survey.options.map((label, index) => (
+        <Chip key={index} label={label} selected={option === index} onPress={() => setOption(index)}/>
+      ))}</View> : null}
+      {survey.rating ? <View style={styles.chips}>{[1, 2, 3, 4, 5].map((value) => (
+        <Chip key={value} label={String(value)} selected={rating === value} onPress={() => setRating(value)}/>
+      ))}</View> : null}
+      {survey.comment ? <Field label="Комментарий — по желанию" value={comment} onChangeText={setComment} multiline maxLength={1000}/> : null}
+      {error ? <Notice>{error}</Notice> : null}
+      <Button title="Ответить" busy={busy} disabled={option === null && rating === null && !comment.trim()} onPress={() => void send()} testID="send-survey"/>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  survey: { gap: space.s, marginTop: space.s },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
+  done: { color: colors.ok, fontSize: 14, fontWeight: '700', marginTop: space.xs },
   item: { flexDirection: 'row', gap: space.m, padding: space.m, borderRadius: radius.l, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
   unread: { borderColor: 'rgba(255,121,57,.45)', backgroundColor: 'rgba(255,121,57,.06)' },
   dot: { width: 10, height: 10, borderRadius: 5, marginTop: 6 },

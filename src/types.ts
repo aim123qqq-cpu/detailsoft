@@ -537,6 +537,9 @@ export type AppNotification = {
   broadcastId: string | null;
   createdAt: string;
   read: boolean;
+  // A survey from DetailFlow: what is asked, and whether this person has answered.
+  survey?: { options: string[]; rating: boolean; comment: boolean };
+  answered?: boolean;
 };
 
 export type NotificationPrefs = { reminders: boolean; news: boolean; viaMessenger: boolean };

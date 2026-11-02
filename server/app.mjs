@@ -14,6 +14,7 @@ import { LEGAL_VERSION, hasAcceptedLegal, recordLegalAcceptance } from './legal.
 import { createRequestMetrics, platformStats } from './platform-stats.mjs';
 import { createAdminNotifier } from './admin-notify.mjs';
 import { createNotificationCenter } from './notifications.mjs';
+import { createBroadcasts } from './broadcasts.mjs';
 
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -126,7 +127,8 @@ export function createDetailFlowServer({
   healthTimer.unref?.();
   // Reminders about bookings and the plan of the day, as each center chose (notifications.mjs).
   const notifications = createNotificationCenter({ db, repository, adapters, readyProviders });
-  const reminderTimer = setInterval(() => { notifications.tick().catch((error) => console.error('Reminders failed:', error.message)); }, 60_000);
+  const broadcasts = createBroadcasts({ db, repository, notifications });
+  const reminderTimer = setInterval(() => { notifications.tick().then(() => broadcasts.purge()).catch((error) => console.error('Reminders failed:', error.message)); }, 60_000);
   reminderTimer.unref?.();
   const botStates = () => Object.fromEntries([...adapters.keys()].map((provider) => [provider, {
     status: readyProviders.has(provider) ? 'ready' : 'unavailable',
@@ -266,12 +268,29 @@ export function createDetailFlowServer({
         if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
         return sendJson(response, 404, { error: { code: 'login_not_found', message: 'Запрос входа не найден' } });
       }
-      if (url.pathname === '/api/admin/stats' || url.pathname === '/api/admin/logout') {
+      if (url.pathname === '/api/admin/stats' || url.pathname === '/api/admin/logout' || url.pathname.startsWith('/api/admin/broadcasts')) {
         const authorization = request.headers.authorization;
         const adminToken = typeof authorization === 'string' && authorization.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : '';
         if (!auth.authenticateAdmin(adminToken)) return sendJson(response, 401, { error: { code: 'admin_unauthorized', message: 'Войдите как владелец сервиса' } });
         if (url.pathname === '/api/admin/logout' && request.method === 'POST') return sendJson(response, 200, { revoked: auth.revokeAdminSession(adminToken) });
-        if (request.method === 'GET') return sendJson(response, 200, platformStats({ db, databasePath, backupDirectory, version, bots: botStates(), metrics }));
+        if (url.pathname === '/api/admin/stats' && request.method === 'GET') return sendJson(response, 200, platformStats({ db, databasePath, backupDirectory, version, bots: botStates(), metrics }));
+        // News, updates and surveys to the people of the centers (broadcasts.mjs).
+        if (url.pathname === '/api/admin/broadcasts' && request.method === 'GET') return sendJson(response, 200, { items: broadcasts.list() });
+        if (url.pathname === '/api/admin/broadcasts/preview' && request.method === 'POST') {
+          const result = broadcasts.preview(await readJson(request));
+          return result.kind === 'ok' ? sendJson(response, 200, result) : sendJson(response, 422, { error: { code: 'validation_error', message: 'Выберите, кому отправить' } });
+        }
+        if (url.pathname === '/api/admin/broadcasts' && request.method === 'POST') {
+          const result = await broadcasts.send(await readJson(request));
+          if (result.kind === 'sent') return sendJson(response, 201, result);
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте заголовок, текст, получателей и варианты опроса' } });
+        }
+        const broadcastResults = url.pathname.match(/^\/api\/admin\/broadcasts\/([^/]+)$/);
+        if (broadcastResults && request.method === 'GET') {
+          const result = broadcasts.results(broadcastResults[1]);
+          return result ? sendJson(response, 200, result) : sendJson(response, 404, { error: { code: 'not_found', message: 'Рассылка не найдена' } });
+        }
+        return sendJson(response, 404, { error: { code: 'route_not_found', message: 'Маршрут не найден' } });
       }
 
       if (url.pathname.startsWith('/api/')) {
@@ -348,6 +367,15 @@ export function createDetailFlowServer({
             return sendJson(response, 200, { marked: notifications.markRead(memberId, ids) });
           }
           // Notifications on this device (Web Push): the browser asks for the key, then hands in its subscription.
+          // An answer to a survey from DetailFlow, right from the feed: once per person.
+          const surveyAnswer = url.pathname.match(/^\/api\/notifications\/surveys\/([^/]+)\/answer$/);
+          if (request.method === 'POST' && surveyAnswer) {
+            const result = broadcasts.answer(tenantId, memberId, surveyAnswer[1], await readJson(request));
+            if (result.kind === 'answered') return sendJson(response, 201, { answered: true });
+            if (result.kind === 'already') return sendJson(response, 409, { error: { code: 'already_answered', message: 'Вы уже ответили на этот опрос' } });
+            if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: 'survey_not_found', message: 'Опрос не найден' } });
+            return sendJson(response, 422, { error: { code: 'validation_error', message: 'Выберите ответ' } });
+          }
           if (request.method === 'GET' && url.pathname === '/api/notifications/push-key') {
             return sendJson(response, 200, { publicKey: notifications.vapidKeys().publicKey });
           }

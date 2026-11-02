@@ -2,10 +2,13 @@
 // Prerequisites: the release APK of mobile/ is installed (adb install -r ...), an emulator is running.
 // Run from the repository root: node tests/android/native-smoke.mjs
 import assert from 'node:assert/strict';
-import { mkdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import net from 'node:net';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { createDetailFlowServer } from '../../server/app.mjs';
+import { openDatabase } from '../../server/db.mjs';
 import { carLayout } from '../../src/shared/carLayouts.ts';
 import { adb, back, find, launch, screenshot, scrollTo, sleep, tap, tapAt, tapNode, type, waitFor } from './native-ui.mjs';
 
@@ -23,10 +26,19 @@ const telegram = {
 };
 // A stand-in for the mailbox: letters with sign-in codes are kept for the test to read.
 const mailer = { letters: [], async send(letter) { this.letters.push(letter); } };
-const server = createDetailFlowServer({ databasePath: ':memory:', seed: true, staticDir: resolve('dist'), messengers: [telegram], mailer });
+// A database file, so the service owner can be signed in to /admin to send a survey to the employee.
+const databasePath = join(mkdtempSync(join(tmpdir(), 'df-native-')), 'detailflow.db');
+const ADMIN = `dfa_${'c'.repeat(64)}`;
+const server = createDetailFlowServer({ databasePath, seed: true, staticDir: resolve('dist'), messengers: [telegram], mailer });
 // The app reaches the server through a proxy on PORT; switching the proxy off is the phone losing the network.
 const SERVER_PORT = PORT + 1;
 await new Promise((done) => server.listen(SERVER_PORT, '127.0.0.1', done));
+{
+  const db = openDatabase(databasePath, { seed: false });
+  db.prepare("INSERT INTO platform_admins (provider, external_user_id) VALUES ('telegram', '5001')").run();
+  db.prepare("INSERT INTO admin_sessions (token_hash, provider, external_user_id, expires_at) VALUES (?, 'telegram', '5001', '2999-01-01 00:00:00')").run(createHash('sha256').update(ADMIN).digest('hex'));
+  db.close();
+}
 const sockets = new Set();
 const proxy = net.createServer((client) => {
   const upstream = net.connect(SERVER_PORT, '127.0.0.1');
@@ -493,6 +505,11 @@ try {
 
   step('an employee signs in with an access code and deletes the account');
   const created = await (await api('/api/tenants/current/team', { method: 'POST', body: JSON.stringify({ displayName: 'Мария Орлова', roles: ['intake'] }) })).json();
+  // DetailFlow asks the people of the center a short question; the new employee gets it too.
+  const survey = await api('/api/admin/broadcasts', { method: 'POST', headers: { authorization: `Bearer ${ADMIN}` }, body: JSON.stringify({
+    kind: 'survey', title: 'Удобно ли записывать клиентов?', audience: 'center', tenantId: 'tenant_demo', survey: { options: ['Udobno', 'Normalno'], rating: true, comment: false }
+  }) });
+  assert.equal(survey.status, 201);
   await tap(/^df_/);
   await type(created.accessToken);
   back(); // hide the keyboard
@@ -509,8 +526,15 @@ try {
   // The feed and what to get: an employee has no reminders yet, the switches are there.
   await tap('Уведомления');
   await waitFor('Что присылать мне', { timeout: 20_000 });
-  await waitFor(/^Уведомлений пока нет/);
+  // The survey from DetailFlow is answered right in the feed, once.
+  await waitFor(/Удобно ли записывать клиентов/, { timeout: 20_000 });
+  await tap('Udobno');
+  await tap('5');
   screenshot(resolve(out, '05c-notifications.png'));
+  await tapNode(await scrollTo('Ответить'));
+  await waitFor(/Спасибо, ответ отправлен/, { timeout: 20_000 });
+  const results = await (await api(`/api/admin/broadcasts/${(await survey.json()).id}`, { headers: { authorization: `Bearer ${ADMIN}` } })).json();
+  assert.deepEqual([results.answers, results.options[0].count, results.averageRating], [1, 1, 5], 'the answer reached /admin');
   back();
   await waitFor('Мария Орлова', { timeout: 20_000 });
   await tapNode(await scrollTo('Удалить аккаунт'));
