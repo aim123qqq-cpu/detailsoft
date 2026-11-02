@@ -1,6 +1,6 @@
 import { randomUUID } from 'expo-crypto';
 import type {
-  AnalyticsOverview, AuthProvider, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogSection, CatalogVariant, CenterRole, CenterSettings, Customer, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, LoginRequest, LoginStatus, ManagedCatalog, ManagedCatalogItem,
+  AnalyticsOverview, AppNotification, AuthProvider, NotificationPrefs, ReminderSettings, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogSection, CatalogVariant, CenterRole, CenterSettings, Customer, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, LoginRequest, LoginStatus, ManagedCatalog, ManagedCatalogItem,
   OrderDocument, OrderDocumentContent, OrderDocumentType, OrderListItem, OrderRecommendation, Permission, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, SimpleServiceInput, TeamMember, Vehicle, WorkOrder
 } from '@df/types';
 import type { CenterRequisites } from '@df/shared/orderDocuments';
@@ -427,6 +427,12 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
     updateSimpleService: (serviceId: string, input: SimpleServiceInput & { active: boolean }) =>
       request<ManagedCatalogItem>(`/api/tenants/current/catalog/simple-services/${encodeURIComponent(serviceId)}`, { method: 'PUT', body: input }),
     settings: (signal?: AbortSignal) => request<CenterSettings>('/api/tenants/current/settings', { signal }),
+    notifications: (signal?: AbortSignal) => request<{ items: AppNotification[]; unread: number }>('/api/notifications', { signal }),
+    markNotificationsRead: () => request<{ marked: number }>('/api/notifications/read', { method: 'POST', body: { all: true } }),
+    notificationPrefs: (signal?: AbortSignal) => request<NotificationPrefs>('/api/notifications/preferences', { signal }),
+    updateNotificationPrefs: (input: Partial<NotificationPrefs>) => request<NotificationPrefs>('/api/notifications/preferences', { method: 'PUT', body: input }),
+    reminderSettings: (signal?: AbortSignal) => request<ReminderSettings>('/api/tenants/current/reminders', { signal }),
+    updateReminderSettings: (input: ReminderSettings) => request<ReminderSettings>('/api/tenants/current/reminders', { method: 'PUT', body: input }),
     centerRequisites: (signal?: AbortSignal) => request<CenterRequisites>('/api/tenants/current/requisites', { signal }),
     updateCenterRequisites: (input: CenterRequisites) => request<CenterRequisites>('/api/tenants/current/requisites', { method: 'PUT', body: input }),
     centerSetup: (signal?: AbortSignal) => request<{ services: number; members: number; bookings: number }>('/api/tenants/current/setup', { signal }),

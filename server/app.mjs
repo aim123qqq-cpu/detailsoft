@@ -13,6 +13,7 @@ import { buildBookingPack } from './offline-pack.mjs';
 import { LEGAL_VERSION, hasAcceptedLegal, recordLegalAcceptance } from './legal.mjs';
 import { createRequestMetrics, platformStats } from './platform-stats.mjs';
 import { createAdminNotifier } from './admin-notify.mjs';
+import { createNotificationCenter } from './notifications.mjs';
 
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -123,6 +124,10 @@ export function createDetailFlowServer({
   const notifier = createAdminNotifier({ db, auth, adapters, readyProviders, botDownSince, metrics, databasePath, backupDirectory });
   const healthTimer = setInterval(() => { notifier.check().catch((error) => console.error('Health check failed:', error.message)); }, 60_000);
   healthTimer.unref?.();
+  // Reminders about bookings and the plan of the day, as each center chose (notifications.mjs).
+  const notifications = createNotificationCenter({ db, repository, adapters, readyProviders });
+  const reminderTimer = setInterval(() => { notifications.tick().catch((error) => console.error('Reminders failed:', error.message)); }, 60_000);
+  reminderTimer.unref?.();
   const botStates = () => Object.fromEntries([...adapters.keys()].map((provider) => [provider, {
     status: readyProviders.has(provider) ? 'ready' : 'unavailable',
     problem: readyProviders.has(provider) ? null : botProblems.get(provider) ?? null,
@@ -329,6 +334,32 @@ export function createDetailFlowServer({
           if (result.kind === 'deleted') return sendJson(response, 200, { deleted: true });
           if (result.kind === 'last_owner') return sendJson(response, 409, { error: { code: 'last_owner', message: 'Вы единственный владелец центра. Сначала назначьте владельцем другого сотрудника.' } });
           return sendJson(response, 404, { error: { code: 'member_not_found', message: 'Аккаунт не найден' } });
+        }
+        // The member's notifications: the feed, marking as read, what they want to get.
+        if (url.pathname.startsWith('/api/notifications')) {
+          const memberId = typeof session === 'object' ? session?.memberId : null;
+          if (request.method === 'GET' && url.pathname === '/api/notifications') {
+            return sendJson(response, 200, memberId ? notifications.list(memberId) : { items: [], unread: 0 });
+          }
+          if (!memberId) return sendJson(response, 409, { error: { code: 'no_member', message: 'В демо-режиме уведомлений нет' } });
+          if (request.method === 'POST' && url.pathname === '/api/notifications/read') {
+            const body = await readJson(request);
+            const ids = body?.all === true ? 'all' : Array.isArray(body?.ids) ? body.ids.map(String).slice(0, 200) : [];
+            return sendJson(response, 200, { marked: notifications.markRead(memberId, ids) });
+          }
+          if (url.pathname === '/api/notifications/preferences') {
+            if (request.method === 'GET') return sendJson(response, 200, notifications.memberPrefs(memberId));
+            if (request.method === 'PUT') return sendJson(response, 200, notifications.updateMemberPrefs(tenantId, memberId, await readJson(request)));
+          }
+        }
+        if (url.pathname === '/api/tenants/current/reminders' && (request.method === 'GET' || request.method === 'PUT')) {
+          if (!capabilities.manageSettings) return sendJson(response, 403, {
+            error: { code: 'forbidden', message: 'Напоминания центра настраивает владелец или администратор' }
+          });
+          if (request.method === 'GET') return sendJson(response, 200, notifications.reminderSettings(tenantId));
+          const result = notifications.updateReminderSettings(tenantId, await readJson(request));
+          if (result.kind === 'updated') return sendJson(response, 200, result.settings);
+          return sendJson(response, 422, { error: { code: 'validation_error', field: result.field, message: 'Проверьте время напоминаний' } });
         }
         if (request.method === 'POST' && url.pathname === '/api/legal/accept') {
           // A signed-in person accepts the agreement and gives the separate consent (shown once per edition).
@@ -1139,6 +1170,7 @@ export function createDetailFlowServer({
     for (const timer of botRetries) clearTimeout(timer);
     clearInterval(purgeTimer);
     clearInterval(healthTimer);
+    clearInterval(reminderTimer);
     for (const adapter of adapters.values()) adapter.stop();
     db.close();
   });

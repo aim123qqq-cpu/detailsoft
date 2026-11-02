@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Stack } from 'expo-router';
 import type { CenterSettings } from '@df/types';
+import { RemindersForm } from '@/features/reminders-form';
 import { RequisitesForm } from '@/features/requisites-form';
 import { useSession } from '@/lib/session';
 import { colors, radius, space } from '@/lib/theme';
@@ -85,6 +86,7 @@ function SettingsForm({ settings }: { settings: CenterSettings }) {
       {error ? <Notice>{error}</Notice> : null}
       {saved ? <Notice tone="info">График сохранён. Свободное время уже пересчитано.</Notice> : null}
       <Button title="Сохранить график" busy={saving} disabled={!valid} onPress={() => void save()}/>
+      <RemindersForm/>
       <RequisitesForm/>
     </Screen>
   );

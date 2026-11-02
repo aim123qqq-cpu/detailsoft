@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, authSession, demoAuthEnabled } from './api';
 import { LoginScreen } from './LoginScreen';
 import { visitsLabel } from './format';
@@ -7,6 +7,7 @@ import { ScheduleStep, ServicesStep } from './BookingFlow';
 import { OrderFlow } from './OrderFlow';
 import { FirstSteps, type SetupTarget } from './FirstSteps';
 import { LegalGate } from './LegalGate';
+import { NotificationsScreen } from './NotificationsScreen';
 import { SyncBanner } from './SyncBanner';
 import { pruneCache, syncState } from './offline/sync';
 import { BookingsWorkspace } from './workspace/BookingsWorkspace';
@@ -20,7 +21,7 @@ import { type Workspace, Icon, VehicleCard, Header, BottomNav } from './app/AppC
 import { AddVehicle } from './app/AddVehicle';
 import { OrderWorkspaceLoader } from './app/OrderWorkspaceLoader';
 
-type ProfileOverlay = { kind: 'customer' | 'vehicle'; id: string } | ({ kind: 'order' } & OrderTarget);
+type ProfileOverlay = { kind: 'customer' | 'vehicle'; id: string } | ({ kind: 'order' } & OrderTarget) | { kind: 'notifications'; id: 'feed' };
 
 const channels = ['Telegram', 'VK', 'Instagram', 'Звонок', 'На месте'];
 
@@ -163,6 +164,20 @@ export function App() {
     setOrderHeader('Рабочий заказ');
     setOverlays((stack) => [...stack, { kind: 'order', ...target }]);
   };
+  // The bell: unread notifications of the signed-in member, checked every minute and on return to the tab.
+  const [unread, setUnread] = useState(0);
+  const memberId = session?.actor.memberId ?? null;
+  useEffect(() => {
+    if (!memberId) return;
+    const check = () => { if (document.visibilityState === 'visible') api.getNotifications().then((feed) => setUnread(feed.unread)).catch(() => {}); };
+    check();
+    const timer = window.setInterval(check, 60_000);
+    document.addEventListener('visibilitychange', check);
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', check); };
+  }, [memberId]);
+  const markedRead = useCallback(() => setUnread(0), []);
+  const openNotifications = () => setOverlays((stack) => stack.some((item) => item.kind === 'notifications') ? stack : [...stack, { kind: 'notifications', id: 'feed' }]);
+
   // Lists under an overlay are refreshed on return: intake, work or handover may have changed them.
   const [workspaceRefresh, setWorkspaceRefresh] = useState(0);
   const closeOverlay = () => {
@@ -345,8 +360,9 @@ export function App() {
       {/* The connection banner sits above the header in one sticky block: it pushes content, never covers it. */}
       <div className="app-top">
         <SyncBanner online={online}/>
-        <Header step={step} workspace={workspace} orderTitle={orderHeader} overlayTitle={overlay ? overlay.kind === 'customer' ? 'Карточка клиента' : overlay.kind === 'vehicle' ? 'Карточка автомобиля' : orderHeader : undefined}
-          overlayEyebrow={overlay?.kind === 'order' ? 'Рабочий заказ' : undefined} onBack={() => overlay ? closeOverlay() : workspace !== 'new' ? startNewBooking() : profileVehicleId ? setProfileVehicleId(null) : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
+        <Header step={step} workspace={workspace} orderTitle={orderHeader} overlayTitle={overlay ? overlay.kind === 'customer' ? 'Карточка клиента' : overlay.kind === 'vehicle' ? 'Карточка автомобиля' : overlay.kind === 'notifications' ? 'Уведомления' : orderHeader : undefined}
+          unread={unread} onBell={memberId && overlay?.kind !== 'notifications' ? openNotifications : undefined}
+          overlayEyebrow={overlay?.kind === 'order' ? 'Рабочий заказ' : overlay?.kind === 'notifications' ? 'Для вас' : undefined} onBack={() => overlay ? closeOverlay() : workspace !== 'new' ? startNewBooking() : profileVehicleId ? setProfileVehicleId(null) : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
       </div>
       <main id="main-content" tabIndex={-1}>
         {overlay?.kind === 'customer' && <CustomerProfileScreen
@@ -358,6 +374,7 @@ export function App() {
           onOpenCustomer={openCustomerProfile}
           onBook={startBookingFor}
         />}
+        {overlay?.kind === 'notifications' && <NotificationsScreen onRead={markedRead} onOpenBookings={() => { setOverlays([]); setWorkspace('bookings'); }}/>}
         {overlay?.kind === 'vehicle' && <VehicleProfileScreen key={overlay.id} vehicleId={overlay.id} backLabel="Назад" onBack={closeOverlay} onOpenCustomer={openCustomerProfile}/>}
         {overlay?.kind === 'order' && <OrderWorkspaceLoader key={`${overlay.id}-${overlay.orderId ?? 'new'}`} target={overlay} onPhaseChange={setOrderHeader} onBack={closeOverlay}/>}
         {/* Workspaces stay mounted under a profile so lists and opened details keep their state. */}

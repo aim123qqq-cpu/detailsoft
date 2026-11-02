@@ -3,7 +3,7 @@ import { bodyLabels } from './AddVehicle';
 
 export type Workspace = 'bookings' | 'new' | 'orders' | 'analytics' | 'profile';
 
-export type IconName = 'arrow' | 'search' | 'phone' | 'car' | 'user' | 'calendar' | 'clipboard' | 'plus' | 'check' | 'spark' | 'chart';
+export type IconName = 'arrow' | 'search' | 'phone' | 'car' | 'user' | 'calendar' | 'clipboard' | 'plus' | 'check' | 'spark' | 'chart' | 'bell';
 
 export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, React.ReactNode> = {
@@ -17,7 +17,8 @@ export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
     plus: <path d="M12 5v14M5 12h14"/>,
     check: <path d="m5 12 4 4L19 6"/>,
     spark: <><path d="m12 3 1.2 4.3L17 9l-3.8 1.7L12 15l-1.2-4.3L7 9l3.8-1.7L12 3Z"/><path d="m18 15 .7 2.3L21 18l-2.3.7L18 21l-.7-2.3L15 18l2.3-.7L18 15Z"/></>,
-    chart: <><path d="M5 19V9m7 10V5m7 14v-7"/><path d="M3 19h18"/></>
+    chart: <><path d="M5 19V9m7 10V5m7 14v-7"/><path d="M3 19h18"/></>,
+    bell: <><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16Z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></>
   };
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }
@@ -36,7 +37,7 @@ export function VehicleCard({ vehicle, onSelect }: { vehicle: Vehicle; onSelect:
   );
 }
 
-export function Header({ step, workspace, onBack, orderTitle, overlayTitle, overlayEyebrow }: { step: number; workspace: Workspace; onBack: () => void; orderTitle?: string; overlayTitle?: string; overlayEyebrow?: string }) {
+export function Header({ step, workspace, onBack, orderTitle, overlayTitle, overlayEyebrow, unread = 0, onBell }: { step: number; workspace: Workspace; onBack: () => void; orderTitle?: string; overlayTitle?: string; overlayEyebrow?: string; unread?: number; onBell?: () => void }) {
   const workspaceTitle = workspace === 'bookings' ? 'Записи' : workspace === 'analytics' ? 'Статистика' : workspace === 'profile' ? 'Профиль' : 'Заказы';
   return (
     <header className="app-header">
@@ -45,7 +46,9 @@ export function Header({ step, workspace, onBack, orderTitle, overlayTitle, over
         <span className="eyebrow">{overlayTitle ? overlayEyebrow ?? 'Клиенты и автомобили' : workspace === 'bookings' ? 'Расписание' : workspace === 'orders' ? 'Производство' : workspace === 'analytics' ? 'Управление' : workspace === 'profile' ? 'Аккаунт' : step === 5 ? 'Рабочий заказ' : 'Новая запись'}</span>
         <h1>{overlayTitle ?? (workspace !== 'new' ? workspaceTitle : step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : step === 3 ? 'Услуги' : step === 4 ? 'Дата и время' : orderTitle ?? 'Рабочий заказ')}</h1>
       </div>
-      <span aria-hidden="true"/>
+      {onBell ? <button className="icon-button bell-button" data-testid="notifications-bell" onClick={onBell} aria-label={unread ? `Уведомления, непрочитанных: ${unread}` : 'Уведомления'}>
+        <Icon name="bell"/>{unread > 0 && <i className="bell-badge">{unread > 9 ? '9+' : unread}</i>}
+      </button> : <span aria-hidden="true"/>}
       {workspace === 'new' && !overlayTitle && <div className="progress" aria-label={step === 5 ? 'Рабочий заказ' : `Шаг ${step} из 4`}>
         {[1, 2, 3, 4].map((item) => <span key={item} className={item <= step ? 'active' : ''}/>) }
       </div>}

@@ -1,4 +1,4 @@
-import type { AuthProvider, CatalogOperation, LoginRequest, LoginStatus, MessengerProvider } from './types';
+import type { AppNotification, AuthProvider, CatalogOperation, LoginRequest, LoginStatus, MessengerProvider, NotificationPrefs, ReminderSettings } from './types';
 import type { CenterRequisites } from './shared/orderDocuments';
 import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogSection, CatalogVariant, CenterRole, CenterSettings, Customer, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, OrderDocument, OrderDocumentContent, OrderDocumentType, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, Permission, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, SimpleServiceInput, TeamMember, TeamRole, Vehicle, VehicleProfile, WorkOrder } from './types';
 
@@ -457,6 +457,24 @@ export const api = {
   },
   updateCenterRequisites(input: CenterRequisites) {
     return request<CenterRequisites>('/api/tenants/current/requisites', { method: 'PUT', body: JSON.stringify(input) });
+  },
+  getNotifications(signal?: AbortSignal) {
+    return request<{ items: AppNotification[]; unread: number }>('/api/notifications', { signal });
+  },
+  markNotificationsRead() {
+    return request<{ marked: number }>('/api/notifications/read', { method: 'POST', body: JSON.stringify({ all: true }) });
+  },
+  getNotificationPrefs(signal?: AbortSignal) {
+    return request<NotificationPrefs>('/api/notifications/preferences', { signal });
+  },
+  updateNotificationPrefs(input: Partial<NotificationPrefs>) {
+    return request<NotificationPrefs>('/api/notifications/preferences', { method: 'PUT', body: JSON.stringify(input) });
+  },
+  getReminderSettings(signal?: AbortSignal) {
+    return request<ReminderSettings>('/api/tenants/current/reminders', { signal });
+  },
+  updateReminderSettings(input: ReminderSettings) {
+    return request<ReminderSettings>('/api/tenants/current/reminders', { method: 'PUT', body: JSON.stringify(input) });
   },
   getCenterSetup(signal?: AbortSignal) {
     return request<{ services: number; members: number; bookings: number }>('/api/tenants/current/setup', { signal });

@@ -506,6 +506,13 @@ try {
   await waitFor(/^Все$/, { timeout: 20_000 });
   await tap('Профиль');
   await waitFor('Мария Орлова');
+  // The feed and what to get: an employee has no reminders yet, the switches are there.
+  await tap('Уведомления');
+  await waitFor('Что присылать мне', { timeout: 20_000 });
+  await waitFor(/^Уведомлений пока нет/);
+  screenshot(resolve(out, '05c-notifications.png'));
+  back();
+  await waitFor('Мария Орлова', { timeout: 20_000 });
   await tapNode(await scrollTo('Удалить аккаунт'));
   await waitFor(/^Удалить навсегда$/i);
   screenshot(resolve(out, '06-delete-confirm.png'));

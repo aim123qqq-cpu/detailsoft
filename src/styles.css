@@ -1575,3 +1575,26 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
 .requisites-panel label { display: grid; gap: 6px; color: #bdc6cf; font-size: 11px; font-weight: 700; }
 .requisites-panel input, .requisites-panel textarea { width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid #33404d; border-radius: 10px; color: #fff; background: #0c1218; font: inherit; font-size: 14px; }
 .requisites-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.bell-button { position: relative; color: inherit; }
+.bell-badge { position: absolute; top: 5px; right: 4px; min-width: 18px; height: 18px; padding: 0 5px; display: grid; place-items: center; border-radius: 9px; color: #18100b; background: var(--primary); font-size: 10px; font-weight: 800; font-style: normal; line-height: 1; }
+.notification-list { display: grid; gap: 8px; margin: 0 0 18px; padding: 0; list-style: none; }
+.notification-list button { width: 100%; display: flex; gap: 12px; padding: 12px; border: 1px solid #26313b; border-radius: 13px; color: inherit; background: #111820; text-align: left; cursor: pointer; }
+.notification-list button:disabled { cursor: default; }
+.notification-list li.unread button { border-color: rgba(255,121,57,.45); background: rgba(255,121,57,.06); }
+.notification-list b { display: block; font-size: 14px; }
+.notification-body { display: block; margin-top: 4px; color: #c8d0d6; font-size: 13px; line-height: 1.45; white-space: pre-line; }
+.notification-list small { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; }
+.notification-kind { flex: 0 0 auto; width: 10px; height: 10px; margin-top: 5px; border-radius: 50%; background: var(--primary); }
+.notification-kind.day_plan { background: var(--success); }
+.notification-kind.broadcast { background: #6aa8ff; }
+.notification-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; cursor: pointer; }
+.notification-toggle span { display: grid; gap: 2px; }
+.notification-toggle b { font-size: 13px; }
+.notification-toggle small { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.notification-toggle input { flex: 0 0 auto; width: 22px; height: 22px; min-height: 0; accent-color: var(--primary); }
+.reminders-panel { display: grid; gap: 10px; }
+.reminders-panel > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.reminders-label { color: #bdc6cf; font-size: 11px; font-weight: 700; }
+.reminder-before { grid-template-columns: repeat(3, 1fr); margin-top: 0; }
+.reminder-digest input[type=time] { min-height: 40px; padding: 6px 10px; border: 1px solid #33404d; border-radius: 10px; color: #fff; background: #0c1218; font: inherit; }

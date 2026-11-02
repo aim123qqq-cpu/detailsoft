@@ -527,3 +527,22 @@ export type AnalyticsOverview = {
   orderStatuses: Array<{ status: WorkOrder['status']; count: number }>;
   daily: Array<{ date: string; bookings: number; orders: number; closed: number }>;
 };
+
+export type AppNotification = {
+  id: string;
+  kind: 'booking_reminder' | 'day_plan' | 'broadcast';
+  title: string;
+  body: string;
+  link: string | null;
+  broadcastId: string | null;
+  createdAt: string;
+  read: boolean;
+};
+
+export type NotificationPrefs = { reminders: boolean; news: boolean; viaMessenger: boolean };
+
+export type ReminderSettings = {
+  beforeMinutes: 15 | 30 | 60 | 120 | 180 | null;
+  morning: { enabled: boolean; time: string };
+  evening: { enabled: boolean; time: string };
+};

@@ -1,5 +1,6 @@
 import { NativeTabs } from 'expo-router/native-tabs';
 import { LegalGate } from '@/features/legal-checks';
+import { NotificationsProvider, useUnread } from '@/features/notifications';
 import { useSignedIn } from '@/lib/session';
 import { colors } from '@/lib/theme';
 
@@ -10,6 +11,12 @@ export default function TabsLayout() {
   const session = useSignedIn();
   // A person who has not accepted this edition of the agreement and the consent sees them before any data.
   if (session.actor.legalAccepted === false) return <LegalGate centerName={session.tenant.name}/>;
+  return <NotificationsProvider><Tabs/></NotificationsProvider>;
+}
+
+function Tabs() {
+  // Unread notifications show on the profile tab, where the feed is.
+  const { unread } = useUnread();
   return (
     <NativeTabs backgroundColor={colors.ground} tintColor={colors.primary} iconColor={{ default: colors.muted, selected: colors.primary }}
       labelStyle={{ default: { color: colors.muted }, selected: { color: colors.primary } }} indicatorColor="rgba(255,121,57,.16)" labelVisibilityMode="labeled">
@@ -32,6 +39,7 @@ export default function TabsLayout() {
       <NativeTabs.Trigger name="profile">
         <NativeTabs.Trigger.Icon sf="person.crop.circle" md="account_circle"/>
         <NativeTabs.Trigger.Label>Профиль</NativeTabs.Trigger.Label>
+        {unread > 0 ? <NativeTabs.Trigger.Badge>{unread > 9 ? '9+' : String(unread)}</NativeTabs.Trigger.Badge> : null}
       </NativeTabs.Trigger>
     </NativeTabs>
   );

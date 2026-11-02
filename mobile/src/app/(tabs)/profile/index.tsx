@@ -5,6 +5,7 @@ import Constants from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
 import type { SessionContext } from '@df/types';
 import { wipeOfflineData } from '@df/offline/store';
+import { useUnread } from '@/features/notifications';
 import { useSession, useSignedIn } from '@/lib/session';
 import { colors, radius, space } from '@/lib/theme';
 import { Body, Button, Card, Label, Notice, Screen, Title } from '@/ui';
@@ -27,6 +28,7 @@ const badges = { telegram: { mark: '✈', color: '#229ed9' }, max: { mark: 'M', 
 export default function ProfileScreen() {
   const { api, server, signOut } = useSession();
   const session = useSignedIn();
+  const { unread } = useUnread();
   const [busy, setBusy] = useState<'out' | 'delete' | null>(null);
   const [error, setError] = useState('');
   const granted = capabilityLabels.filter(([key]) => session.capabilities[key]);
@@ -67,6 +69,11 @@ export default function ProfileScreen() {
           <Body muted>{(session.actor.roleNames?.length ? session.actor.roleNames : session.actor.roles).join(' · ')}</Body>
         </View>
       </View>
+
+      {session.actor.memberId ? <Pressable accessibilityRole="button" onPress={() => router.push('/profile/notifications')} android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.link} testID="notifications-entry">
+        <View style={{ flex: 1 }}><Text style={styles.linkLabel}>Уведомления</Text><Text style={styles.linkNote}>{unread ? `Новых: ${unread}` : 'Напоминания, план дня, новости'}</Text></View>
+        <Text style={styles.chevron}>›</Text>
+      </Pressable> : null}
 
       {management.length ? <View style={styles.group}>
         <Label>Управление центром</Label>
