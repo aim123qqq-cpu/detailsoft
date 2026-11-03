@@ -72,6 +72,18 @@
     tr.clickable:hover td { background: var(--raised); }
     .comment { margin: 8px 0 0; padding: 10px; border-radius: 10px; background: var(--raised); white-space: pre-line; }
     .comment small { display: block; margin-top: 4px; color: var(--soft); }
+    .pill.warn { color: var(--warn); background: rgba(242,193,78,.14); }
+    .journal-bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; }
+    .journal-note { margin: 10px 0 4px; font-size: 12px; }
+    .journal { display: grid; }
+    .event { padding: 12px 0 12px 12px; border-bottom: 1px solid var(--line); border-left: 3px solid transparent; }
+    .event.warn { border-left-color: var(--warn); } .event.bad { border-left-color: var(--bad); }
+    .event-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+    .event-head time { color: var(--soft); font-size: 12px; font-variant-numeric: tabular-nums; }
+    .event-meaning { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+    .event details { margin-top: 6px; font-size: 12px; color: var(--soft); }
+    .event summary { cursor: pointer; }
+    .event pre { margin: 6px 0 0; padding: 10px; border-radius: 8px; background: #0c1218; color: var(--muted); white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; }
   </style>
 </head>
 <body>
@@ -208,11 +220,12 @@ function render(stats) {
 
 // Tabs: the overview (refreshed every 30 s) and the broadcasts (not refreshed, so a draft is never lost).
 function nav(active) {
-  return `<nav class="tabs"><button data-tab="overview" class="${active === 'overview' ? 'active' : ''}">Обзор</button><button data-tab="broadcasts" data-testid="tab-broadcasts" class="${active === 'broadcasts' ? 'active' : ''}">Рассылки</button><button id="logout">Выйти</button></nav>`;
+  return `<nav class="tabs"><button data-tab="overview" class="${active === 'overview' ? 'active' : ''}">Обзор</button><button data-tab="broadcasts" data-testid="tab-broadcasts" class="${active === 'broadcasts' ? 'active' : ''}">Рассылки</button><button data-tab="journal" data-testid="tab-journal" class="${active === 'journal' ? 'active' : ''}">Журнал</button><button id="logout">Выйти</button></nav>`;
 }
 function bindNav() {
   document.querySelector('[data-tab="overview"]').addEventListener('click', showDashboard);
   document.querySelector('[data-tab="broadcasts"]').addEventListener('click', showBroadcasts);
+  document.querySelector('[data-tab="journal"]').addEventListener('click', showJournal);
   document.getElementById('logout').addEventListener('click', async () => { await api('/api/admin/logout', { method: 'POST' }).catch(() => {}); setToken(null); showLogin(); });
 }
 
@@ -321,6 +334,73 @@ async function showResults(id) {
         <div class="row"><span>По оценкам</span><b>${result.ratings.map((item) => `${item.value}★ ${num(item.count)}`).join(' · ')}</b></div>` : ''}
       ${result.comments.length ? `<div><span class="muted">Комментарии</span>${result.comments.map((comment) => `<p class="comment">${esc(comment.text)}<small>${esc(comment.center)} · ${when(comment.at)}</small></p>`).join('')}</div>` : ''}` : `<p class="muted">${esc(result.body)}</p>`}
   </div>`;
+}
+
+// The live journal: new entries every 2 s, newest on top, each with what it means. Kept in the server's
+// memory (the last 1000), so it starts empty after a restart.
+const LEVEL_LABELS = { info: ['ok', 'событие'], warn: ['warn', 'внимание'], error: ['bad', 'ошибка'] };
+const JOURNAL_FILTERS = { all: 'Все', auth: 'Вход и боты', problems: 'Только проблемы' };
+const journal = { items: [], last: 0, filter: 'all', paused: false };
+
+function journalRows() {
+  const shown = journal.items.filter((item) => journal.filter === 'all' || (journal.filter === 'auth' ? ['auth', 'bot'].includes(item.kind) : item.level !== 'info'));
+  if (!shown.length) return `<p class="muted">${journal.items.length ? 'Под этот фильтр записей нет.' : 'Пока тихо. Записи появятся, как только кто-нибудь начнёт вход, напишет боту или на сервере что-то случится. Журнал хранит последние 1000 событий с момента запуска сервера.'}</p>`;
+  return shown.slice().reverse().map((item) => {
+    const [tone, label] = LEVEL_LABELS[item.level] ?? LEVEL_LABELS.info;
+    const time = new Date(item.at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Europe/Moscow' });
+    return `<article class="event ${tone}" data-seq="${item.seq}" data-testid="journal-entry">
+      <div class="event-head"><time>${time}</time><span class="pill ${tone}">${label}</span><b>${esc(item.title)}</b></div>
+      ${item.meaning ? `<p class="event-meaning">${esc(item.meaning)}</p>` : ''}
+      ${item.detail ? `<details><summary>Технические подробности</summary><pre>${esc(item.detail)}</pre></details>` : ''}
+    </article>`;
+  }).join('');
+}
+
+function renderJournal() {
+  const box = document.getElementById('journal-list');
+  if (!box) return;
+  // Opened «Технические подробности» stay open when new entries come.
+  const open = new Set([...box.querySelectorAll('details[open]')].map((details) => details.closest('[data-seq]').dataset.seq));
+  box.innerHTML = journalRows();
+  box.querySelectorAll('[data-seq]').forEach((entry) => { if (open.has(entry.dataset.seq)) entry.querySelector('details')?.setAttribute('open', ''); });
+  document.getElementById('journal-count').textContent = `${num(journal.items.length)} записей · ${journal.paused ? 'пауза' : 'обновляется каждые 2 с'}`;
+}
+
+async function showJournal() {
+  clearInterval(refreshTimer);
+  app.innerHTML = `
+    <header><h1>DetailFlow · Журнал<small id="journal-count">Загрузка…</small></h1>${nav('journal')}</header>
+    <section class="card">
+      <div class="journal-bar">
+        <div class="segmented">${Object.entries(JOURNAL_FILTERS).map(([value, label]) => `<label><input type="radio" name="journal-filter" value="${value}" ${journal.filter === value ? 'checked' : ''}><span>${label}</span></label>`).join('')}</div>
+        <button id="journal-pause" data-testid="journal-pause">${journal.paused ? 'Продолжить' : 'Пауза'}</button>
+      </div>
+      <p class="muted journal-note">Имена, коды входа и токены сюда не попадают: аккаунты показаны последними цифрами, адреса почты — частично.</p>
+      <div id="journal-list" class="journal" data-testid="journal-list"></div>
+    </section>`;
+  bindNav();
+  app.querySelectorAll('[name="journal-filter"]').forEach((input) => input.addEventListener('change', () => { journal.filter = input.value; renderJournal(); }));
+  document.getElementById('journal-pause').addEventListener('click', (event) => {
+    journal.paused = !journal.paused;
+    event.target.textContent = journal.paused ? 'Продолжить' : 'Пауза';
+    renderJournal();
+  });
+  const load = async () => {
+    if (journal.paused) return;
+    try {
+      const fresh = await api(`/api/admin/events?after=${journal.last}`);
+      // A restarted server counts from zero again: start the list over.
+      if (fresh.last < journal.last) { journal.items = []; journal.last = 0; return load(); }
+      if (fresh.items.length || !journal.items.length) {
+        journal.items = journal.items.concat(fresh.items).slice(-1000);
+        journal.last = fresh.last;
+        renderJournal();
+      }
+    } catch (error) { if (error.status === 401) { clearInterval(refreshTimer); setToken(null); showLogin('Сессия закончилась, войдите снова.'); } }
+  };
+  renderJournal();
+  await load();
+  refreshTimer = setInterval(load, 2000);
 }
 
 async function showDashboard() {

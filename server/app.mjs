@@ -7,6 +7,7 @@ import { DetailFlowRepository } from './repository.mjs';
 import { AuthRepository, MESSENGER_PROVIDERS, normalizeEmail } from './auth-repository.mjs';
 import { signInLetter } from './mailer.mjs';
 import { createBotDialog } from './messenger/bot-dialog.mjs';
+import { PROVIDER_TITLES, createEventLog, maskAccount } from './event-log.mjs';
 import { PERMISSIONS } from './roles-repository.mjs';
 import { createIdempotency } from './idempotency.mjs';
 import { buildBookingPack } from './offline-pack.mjs';
@@ -73,6 +74,8 @@ export function createDetailFlowServer({
   // Sends sign-in codes by email (server/mailer.mjs); without it there is no sign-in by email.
   mailer = null,
   botRetryMs = 5_000,
+  // The live journal for /admin (event-log.mjs); index.mjs also copies the console into it.
+  events = createEventLog(),
   backupDirectory = process.env.BACKUP_DIR ?? resolve('data/backups')
 } = {}) {
   const db = openDatabase(databasePath, { seed });
@@ -82,7 +85,8 @@ export function createDetailFlowServer({
   const readyProviders = new Set();
   // Why a bot is down, for /api/ready (adapter messages name the method and the API's answer, never the token).
   const botProblems = new Map();
-  const botDialog = createBotDialog({ auth, adapters });
+  const botDialog = createBotDialog({ auth, adapters, events });
+  const via = (provider) => PROVIDER_TITLES[provider] ?? provider;
   const allowLoginRequest = createRateLimiter(20, 60_000);
   const allowCenterSignup = createRateLimiter(20, 60_000);
   // Letters to one address: a few in 10 minutes, so the form cannot flood someone's mailbox.
@@ -138,7 +142,15 @@ export function createDetailFlowServer({
 
   const server = createServer(async (request, response) => {
     const startedAt = Date.now();
-    response.on('finish', () => metrics.record(response.statusCode, Date.now() - startedAt));
+    response.on('finish', () => {
+      metrics.record(response.statusCode, Date.now() - startedAt);
+      // Failures and refusals for too many attempts go to the journal; ordinary 4xx answers (a wrong form, no session) do not.
+      const path = (request.url ?? '').split('?')[0];
+      if (response.statusCode >= 500) events.add({ level: 'error', kind: 'http', title: `Сбой запроса ${request.method} ${path} → ${response.statusCode}`,
+        meaning: response.statusCode === 502 ? 'Сервер не смог обратиться к внешнему сервису (почта, мессенджер). Подробность — в соседней записи.' : 'Внутренняя ошибка сервера: человек увидел «Внутренняя ошибка». Текст ошибки — в соседней записи «Ошибка сервера».' });
+      else if (response.statusCode === 429) events.add({ level: 'warn', kind: 'http', title: `Слишком много попыток: ${request.method} ${path}`,
+        meaning: 'Сработала защита от перебора: слишком много попыток за короткое время. Если это обычный пользователь — пусть подождёт минуту (для писем — 10 минут).' });
+    });
     try {
       const url = new URL(request.url, 'http://localhost');
       if (url.pathname === '/api/health') return sendJson(response, 200, { status: 'ok' });
@@ -182,6 +194,8 @@ export function createDetailFlowServer({
         const login = auth.createEmailLogin(email, input.purpose === 'signup' ? 'signup' : 'login');
         try {
           await mailer.send(signInLetter(login));
+          events.add({ kind: 'auth', title: `Письмо с кодом отправлено на ${maskAccount('email', email)}`,
+            meaning: login.purpose === 'signup' ? 'Человек создаёт центр по email. Дальше он вводит код из письма.' : 'Вход по email. Дальше человек вводит код из письма; если письма нет — пусть посмотрит «Спам».' });
         } catch (error) {
           console.error('Sign-in letter was not sent:', error.message);
           return sendJson(response, 502, { error: { code: 'email_not_sent', message: 'Не удалось отправить письмо. Попробуйте ещё раз или войдите через мессенджер' } });
@@ -197,7 +211,13 @@ export function createDetailFlowServer({
           error: { code: 'too_many_requests', message: 'Слишком много попыток. Подождите минуту' }
         });
         const result = auth.confirmEmailLogin(emailConfirm[1], request.headers['x-login-secret'], (await readJson(request)).code);
-        if (result.kind === 'confirmed') return sendJson(response, 200, result.status);
+        if (result.kind === 'confirmed') {
+          events.add({ kind: 'auth', title: 'Код из письма подтверждён', meaning: result.status.purpose === 'signup'
+            ? 'Человек создаёт центр (или адрес не привязан ни к одному центру — тогда экран входа предложил создать свой). Дальше — название центра.' : 'Сейчас откроется рабочее место сотрудника.' });
+          return sendJson(response, 200, result.status);
+        }
+        if (result.kind === 'wrong_code') events.add({ level: 'warn', kind: 'auth', title: `Неверный код из письма, осталось попыток: ${result.attemptsLeft}`,
+          meaning: 'Человек ошибся в коде или ввёл код из старого письма. После 5 ошибок нужно запросить новый код.' });
         if (result.kind === 'wrong_code') return sendJson(response, 422, {
           error: { code: 'wrong_code', message: `Код не подошёл. Осталось попыток: ${result.attemptsLeft}`, details: { attemptsLeft: result.attemptsLeft } }
         });
@@ -213,12 +233,16 @@ export function createDetailFlowServer({
         });
         const input = await readJson(request);
         const provider = input.provider;
+        if (MESSENGER_PROVIDERS.includes(provider) && !readyProviders.has(provider)) events.add({ level: 'error', kind: 'auth', title: `Вход через ${via(provider)} не начат: бот недоступен`,
+          meaning: 'Человек нажал кнопку мессенджера, но бот сейчас не подключён — войти так нельзя. Проверьте блок «Сервер» на вкладке «Обзор».' });
         if (!MESSENGER_PROVIDERS.includes(provider) || !readyProviders.has(provider)) return sendJson(response, 422, {
           error: { code: 'provider_unavailable', message: 'Вход через этот мессенджер не настроен' }
         });
         // purpose "signup": the person creates a new center and becomes its owner.
         const login = auth.createLoginRequest(provider, input.purpose === 'signup' ? 'signup' : 'login');
         const adapter = adapters.get(provider);
+        events.add({ kind: 'auth', title: login.purpose === 'signup' ? `Начато создание центра через ${via(provider)}` : `Начат вход через ${via(provider)}`,
+          meaning: 'На экране входа нажата кнопка мессенджера. Дальше человек открывает бота и подтверждает. Если следующей записи от бота нет — бот не открылся или человек передумал.' });
         return sendJson(response, 201, {
           id: login.id, provider, purpose: login.purpose, shortCode: login.shortCode, pollSecret: login.pollSecret, expiresAt: login.expiresAt,
           botName: adapter.botName, deepLink: adapter.deepLink(`login_${login.startToken}`)
@@ -234,10 +258,15 @@ export function createDetailFlowServer({
         if (result.kind === 'created') {
           const total = db.prepare('SELECT COUNT(*) AS count FROM tenants').get().count;
           void notifier.notify(`🎉 Новый центр в DetailFlow: «${result.session.tenant.name}». Всего центров: ${total}`);
+          events.add({ kind: 'auth', title: `Создан центр «${result.session.tenant.name}»`, meaning: `Новый владелец назвал центр и вошёл. Всего центров: ${total}.` });
           return sendJson(response, 201, result.session);
         }
         if (result.kind === 'invalid') return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите название центра и своё имя (от 2 символов)' } });
-        if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+        if (result.kind === 'conflict') {
+          if (result.code === 'too_many_centers') events.add({ level: 'warn', kind: 'auth', title: 'Отказано в создании центра: лимит на аккаунт',
+            meaning: 'С одного аккаунта уже создано максимальное число центров. Если человеку правда нужно больше — свяжитесь с ним.' });
+          return sendJson(response, 409, { error: { code: result.code, message: result.message } });
+        }
         return sendJson(response, 404, { error: { code: 'login_not_found', message: 'Запрос не найден' } });
       }
       const loginRequest = url.pathname.match(/^\/api\/auth\/login-requests\/([^/]+)(\/session)?$/);
@@ -250,7 +279,12 @@ export function createDetailFlowServer({
         if (request.method === 'POST' && loginRequest[2]) {
           const input = await readJson(request);
           const result = auth.createSessionFromLogin(loginRequest[1], pollSecret, typeof input.tenantId === 'string' ? input.tenantId : null);
-          if (result.kind === 'created') return sendJson(response, 201, result.session);
+          if (result.kind === 'created') {
+            events.add({ kind: 'auth', title: `Вход выполнен: центр «${result.session.tenant.name}»`, meaning: 'Сотрудник вошёл в рабочее место.' });
+            return sendJson(response, 201, result.session);
+          }
+          if (result.kind === 'conflict' && result.code === 'no_active_membership') events.add({ level: 'warn', kind: 'auth', title: 'Вход не выполнен: аккаунт не привязан к центру',
+            meaning: 'Человек подтвердил вход, но не числится сотрудником ни одного центра (или заблокирован). Владельцу центра нужно пригласить его из «Команды» — или человек может создать свой центр.' });
           if (result.kind === 'choose_tenant') return sendJson(response, 409, {
             error: { code: 'choose_tenant', message: 'Выберите центр', details: { memberships: result.memberships } }
           });
@@ -268,11 +302,13 @@ export function createDetailFlowServer({
         if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
         return sendJson(response, 404, { error: { code: 'login_not_found', message: 'Запрос входа не найден' } });
       }
-      if (url.pathname === '/api/admin/stats' || url.pathname === '/api/admin/logout' || url.pathname.startsWith('/api/admin/broadcasts')) {
+      if (url.pathname === '/api/admin/stats' || url.pathname === '/api/admin/logout' || url.pathname === '/api/admin/events' || url.pathname.startsWith('/api/admin/broadcasts')) {
         const authorization = request.headers.authorization;
         const adminToken = typeof authorization === 'string' && authorization.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : '';
         if (!auth.authenticateAdmin(adminToken)) return sendJson(response, 401, { error: { code: 'admin_unauthorized', message: 'Войдите как владелец сервиса' } });
         if (url.pathname === '/api/admin/logout' && request.method === 'POST') return sendJson(response, 200, { revoked: auth.revokeAdminSession(adminToken) });
+        // The live journal: entries after the last one the page has seen.
+        if (url.pathname === '/api/admin/events' && request.method === 'GET') return sendJson(response, 200, events.since(Number(url.searchParams.get('after')) || 0));
         if (url.pathname === '/api/admin/stats' && request.method === 'GET') return sendJson(response, 200, platformStats({ db, databasePath, backupDirectory, version, bots: botStates(), metrics }));
         // News, updates and surveys to the people of the centers (broadcasts.mjs).
         if (url.pathname === '/api/admin/broadcasts' && request.method === 'GET') return sendJson(response, 200, { items: broadcasts.list() });

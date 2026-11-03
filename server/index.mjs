@@ -2,8 +2,13 @@ import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createDetailFlowServer } from './app.mjs';
 import { backupDatabaseFile } from './backup.mjs';
+import { captureConsole, createEventLog } from './event-log.mjs';
 import { mailerFromEnv } from './mailer.mjs';
 import { demoAuthOptions, messengersFromEnv } from './messenger/from-env.mjs';
+
+// Everything the server writes to its console also goes to the live journal in /admin.
+const events = createEventLog();
+captureConsole(events);
 
 mkdirSync(resolve('data'), { recursive: true });
 const port = Number(process.env.PORT ?? 4173);
@@ -25,6 +30,7 @@ const server = createDetailFlowServer({
   messengers,
   mailer: mailerFromEnv(),
   backupDirectory,
+  events,
   ...demoAuthOptions()
 });
 if (messengers.length) console.log(`Messenger sign-in: ${messengers.map((adapter) => adapter.title).join(', ')}`);
