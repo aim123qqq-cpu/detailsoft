@@ -163,7 +163,9 @@ test('unlinked accounts, denied logins and unlinking never produce a usable sess
   const strangerLogin = await startLogin('telegram');
   await telegram.handler({ provider: 'telegram', kind: 'start', userId: '5555', displayName: 'Незнакомец', payload: strangerLogin.startPayload });
   assert.match(telegram.lastTo('5555').text, /не привязан/);
-  assert.equal((await (await status(strangerLogin)).json()).status, 'PENDING');
+  // The stranger is offered to create a center, but nothing opens until they confirm, and no existing center does.
+  assert.equal((await (await status(strangerLogin)).json()).status, 'AWAITING_CONFIRMATION');
+  assert.equal((await openSession(strangerLogin)).status, 409);
 
   const denied = await startLogin('telegram');
   await telegram.handler({ provider: 'telegram', kind: 'start', userId: '1001', payload: denied.startPayload });

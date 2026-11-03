@@ -100,11 +100,17 @@ test('a new person creates a center in the messenger and becomes its owner', asy
   assert.equal((await opened.json()).tenant.name, 'Детейлинг Север');
 });
 
-test('signing in still needs a center; a sign-in request cannot create one', async () => {
+test('a newcomer who pressed «Войти» is offered to create a center and can do it after confirming', async () => {
   const login = await request();
   await telegram.handler({ provider: 'telegram', kind: 'start', userId: '7002', displayName: 'Гость', payload: login.startPayload });
-  assert.match(telegram.lastTo('7002').text, /не привязан.*создайте свой центр/s);
-  assert.equal((await createCenter(login, { centerName: 'Чужой центр', ownerName: 'Гость' })).status, 409);
+  const offer = telegram.lastTo('7002');
+  assert.match(offer.text, /не привязан.*Создание центра/s);
+  assert.equal(offer.buttons[0][0].text, 'Создать центр');
+  assert.equal((await createCenter(login, { centerName: 'Мой центр', ownerName: 'Гость' })).status, 409, 'not before confirming in the messenger');
+  await telegram.handler({ provider: 'telegram', kind: 'callback', userId: '7002', payload: `login_ok:${login.id}`, callbackId: 'cb-newcomer' });
+  const status = await (await api(`/api/auth/login-requests/${login.id}`, { headers: { 'x-login-secret': login.pollSecret } })).json();
+  assert.deepEqual([status.status, status.purpose], ['CONFIRMED', 'signup']);
+  assert.equal((await createCenter(login, { centerName: 'Мой центр', ownerName: 'Гость' })).status, 201);
 });
 
 test('one messenger account creates a limited number of centers', async () => {

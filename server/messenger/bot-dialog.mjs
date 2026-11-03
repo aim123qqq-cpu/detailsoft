@@ -13,15 +13,15 @@ export function createBotDialog({ auth, adapters, logger = console }) {
   async function startLogin(event, login) {
     if (!login) return reply(event, 'Ссылка или код входа устарели. Начните вход заново на экране DetailFlow.');
     // Creating a new center needs no membership: the person becomes the owner of the center they create.
-    if (auth.loginPurpose(login.id) === 'signup') {
+    // A sign-in by an account no center knows (nor the service owner's, who signs in to /admin) is offered the same.
+    const signup = auth.loginPurpose(login.id) === 'signup';
+    if (signup || auth.isNewcomer(event.provider, event.userId)) {
+      if (!signup) auth.turnIntoSignup(login.id);
       auth.markLoginAwaiting(login.id, event.userId, event.displayName);
+      const unlinked = signup ? '' : 'Этот аккаунт ещё не привязан к центру. Если вы сотрудник, попросите владельца прислать приглашение из раздела «Команда». Или создайте свой центр:\n\n';
       return reply(event,
-        `Создание центра в DetailFlow\nКод на экране: ${login.short_code}\n\nПодтверждайте, только если вы сами сейчас создаёте центр и код совпадает. Вы станете его владельцем.`,
-        [[{ text: 'Это я, продолжить', payload: `login_ok:${login.id}` }, { text: 'Отклонить', payload: `login_no:${login.id}` }]]);
-    }
-    // The service owner signs in to /admin with the same bot, with or without a center of their own.
-    if (!auth.membershipsFor(event.provider, event.userId).length && !auth.isPlatformAdmin(event.provider, event.userId)) {
-      return reply(event, 'Этот аккаунт ещё не привязан к сотруднику центра. Попросите владельца прислать приглашение в разделе «Команда» или создайте свой центр на экране входа DetailFlow.');
+        `${unlinked}Создание центра в DetailFlow\nКод на экране: ${login.short_code}\n\nПодтверждайте, только если вы сами сейчас создаёте центр и код совпадает. Вы станете его владельцем.`,
+        [[{ text: signup ? 'Это я, продолжить' : 'Создать центр', payload: `login_ok:${login.id}` }, { text: 'Отклонить', payload: `login_no:${login.id}` }]]);
     }
     auth.markLoginAwaiting(login.id, event.userId);
     return reply(event,

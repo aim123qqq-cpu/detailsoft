@@ -78,7 +78,8 @@ export default function LoginScreen() {
         setStatus(next.status);
         if (next.status === 'CONFIRMED') {
           stopped = true;
-          if (login.purpose === 'signup') setConfirmed(true);
+          // A sign-in by an account no center knows comes back as a sign-up: the person may create their own center.
+          if (next.purpose === 'signup') setConfirmed(true);
           else if (next.memberships.length > 1) setMemberships(next.memberships);
           else void openSession(login);
           return;
@@ -122,7 +123,7 @@ export default function LoginScreen() {
     try {
       const next = await api.confirmEmailLogin(login, emailCode);
       setStatus(next.status);
-      if (login.purpose === 'signup') setConfirmed(true);
+      if (next.purpose === 'signup') setConfirmed(true);
       else if (next.memberships.length > 1) setMemberships(next.memberships);
       else void openSession(login);
     } catch (requestError) {
@@ -196,6 +197,7 @@ export default function LoginScreen() {
             : status === 'AWAITING_CONFIRMATION' && login.purpose === 'signup' ? 'Подтвердите кнопкой «Это я, продолжить» в боте.'
             : status ? statusText[status] : ''}</Body>
           {confirmed && <View style={{ gap: space.m }}>
+            {login.purpose !== 'signup' && <Body muted>Этот аккаунт ещё не привязан к центру. Создайте свой — или, если вы сотрудник, попросите владельца прислать приглашение из «Профиль → Команда».</Body>}
             <Field label="Название центра" value={centerName} onChangeText={setCenterName} maxLength={120} placeholder="Например, Детейлинг Север" testID="center-name"/>
             <Field label="Ваше имя" value={ownerName} onChangeText={setOwnerName} maxLength={80} autoCapitalize="words" placeholder="Имя Фамилия" testID="owner-name"/>
             <LegalChecks value={legal} onChange={setLegal}/>

@@ -25,6 +25,8 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
   const [busy, setBusy] = useState(false);
   // "signup": a person without a center creates one and becomes its owner.
   const [mode, setMode] = useState<'login' | 'signup'>('login');
+  // Pressed «Войти», but no center knows the account: the sign-in went on as creating a center.
+  const [unlinked, setUnlinked] = useState(false);
   const [centerName, setCenterName] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [legal, setLegal] = useState<LegalState>({ terms: false, consent: false });
@@ -72,8 +74,9 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
         setStatus(next.status);
         if (next.status === 'CONFIRMED') {
           stopped = true;
-          // A sign-up goes on to the center's name; a sign-in opens the workplace.
-          if (login.purpose === 'signup') return;
+          // A sign-up goes on to the center's name; a sign-in opens the workplace. A sign-in by an account
+          // no center knows comes back as a sign-up: the person may create their own center.
+          if (next.purpose === 'signup') { becomeSignup(login); return; }
           if (next.memberships.length > 1) setMemberships(next.memberships);
           else void openSession(login);
           return;
@@ -123,7 +126,8 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
     try {
       const next = await api.confirmEmailLogin(login.id, login.pollSecret, emailCode);
       setStatus(next.status);
-      if (login.purpose !== 'signup') {
+      if (next.purpose === 'signup') becomeSignup(login);
+      else {
         if (next.memberships.length > 1) setMemberships(next.memberships);
         else void openSession(login);
       }
@@ -144,11 +148,16 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
     finally { setBusy(false); }
   };
 
+  function becomeSignup(started: LoginRequest) {
+    if (started.purpose !== 'signup') setUnlinked(true);
+    setMode('signup');
+  }
+
   const signup = mode === 'signup';
   const byEmail = login?.provider === 'email';
   const providerTitle = login ? providers?.find((item) => item.provider === login.provider)?.title ?? login.provider : '';
   const finished = status === 'DENIED' || status === 'EXPIRED' || status === 'CONSUMED';
-  const reset = () => { setLogin(null); setStatus(null); setError(''); setMemberships([]); };
+  const reset = () => { setLogin(null); setStatus(null); setError(''); setMemberships([]); if (unlinked) { setUnlinked(false); setMode('login'); } };
   const step = status === 'CONFIRMED' ? 3 : status === 'AWAITING_CONFIRMATION' ? 2 : 1;
 
   return (
@@ -232,6 +241,7 @@ export function LoginScreen({ onSignedIn, onCancel }: { onSignedIn: () => void; 
               : signup && status === 'CONFIRMED' ? 'Подтверждено. Осталось назвать центр.'
               : signup && status === 'AWAITING_CONFIRMATION' ? 'Подтвердите кнопкой «Это я, продолжить» в боте.' : status ? statusText[status] : ''}</div>
             {signup && status === 'CONFIRMED' && <div className="login-signup" data-testid="login-signup">
+              {unlinked && <p className="login-hint" data-testid="login-unlinked">Этот аккаунт ещё не привязан к центру. Создайте свой — или, если вы сотрудник, попросите владельца прислать приглашение из «Профиль → Команда».</p>}
               <label>Название центра<input data-testid="center-name" value={centerName} maxLength={120} placeholder="Например, Детейлинг Север" onChange={(event) => setCenterName(event.target.value)}/></label>
               <label>Ваше имя<input data-testid="owner-name" value={ownerName} maxLength={80} placeholder="Имя Фамилия" onChange={(event) => setOwnerName(event.target.value)}/></label>
               <LegalChecks value={legal} onChange={setLegal}/>

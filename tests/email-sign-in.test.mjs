@@ -86,6 +86,8 @@ test('an address nobody linked gets a code but no center; five wrong codes close
     const opened = await api(`/api/auth/login-requests/${stranger.id}/session`, { method: 'POST', secret: stranger.pollSecret, body: {} });
     assert.equal(opened.status, 409);
     assert.equal((await opened.json()).error.code, 'no_active_membership');
+    const offered = await (await api(`/api/auth/login-requests/${stranger.id}`, { secret: stranger.pollSecret })).json();
+    assert.equal(offered.purpose, 'signup', 'an address nobody linked may create its own center');
 
     const guessed = await (await api('/api/auth/email-requests', { method: 'POST', body: { email: 'nobody@example.ru' } })).json();
     const right = codeIn(mailer.letters.at(-1));

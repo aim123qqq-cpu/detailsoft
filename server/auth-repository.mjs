@@ -84,6 +84,8 @@ export class AuthRepository {
     const typed = String(code ?? '').replace(/\D/g, '');
     if (typed.length === 6 && sameSecret(row.code_hash, typed)) {
       this.db.prepare(`UPDATE login_requests SET status = 'CONFIRMED' WHERE id = ? AND status = 'AWAITING_CONFIRMATION'`).run(id);
+      const email = this.db.prepare('SELECT external_user_id FROM login_requests WHERE id = ?').get(id).external_user_id;
+      if (this.isNewcomer('email', email)) this.turnIntoSignup(id, email);
       return { kind: 'confirmed', status: this.getLoginStatus(id, pollSecret) };
     }
     const attempts = row.attempts + 1;
@@ -107,6 +109,20 @@ export class AuthRepository {
   /** 'signup' for a request opened to create a center, 'login' otherwise. */
   loginPurpose(id) {
     return this.db.prepare('SELECT purpose FROM login_request_purposes WHERE login_request_id = ?').get(id)?.purpose ?? 'login';
+  }
+
+  /**
+   * A sign-in by an account no center knows becomes creating a center: without this a newcomer who
+   * pressed «Войти» instead of «Создать свой центр» hits a dead end. They still confirm it themselves.
+   */
+  turnIntoSignup(id, externalName = null) {
+    this.db.prepare(`INSERT INTO login_request_purposes (login_request_id, purpose, external_name) VALUES (?, 'signup', ?)
+      ON CONFLICT(login_request_id) DO NOTHING`).run(id, externalName);
+  }
+
+  /** Neither staff of a center nor the service owner: nothing to sign in to yet. */
+  isNewcomer(provider, externalUserId) {
+    return !this.membershipsFor(provider, externalUserId).length && !this.isPlatformAdmin(provider, externalUserId);
   }
 
   markLoginAwaiting(id, externalUserId, externalName = null) {
@@ -158,7 +174,7 @@ export class AuthRepository {
     const chosen = tenantId ? options.find((option) => option.tenant.id === tenantId) : options.length === 1 ? options[0] : null;
     if (!options.length) return { kind: 'conflict', code: 'no_active_membership', message: status.provider === 'email'
       ? 'Этот email не привязан к сотруднику центра. Попросите владельца указать его в «Профиль → Команда» или создайте свой центр'
-      : 'Аккаунт не привязан к активному сотруднику' };
+      : 'Аккаунт не привязан к сотруднику центра. Нажмите «Начать заново» и выберите «Создать свой центр» или попросите владельца прислать приглашение' };
     if (!chosen) return tenantId
       ? { kind: 'conflict', code: 'tenant_not_available', message: 'Этот центр недоступен для аккаунта' }
       : { kind: 'choose_tenant', memberships: options };
