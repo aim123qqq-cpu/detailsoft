@@ -375,9 +375,6 @@ export const api = {
     return withPack(() => request<{ items: Array<Vehicle & { customer: Customer | null }> }>(`/api/vehicles?plate=${encodeURIComponent(plate)}`, { signal }),
       (pack) => ({ items: localSearchVehicles(pack, plate) }));
   },
-  searchCatalog(query: string, signal?: AbortSignal) {
-    return request<{ items: CatalogVariant[] }>(`/api/vehicle-catalog/variants?q=${encodeURIComponent(query)}`, { signal });
-  },
   async createCustomer(input: { name: string; phone: string }) {
     if (!(await hasPending())) {
       try {
@@ -435,7 +432,7 @@ export const api = {
       method: 'PATCH', body: JSON.stringify({ status })
     });
   },
-  updateVehicleDetails(vehicleId: string, input: { bodyType: string; tenantClass: string }) {
+  updateVehicleDetails(vehicleId: string, input: { bodyType: string; tenantClass?: string; plateDisplay?: string }) {
     return request<Vehicle>(`/api/vehicles/${encodeURIComponent(vehicleId)}`, {
       method: 'PATCH', body: JSON.stringify(input)
     });

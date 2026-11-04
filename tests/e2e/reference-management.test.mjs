@@ -87,7 +87,7 @@ test('manual vehicle and catalog builder work as one mobile management complex',
     await page.waitForTimeout(250);
     await page.screenshot({ path: resolve(artifacts, '52-vehicle-class-correction.png') });
     await page.getByTestId('save-vehicle-spec').click();
-    await page.getByText(/Кузов и тарификационный класс обновлены/).waitFor();
+    await page.getByText(/Параметры автомобиля обновлены/).waitFor();
     assert.match(await page.getByTestId('open-vehicle-spec').innerText(), /Хэтчбек · класс Компакт/);
   } finally {
     await browser.close();

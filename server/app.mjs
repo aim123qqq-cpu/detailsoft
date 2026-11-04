@@ -639,7 +639,7 @@ export function createDetailFlowServer({
             error: { code: 'forbidden', message: 'Недостаточно прав для изменения автомобиля' }
           });
           const input = await readJson(request);
-          const detailKeys = ['bodyType', 'tenantClass'];
+          const detailKeys = ['bodyType', 'tenantClass', 'plateDisplay'];
           const hasDetails = detailKeys.some((key) => Object.hasOwn(input, key));
           if (hasDetails && Object.hasOwn(input, 'status')) return sendJson(response, 422, {
             error: { code: 'validation_error', message: 'Изменяйте статус и параметры автомобиля отдельными действиями' }
@@ -649,7 +649,10 @@ export function createDetailFlowServer({
             : null;
           if (detailResult?.kind === 'updated' && !Object.hasOwn(input, 'status')) return sendJson(response, 200, detailResult.vehicle);
           if (detailResult?.kind === 'not_found') return sendJson(response, 404, { error: { code: 'vehicle_not_found', message: 'Автомобиль не найден' } });
-          if (detailResult?.kind === 'invalid') return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте кузов и класс автомобиля' } });
+          if (detailResult?.kind === 'duplicate') return sendJson(response, 409, {
+            error: { code: 'possible_duplicate', message: 'Автомобиль с таким госномером уже есть', details: { matches: detailResult.matches } }
+          });
+          if (detailResult?.kind === 'invalid') return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте госномер, кузов и класс автомобиля' } });
           const result = Object.hasOwn(input, 'status')
             ? repository.updateVehicleStatus(tenantId, vehiclePatch[1], input.status)
             : { kind: 'invalid' };

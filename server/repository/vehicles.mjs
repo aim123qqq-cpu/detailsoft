@@ -1,4 +1,4 @@
-import { randomUUID, normalizePlate, normalizeSearch, mapVehicle, clientId, apiTimestamp } from './shared.mjs';
+import { randomUUID, NO_PLATE, normalizePlate, normalizeSearch, mapVehicle, clientId, apiTimestamp } from './shared.mjs';
 
 /** Vehicles, ownership history and the pricing class of a vehicle. Mixed into DetailFlowRepository (server/repository.mjs). */
 export const vehiclesMethods = {
@@ -95,11 +95,12 @@ export const vehiclesMethods = {
     const tenantClass = String(input.tenantClass ?? '').trim() || null;
     if (tenantClass && !this.db.prepare(`SELECT 1 FROM tenant_vehicle_class_rules
       WHERE tenant_id = ? AND tenant_class = ? LIMIT 1`).get(tenantId, tenantClass)) return { kind: 'invalid' };
-    const plateNormalized = normalizePlate(input.plateDisplay);
-    if (plateNormalized.length < 3 || !String(input.color ?? '').trim()) return { kind: 'invalid' };
+    // The plate is often unknown when booking by phone: without one there is nothing to be a duplicate of.
+    const plateNormalized = normalizePlate(input.plateDisplay ?? '');
+    if ((plateNormalized && plateNormalized.length < 3) || !String(input.color ?? '').trim()) return { kind: 'invalid' };
 
-    const matches = this.searchVehicles(tenantId, plateNormalized)
-      .filter((vehicle) => normalizePlate(vehicle.plate) === plateNormalized);
+    const matches = plateNormalized ? this.searchVehicles(tenantId, plateNormalized)
+      .filter((vehicle) => normalizePlate(vehicle.plate) === plateNormalized) : [];
     if (matches.length) return { kind: 'duplicate', matches };
 
     const requestedId = clientId(input.id, 'veh');
@@ -114,7 +115,7 @@ export const vehiclesMethods = {
          plate_display, plate_normalized, color, system_vehicle_class)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
           vehicleId, tenantId, variant?.id ?? null, vehicleData.make, vehicleData.model, vehicleData.generation,
-          vehicleData.body_type, String(input.plateDisplay).trim(), plateNormalized,
+          vehicleData.body_type, plateNormalized ? String(input.plateDisplay).trim() : NO_PLATE, plateNormalized,
           String(input.color).trim(), vehicleData.system_vehicle_class
         );
       this.db.prepare(`INSERT INTO customer_vehicles
@@ -127,8 +128,8 @@ export const vehiclesMethods = {
       this.db.exec('ROLLBACK');
       throw error;
     }
-    const vehicle = this.searchVehicles(tenantId, plateNormalized).find((item) => item.id === vehicleId);
-    return { kind: 'created', vehicle, link: { id: linkId, customerId: input.customerId, vehicleId } };
+    const profile = this.getVehicleProfile(tenantId, vehicleId);
+    return { kind: 'created', vehicle: { ...profile.vehicle, customer: profile.currentOwner }, link: { id: linkId, customerId: input.customerId, vehicleId } };
   },
 
   updateVehicleStatus(tenantId, vehicleId, status) {
@@ -166,9 +167,19 @@ export const vehiclesMethods = {
     const tenantClass = input.tenantClass === undefined ? undefined : String(input.tenantClass).trim();
     if (tenantClass !== undefined && (!tenantClass || !this.db.prepare(`SELECT 1 FROM tenant_vehicle_class_rules
       WHERE tenant_id = ? AND tenant_class = ? LIMIT 1`).get(tenantId, tenantClass))) return { kind: 'invalid' };
+    // The plate of a car added without one, found out later; an emptied field means "no plate" again.
+    const plateNormalized = input.plateDisplay === undefined ? undefined : normalizePlate(input.plateDisplay);
+    if (plateNormalized && plateNormalized.length < 3) return { kind: 'invalid' };
+    if (plateNormalized) {
+      const matches = this.searchVehicles(tenantId, plateNormalized)
+        .filter((item) => item.id !== vehicleId && normalizePlate(item.plate) === plateNormalized);
+      if (matches.length) return { kind: 'duplicate', matches };
+    }
     this.db.exec('BEGIN');
     try {
       this.db.prepare('UPDATE vehicles SET body_type = ? WHERE id = ? AND tenant_id = ?').run(bodyType, vehicleId, tenantId);
+      if (plateNormalized !== undefined) this.db.prepare('UPDATE vehicles SET plate_display = ?, plate_normalized = ? WHERE id = ? AND tenant_id = ?')
+        .run(plateNormalized ? String(input.plateDisplay).trim() : NO_PLATE, plateNormalized, vehicleId, tenantId);
       if (tenantClass !== undefined) this.db.prepare(`INSERT INTO vehicle_pricing_overrides
         (vehicle_id, tenant_id, tenant_class, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(vehicle_id) DO UPDATE SET tenant_class = excluded.tenant_class, updated_at = CURRENT_TIMESTAMP`)

@@ -1,6 +1,6 @@
 // Helpers shared by the repository method groups (moved from server/repository.mjs unchanged).
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { normalizePhone, normalizePlate, normalizeSearch } from '../domain/normalize.mjs';
+import { NO_PLATE, normalizePhone, normalizePlate, normalizeSearch } from '../domain/normalize.mjs';
 import { buildDocumentContent } from '../../src/shared/orderDocuments.ts';
 import { availabilityForDate, computeQuote, formatMoney, isSlotAvailable, localDateTime, priceLabel, timeToMinutes } from '../../src/shared/bookingRules.ts';
 
@@ -76,4 +76,4 @@ export function mapLead(row) {
   };
 }
 
-export { createHash, randomBytes, randomUUID, normalizePhone, normalizePlate, normalizeSearch, buildDocumentContent, availabilityForDate, computeQuote, formatMoney, isSlotAvailable, localDateTime, priceLabel, timeToMinutes };
+export { createHash, randomBytes, randomUUID, NO_PLATE, normalizePhone, normalizePlate, normalizeSearch, buildDocumentContent, availabilityForDate, computeQuote, formatMoney, isSlotAvailable, localDateTime, priceLabel, timeToMinutes };

@@ -1609,3 +1609,29 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
 .survey-answer textarea { width: 100%; padding: 10px 12px; border: 1px solid #33404d; border-radius: 10px; color: #fff; background: #0c1218; font: inherit; resize: vertical; }
 .survey-answer .primary-button { margin-top: 0; }
 .survey-done { margin: -2px 0 0; padding: 10px 12px; border: 1px solid #26313b; border-top: 0; border-radius: 0 0 13px 13px; color: var(--success); font-size: 13px; font-weight: 700; }
+
+/* The time of a service: two drums, as on an alarm clock. */
+.duration-label { display: grid; gap: 6px; color: #8c99a3; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.duration-wheel { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; height: 200px; padding: 0 6px; border: 1px solid #35424c; border-radius: 12px; background: #0d1319; overflow: hidden; }
+.wheel-band { position: absolute; left: 6px; right: 6px; top: 79px; height: 40px; border-radius: 9px; background: rgba(255,121,57,.13); pointer-events: none; }
+.wheel-drum { position: relative; height: 198px; padding: 79px 0; overflow-y: auto; overscroll-behavior: contain; scroll-snap-type: y mandatory; scroll-padding-top: 79px; scrollbar-width: none; outline: 0; -webkit-mask-image: linear-gradient(180deg, transparent, #000 35%, #000 65%, transparent); mask-image: linear-gradient(180deg, transparent, #000 35%, #000 65%, transparent); }
+.wheel-drum::-webkit-scrollbar { display: none; }
+.wheel-drum:focus-visible { box-shadow: inset 0 0 0 2px var(--primary); }
+.wheel-drum button { display: block; width: 100%; height: 40px; padding: 0; border: 0; background: transparent; color: #8c99a3; font-size: 17px; font-weight: 600; text-transform: none; letter-spacing: 0; scroll-snap-align: start; cursor: pointer; }
+.wheel-drum button.selected { color: #edf1f3; font-weight: 800; }
+.catalog-missing { margin: 9px 0 0; color: #ffb28d; font-size: 12px; font-weight: 600; text-align: center; }
+
+/* Make and model of a car, picked from lists. */
+.car-select { width: 100%; min-height: 46px; padding: 10px 34px 10px 12px; border: 1px solid #35424c; border-radius: 10px; color: #8c99a3; background: #101820 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%238c99a3' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat right 12px center; font-size: 15px; font-weight: 600; text-align: left; cursor: pointer; }
+.car-select.filled { color: #edf1f3; font-weight: 800; }
+.car-select:disabled { opacity: .5; cursor: not-allowed; }
+.car-class { margin: 12px 0 0; }
+.car-class select { width: 100%; min-height: 46px; padding: 8px 10px; border: 1px solid #35424c; border-radius: 10px; color: #edf1f3; background: #101820; font-size: 15px; }
+.car-sheet { position: fixed; z-index: 70; inset: 0; display: flex; flex-direction: column; gap: 10px; width: min(100%, var(--app-width)); margin: 0 auto; padding: max(14px, env(safe-area-inset-top)) 16px 14px; background: #0b1016; }
+.car-sheet-head { display: flex; align-items: center; justify-content: space-between; color: #edf1f3; font-size: 18px; }
+.car-sheet-head button { min-height: 40px; padding: 0 4px; border: 0; background: transparent; color: var(--primary); font-size: 14px; font-weight: 700; cursor: pointer; }
+.car-sheet-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.car-sheet-list button { display: block; width: 100%; min-height: 48px; padding: 0 4px; border: 0; border-bottom: 1px solid #1f2a33; background: transparent; color: #edf1f3; font-size: 16px; text-align: left; cursor: pointer; }
+.car-sheet-list p { margin: 14px 4px; color: #8c99a3; font-size: 14px; }
+.car-sheet-list .car-not-listed { color: var(--primary); font-weight: 700; border-bottom: 0; }
+.vehicle-spec-editor input { width: 100%; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid #35424c; border-radius: 9px; color: #eef2f4; background: #0c1319; font-size: 14px; }

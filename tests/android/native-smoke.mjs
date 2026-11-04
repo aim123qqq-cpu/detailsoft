@@ -224,7 +224,7 @@ try {
   assert.ok(booked, 'the booking is on the server at 16:00');
   await tap('Новая запись');
 
-  step('stage 4: a new customer with a car typed in by hand, then intake right away');
+  step('stage 4: a new customer with a car from the lists, then intake right away');
   await tap('+7 999 000-00-00');
   await type('79990001122');
   await waitFor('Клиент не найден', { timeout: 20_000 });
@@ -234,11 +234,11 @@ try {
   await waitFor('Ivan Petrov');
   back();
   await tap('Создать клиента');
-  await tap('Вручную', { timeout: 20_000 });
-  await tap('Zeekr'); await type('Zeekr');
-  await tap('001'); await type('001');
-  back();
-  await tap('Кроссовер');
+  await tap('Марка: выбрать', { timeout: 20_000 });
+  await tap('Поиск'); await type('Zeekr');
+  await sleep(600);
+  await tapNode(find('Zeekr').at(-1)); // the first match is the search field with the same text
+  await tap('001', { timeout: 20_000 });
   await tapNode(await scrollTo('А123АА 55'));
   await type('A777AA 77');
   back(); // the keyboard covers the colour field
@@ -260,7 +260,7 @@ try {
   screenshot(resolve(out, '17-intake-from-booking.png'));
   const newCustomer = (await (await api('/api/customers?phone=79990001122')).json()).items[0];
   assert.equal(newCustomer.name, 'Ivan Petrov');
-  assert.equal(newCustomer.vehicles[0].bodyType, 'suv');
+  assert.equal(newCustomer.vehicles[0].bodyType, 'wagon', 'the only body of a Zeekr 001 in the lists');
   assert.equal(newCustomer.vehicles[0].plate, 'A777AA 77');
   const intakeOrders = (await (await api('/api/orders?limit=50')).json()).items.filter((item) => item.vehicle.plate === 'A777AA 77');
   assert.equal(intakeOrders.length, 1, 'the booking has its order');
@@ -388,16 +388,20 @@ try {
   await tap('Например, озонирование салона', { timeout: 20_000 });
   await type('Ozon');
   back();
+  await tapNode(await scrollTo(/^1 ч$/));
+  await sleep(600);
   await tap(/^0$/);
   await type('1500');
   back();
   const form6 = find(/./).map((node) => node.text || node.desc).filter(Boolean).join(' | ');
   await tapNode(await scrollTo('Добавить услугу'));
   await sleep(2500);
-  if (!(await (await api('/api/tenants/current/catalog')).json()).items.some((item) => item.name === 'Ozon')) {
+  const ozon = (await (await api('/api/tenants/current/catalog')).json()).items.find((item) => item.name === 'Ozon');
+  if (!ozon) {
     console.log('  form was:', form6);
     console.log('  now:', find(/./).map((node) => node.text || node.desc).filter(Boolean).join(' | '));
   }
+  assert.equal(ozon?.basePrice?.durationMinutes, 90, '1 hour on the drum plus the 30 minutes it starts with');
   for (let swipe = 0; swipe < 4; swipe += 1) adb('shell', 'input', 'swipe', '540', '700', '540', '1900', '300'); // back to the top of the catalog
   await scrollTo('Ozon', { swipes: 14 });
   await sleep(1500); // the list reloads on return
@@ -406,8 +410,8 @@ try {
   await scrollTo('Доступно для записи');
   await scrollTo('Сохранить услугу');
   const catalog6 = await (await api('/api/tenants/current/catalog')).json();
-  const ozon = catalog6.items.find((item) => item.name === 'Ozon');
-  assert.equal(ozon?.basePrice?.amountMinor, 150000, 'the new service is in the catalog at 1 500 ₽');
+  const savedOzon = catalog6.items.find((item) => item.name === 'Ozon');
+  assert.equal(savedOzon?.basePrice?.amountMinor, 150000, 'the new service is in the catalog at 1 500 ₽');
   back();
   back();
 

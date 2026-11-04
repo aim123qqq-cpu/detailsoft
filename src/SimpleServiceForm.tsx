@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from './api';
+import { DurationWheel } from './DurationWheel';
 import type { CatalogSection, ManagedCatalogItem } from './types';
 
 type ClassRow = { tenantClass: string; amount: string; duration: string };
@@ -48,7 +49,15 @@ export function SimpleServiceForm({ item, sections, vehicleClasses, defaultSecti
     durationMinutes: Number(row.duration !== '' ? row.duration : duration)
   })) : [];
   const rowsValid = !byClass || rows.every((row) => (row.amount === '' || validAmount(row.amount)) && (row.duration === '' || validDuration(row.duration)));
-  const valid = Boolean(sectionId) && name.trim().length >= 2 && validAmount(amount) && validDuration(duration) && rowsValid;
+  // A button that stays grey must say why.
+  const missing = [
+    !sectionId && 'раздел',
+    name.trim().length < 2 && 'название',
+    !validDuration(duration) && 'время',
+    !validAmount(amount) && 'цену',
+    !rowsValid && 'цены по классам'
+  ].filter(Boolean).join(', ');
+  const valid = !missing;
 
   const save = async () => {
     setSaving(true); setError('');
@@ -72,10 +81,8 @@ export function SimpleServiceForm({ item, sections, vehicleClasses, defaultSecti
           : <span className="catalog-hint">Сначала создайте раздел в каталоге</span>}
       </label>
       <label>Название<input data-testid="service-name" value={name} maxLength={120} placeholder="Например, озонирование салона" onChange={(event) => setName(event.target.value)}/></label>
-      <div className="simple-service-price">
-        <label>Время, мин<input data-testid="service-duration" type="number" inputMode="numeric" min="1" max="1440" value={duration} onChange={(event) => setDuration(event.target.value)}/></label>
-        <label>Цена, ₽<input data-testid="service-amount" type="number" inputMode="decimal" min="0" step="50" value={amount} onChange={(event) => setAmount(event.target.value)}/></label>
-      </div>
+      <div className="duration-label">Время работы<DurationWheel minutes={Number(duration)} onChange={(minutes) => setDuration(String(minutes))}/></div>
+      <label>Цена, ₽<input data-testid="service-amount" type="number" inputMode="decimal" min="0" step="50" value={amount} onChange={(event) => setAmount(event.target.value)}/></label>
       <label>Как показывать цену<select value={pricingMode} onChange={(event) => setPricingMode(event.target.value as ManagedCatalogItem['pricingMode'])}><option value="fixed">Точная цена</option><option value="from">Цена «от»</option><option value="inspection">После осмотра</option></select></label>
       <label>Описание<textarea value={description} maxLength={500} placeholder="Необязательно: что входит в услугу" onChange={(event) => setDescription(event.target.value)}/></label>
       {classes.length > 0 && <label className="catalog-active-toggle"><input type="checkbox" data-testid="service-by-class" checked={byClass} onChange={(event) => setByClass(event.target.checked)}/><span><strong>Разная цена по классам авто</strong><small>{byClass ? 'Пустые поля — как основная цена' : 'Одна цена и время для любого автомобиля'}</small></span></label>}
@@ -88,6 +95,7 @@ export function SimpleServiceForm({ item, sections, vehicleClasses, defaultSecti
       </div>)}
     </div>}
     {error && <p className="form-error" role="alert">{error}</p>}
+    {missing && <p className="catalog-missing" data-testid="service-missing">Осталось указать: {missing}</p>}
     <button className="primary-button catalog-save" data-testid="save-simple-service" disabled={!valid || saving} onClick={save}>{saving ? 'Сохраняем…' : item ? 'Сохранить услугу' : 'Добавить услугу'}</button>
     {!item && onComposite && <button className="catalog-composite-link" data-testid="switch-to-composite" onClick={onComposite}>Собрать услугу из нескольких операций →</button>}
   </section>;

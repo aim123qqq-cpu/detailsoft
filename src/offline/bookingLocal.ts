@@ -1,5 +1,5 @@
 import { availabilityForDate, computeQuote, formatMoney, priceLabel, type BusyBooking, type CenterSchedule, type PricingMode } from '../shared/bookingRules.ts';
-import { normalizePhone, normalizePlate } from '../shared/normalize.ts';
+import { NO_PLATE, normalizePhone, normalizePlate } from '../shared/normalize.ts';
 import { ApiRequestError } from '../apiError.ts';
 import type { Booking, BookingAvailability, BookingQuote, Customer, QuoteSelection, ServiceCatalog, ServiceOffering, Vehicle } from '../types';
 
@@ -164,14 +164,14 @@ export function localCreateVehicle(pack: BookingPack, input: VehicleInput, varia
     throw new ApiRequestError('Проверьте госномер, цвет и модель', 422, 'validation_error');
   }
   const plate = normalizePlate(input.plateDisplay);
-  if (plate.length < 3 || !input.color.trim()) throw new ApiRequestError('Проверьте госномер, цвет и модель', 422, 'validation_error');
-  const matches = pack.customers.flatMap((customer) => customer.vehicles.filter((vehicle) => normalizePlate(vehicle.plate) === plate)
+  if ((plate && plate.length < 3) || !input.color.trim()) throw new ApiRequestError('Проверьте госномер, цвет и модель', 422, 'validation_error');
+  const matches = !plate ? [] : pack.customers.flatMap((customer) => customer.vehicles.filter((vehicle) => normalizePlate(vehicle.plate) === plate)
     .map((vehicle) => ({ ...vehicle, customer: { id: customer.id, name: customer.name, phoneDisplay: customer.phoneDisplay } })));
   if (matches.length) throw new ApiRequestError('Возможно, автомобиль уже существует', 409, 'possible_duplicate', { matches });
   const tenantClass = input.tenantClass?.trim() || null;
   const vehicle: Vehicle = {
     id, catalogVariantId: input.catalogVariantId ?? null, make: model.make, model: model.model, generation: model.generation ?? null,
-    bodyType: model.bodyType, plate: input.plateDisplay.trim(), color: input.color.trim(), status: 'active', active: true, tenantClass
+    bodyType: model.bodyType, plate: plate ? input.plateDisplay.trim() : NO_PLATE, color: input.color.trim(), status: 'active', active: true, tenantClass
   };
   const vehicleClass = localVehicleClass(pack, { catalogVariantId: vehicle.catalogVariantId ?? null, systemVehicleClass: model.systemVehicleClass ?? null, tenantClass });
   return {

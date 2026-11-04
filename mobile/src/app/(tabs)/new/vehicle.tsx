@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { carVariants } from '@df/shared/carCatalog';
 import { BODY_TYPES } from '@df/shared/carLayouts';
-import type { CatalogVariant } from '@df/types';
+import { normalizePlate } from '@df/shared/normalize';
 import { Segmented } from '@/features/booking-ui';
+import { CarPicker } from '@/features/car-picker';
 import { useBookingDraft } from '@/lib/booking-draft';
 import { useSession } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { colors, space } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Card, Chip, Field, Label, Notice, Screen } from '@/ui';
 
@@ -17,9 +19,11 @@ export default function NewVehicleScreen() {
   const { api } = useSession();
   const { draft, update } = useBookingDraft();
   const [entry, setEntry] = useState<'catalog' | 'manual'>('catalog');
-  const [modelQuery, setModelQuery] = useState('');
-  const [found, setFound] = useState<{ query: string; items: CatalogVariant[] } | null>(null);
-  const [variant, setVariant] = useState<CatalogVariant | null>(null);
+  const [listedMake, setListedMake] = useState('');
+  const [listedModel, setListedModel] = useState('');
+  const [chosenId, setChosenId] = useState('');
+  const variants = useMemo(() => listedMake && listedModel ? carVariants(listedMake, listedModel) : [], [listedMake, listedModel]);
+  const variant = variants.length === 1 ? variants[0] : variants.find((item) => item.id === chosenId) ?? null;
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
   const [generation, setGeneration] = useState('');
@@ -31,16 +35,6 @@ export default function NewVehicleScreen() {
   const [error, setError] = useState('');
   const classes = useResource(useCallback((signal: AbortSignal) => api.vehicleClasses(signal), [api]));
 
-  useEffect(() => {
-    if (modelQuery.trim().length < 2) return;
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      api.searchCatalog(modelQuery, controller.signal).then((result) => setFound({ query: modelQuery, items: result.items }),
-        (failure: Error) => { if (failure.name !== 'AbortError') setError(failure.message); });
-    }, 250);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [api, modelQuery]);
-  const variants = found && found.query === modelQuery ? found.items : [];
   const chosenClass = tenantClass || classes.data?.items[0] || '';
   // A new center has no price classes yet: its prices then apply to every car and no class is asked.
   const classless = classes.data !== null && classes.data.items.length === 0;
@@ -48,8 +42,16 @@ export default function NewVehicleScreen() {
   if (!draft.customer) return <Screen><Body muted>Сначала выберите клиента.</Body><Button title="К поиску" onPress={() => router.back()}/></Screen>;
   const customer = draft.customer;
 
-  const ready = (entry === 'catalog' ? Boolean(variant) : make.trim().length >= 2 && Boolean(model.trim()) && (classless || Boolean(chosenClass)))
-    && plate.replace(/\s/g, '').length >= 3 && color.trim().length >= 2;
+  // A button that stays grey must say why.
+  const missing = [
+    ...(entry === 'catalog'
+      ? [!listedMake && 'марку', !listedModel && 'модель', listedModel && !variant && 'кузов']
+      : [make.trim().length < 2 && 'марку', !model.trim() && 'модель']),
+    !classless && !chosenClass && 'класс цены',
+    plate.trim() && normalizePlate(plate).length < 3 && 'госномер полностью или оставьте пустым',
+    color.trim().length < 2 && 'цвет'
+  ].filter(Boolean).join(', ');
+  const openManual = (typedMake: string, typedModel: string) => { setMake(typedMake); setModel(typedModel); setEntry('manual'); };
   const save = async () => {
     setSaving(true); setError('');
     try {
@@ -57,10 +59,11 @@ export default function NewVehicleScreen() {
         customerId: customer.id,
         ...(entry === 'catalog'
           ? { catalogVariantId: variant!.id }
-          : { manual: { make: make.trim(), model: model.trim(), generation: generation.trim(), bodyType }, ...(chosenClass ? { tenantClass: chosenClass } : {}) }),
+          : { manual: { make: make.trim(), model: model.trim(), generation: generation.trim(), bodyType } }),
+        ...(chosenClass ? { tenantClass: chosenClass } : {}),
         plateDisplay: plate.trim(),
         color: color.trim()
-      });
+      }, entry === 'catalog' ? variant : null);
       update({ vehicle, selections: [], quote: null });
       router.replace('/new/services');
     } catch (failure) {
@@ -74,15 +77,13 @@ export default function NewVehicleScreen() {
       <Card><Label>Владелец</Label><Text style={styles.owner}>{customer.name}</Text><Text style={styles.meta}>{customer.phoneDisplay}</Text></Card>
       <Segmented value={entry} onChange={setEntry} options={[{ value: 'catalog', label: 'Из справочника' }, { value: 'manual', label: 'Вручную' }]}/>
       {entry === 'catalog' ? <>
-        <Field label="Марка и модель" value={modelQuery} onChangeText={(value) => { setModelQuery(value); setVariant(null); }} placeholder="Например, Camry" autoCorrect={false}/>
-        {variants.map((item) => (
-          <Pressable key={item.id} accessibilityRole="radio" accessibilityState={{ checked: variant?.id === item.id }} onPress={() => setVariant(item)}
-            style={[styles.variant, variant?.id === item.id && styles.variantSelected]}>
-            <Text style={styles.variantName}>{[item.make, item.model, item.generation].filter(Boolean).join(' ')}</Text>
-            <Text style={styles.meta}>{bodyLabel(item.bodyType)}{item.yearFrom ? ` · ${item.yearFrom}–${item.yearTo ?? 'н. в.'}` : ''}</Text>
-          </Pressable>
-        ))}
-        {modelQuery.trim().length >= 2 && found?.query === modelQuery && !variants.length ? <Body muted>В справочнике такой модели нет — введите её вручную.</Body> : null}
+        <CarPicker make={listedMake} model={listedModel} onChange={(nextMake, nextModel) => { setListedMake(nextMake); setListedModel(nextModel); setChosenId(''); }} onNotListed={openManual}/>
+        {variants.length > 1 ? <View><Label>Кузов</Label>
+          <View style={styles.wrap}>{variants.map((item) => <Chip key={item.id} label={bodyLabel(item.bodyType)} selected={variant?.id === item.id} onPress={() => setChosenId(item.id)}/>)}</View>
+        </View> : null}
+        {classless ? null : <View><Label>Класс цены</Label>
+          <View style={styles.wrap}>{(classes.data?.items ?? []).map((value) => <Chip key={value} label={value} selected={chosenClass === value} onPress={() => setTenantClass(value)}/>)}</View>
+        </View>}
       </> : <>
         <View style={styles.pair}>
           <View style={styles.half}><Field label="Марка" value={make} onChangeText={setMake} placeholder="Zeekr"/></View>
@@ -99,11 +100,12 @@ export default function NewVehicleScreen() {
         </View>}
       </>}
       <View style={styles.pair}>
-        <View style={styles.half}><Field label="Госномер" value={plate} onChangeText={(value) => setPlate(value.toLocaleUpperCase('ru-RU'))} autoCapitalize="characters" autoCorrect={false} placeholder="А123АА 55"/></View>
+        <View style={styles.half}><Field label="Госномер, если известен" value={plate} onChangeText={(value) => setPlate(value.toLocaleUpperCase('ru-RU'))} autoCapitalize="characters" autoCorrect={false} placeholder="А123АА 55"/></View>
         <View style={styles.half}><Field label="Цвет" value={color} onChangeText={setColor} placeholder="графит"/></View>
       </View>
       {error ? <Notice>{error}</Notice> : null}
-      <Button title="Сохранить и выбрать услуги" busy={saving} disabled={!ready} onPress={() => void save()}/>
+      {missing ? <Notice tone="info">Осталось указать: {missing}</Notice> : null}
+      <Button title="Сохранить и выбрать услуги" busy={saving} disabled={Boolean(missing)} onPress={() => void save()}/>
     </Screen>
   );
 }
@@ -111,9 +113,6 @@ export default function NewVehicleScreen() {
 const styles = StyleSheet.create({
   owner: { color: colors.text, fontSize: 18, fontWeight: '800' },
   meta: { color: colors.muted, fontSize: 14 },
-  variant: { backgroundColor: colors.surface, borderRadius: radius.m, padding: space.m, borderWidth: 1, borderColor: 'transparent' },
-  variantSelected: { borderColor: colors.primary, backgroundColor: 'rgba(255,121,57,.1)' },
-  variantName: { color: colors.text, fontSize: 16, fontWeight: '700' },
   pair: { flexDirection: 'row', gap: space.m },
   half: { flex: 1 },
   bleed: { marginHorizontal: -space.l },

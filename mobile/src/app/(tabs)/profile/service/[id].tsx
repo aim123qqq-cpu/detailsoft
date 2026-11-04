@@ -3,6 +3,7 @@ import { StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import type { ManagedCatalog, ManagedCatalogItem } from '@df/types';
+import { DurationWheel } from '@/features/duration-wheel';
 import { useSession } from '@/lib/session';
 import { colors, radius, space } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
@@ -50,7 +51,14 @@ function ServiceForm({ item, catalog }: { item: ManagedCatalogItem | null; catal
   const classPrices = byClass ? rows.filter((row) => row.amount || row.minutes).map((row) => ({
     tenantClass: row.tenantClass, amountMinor: Number(row.amount || amount) * 100, durationMinutes: Number(row.minutes || minutes)
   })) : [];
-  const valid = Boolean(sectionId) && name.trim().length >= 2 && amount !== '' && validDuration(minutes) && (!byClass || rows.every((row) => !row.minutes || validDuration(row.minutes)));
+  // A button that stays grey must say why.
+  const missing = [
+    !sectionId && 'раздел',
+    name.trim().length < 2 && 'название',
+    !validDuration(minutes) && 'время',
+    amount === '' && 'цену',
+    byClass && !rows.every((row) => !row.minutes || validDuration(row.minutes)) && 'цены по классам'
+  ].filter(Boolean).join(', ');
 
   const save = async () => {
     setSaving(true); setError('');
@@ -77,10 +85,11 @@ function ServiceForm({ item, catalog }: { item: ManagedCatalogItem | null; catal
           : <Body muted>Сначала создайте раздел в каталоге.</Body>}
       </View>
       <Field label="Название" value={name} onChangeText={setName} maxLength={120} placeholder="Например, озонирование салона"/>
-      <View style={styles.pair}>
-        <View style={styles.half}><Field label="Время, мин" value={minutes} onChangeText={(value) => setMinutes(digits(value))} keyboardType="number-pad"/></View>
-        <View style={styles.half}><Field label="Цена, ₽" value={amount} onChangeText={(value) => setAmount(digits(value))} keyboardType="number-pad" placeholder="0"/></View>
+      <View>
+        <Label>Время работы</Label>
+        <DurationWheel minutes={Number(minutes)} onChange={(value) => setMinutes(String(value))}/>
       </View>
+      <Field label="Цена, ₽" value={amount} onChangeText={(value) => setAmount(digits(value))} keyboardType="number-pad" placeholder="0"/>
       <View>
         <Label>Как показывать цену</Label>
         <View style={styles.wrap}>{MODES.map((option) => <Chip key={option.value} label={option.label} selected={mode === option.value} onPress={() => setMode(option.value)}/>)}</View>
@@ -105,7 +114,8 @@ function ServiceForm({ item, catalog }: { item: ManagedCatalogItem | null; catal
       {item ? <Toggle title="Доступно для записи" note={active ? 'Услугу можно выбрать при записи' : 'Останется только в истории'} value={active} onChange={setActive}/> : null}
 
       {error ? <Notice>{error}</Notice> : null}
-      <Button title={item ? 'Сохранить услугу' : 'Добавить услугу'} busy={saving} disabled={!valid} onPress={() => void save()}/>
+      {missing ? <Notice tone="info">Осталось указать: {missing}</Notice> : null}
+      <Button title={item ? 'Сохранить услугу' : 'Добавить услугу'} busy={saving} disabled={Boolean(missing)} onPress={() => void save()}/>
     </Screen>
   );
 }
@@ -121,8 +131,6 @@ function Toggle({ title, note, value, onChange }: { title: string; note: string;
 
 const styles = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
-  pair: { flexDirection: 'row', gap: space.m },
-  half: { flex: 1 },
   multiline: { minHeight: 80, paddingTop: 14, textAlignVertical: 'top' },
   classRow: { flexDirection: 'row', alignItems: 'center', gap: space.s },
   className: { color: colors.text, fontSize: 15, fontWeight: '700', flex: 1 },

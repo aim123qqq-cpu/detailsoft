@@ -41,7 +41,10 @@ test('mobile catalog: sections, a simple service with a class price, and the res
     await page.getByTestId('simple-service-form').waitFor();
     assert.equal(await page.getByTestId('service-section').locator('option:checked').innerText(), 'Защитные покрытия');
     await page.getByTestId('service-name').fill('Керамика кузова');
-    await page.getByTestId('service-duration').fill('240');
+    // 4 hours on the drums, like an alarm clock: the mistake with "2.30" in a minutes field is gone.
+    await page.getByTestId('duration-hours').getByRole('button', { name: '4 ч', exact: true }).click();
+    await page.getByTestId('duration-minutes').getByRole('button', { name: '0 мин', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('[data-testid=duration-hours]').getAttribute('aria-valuenow') === '4');
     await page.getByTestId('service-amount').fill('25000');
     await page.getByTestId('service-by-class').check();
     await page.getByLabel('SUV цена').fill('32000');

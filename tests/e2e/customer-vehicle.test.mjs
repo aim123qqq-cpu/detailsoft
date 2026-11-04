@@ -59,7 +59,13 @@ test('mobile customer → vehicle → services → booking flow works end to end
 
     await page.getByRole('button', { name: 'Добавить автомобиль' }).click();
     await page.getByTestId('add-vehicle-screen').waitFor();
+    assert.match(await page.getByTestId('vehicle-missing').innerText(), /марку, модель, цвет/);
+    await page.getByTestId('car-make').click();
+    await page.getByTestId('car-search').fill('мазд');
+    await page.getByTestId('car-option').filter({ hasText: 'Mazda' }).click();
+    await page.getByTestId('car-option').filter({ hasText: /^3$/ }).click();
     await page.getByRole('button', { name: /хэтчбек/ }).click();
+    await page.getByTestId('catalog-class').selectOption('Компакт');
     await page.getByTestId('plate-input').fill('К777КК 55');
     await page.getByTestId('color-input').fill('графитовый');
     await page.waitForTimeout(400);

@@ -570,7 +570,6 @@ export function createApi(base: string, token: string | null, onUnauthorized: ()
       return customer;
     },
     customerProfile: (customerId: string, signal?: AbortSignal) => request<CustomerProfile>(`/api/customers/${encodeURIComponent(customerId)}/profile`, { signal }),
-    searchCatalog: (query: string, signal?: AbortSignal) => request<{ items: CatalogVariant[] }>(`/api/vehicle-catalog/variants?q=${encodeURIComponent(query)}`, { signal }),
     vehicleClasses: (signal?: AbortSignal) => withPack(
       () => request<{ items: string[] }>('/api/tenants/current/vehicle-classes', { signal }, { offlineCopy: false }),
       (pack) => ({ items: [...new Set(pack.classRules.map((rule) => rule.tenantClass))].sort() })),

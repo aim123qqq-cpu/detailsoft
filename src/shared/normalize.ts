@@ -10,6 +10,9 @@ export function normalizePlate(value: unknown = '') {
   return String(value).normalize('NFC').replace(/[\s\-_.]/g, '').toLocaleUpperCase('ru-RU');
 }
 
+/** Shown wherever a plate goes when the car was added without one; such a car has an empty normalized plate. */
+export const NO_PLATE = 'Без номера';
+
 export function normalizeSearch(value: unknown = '') {
   return String(value).normalize('NFC').trim().toLocaleLowerCase('ru-RU').replace(/\s+/g, ' ');
 }

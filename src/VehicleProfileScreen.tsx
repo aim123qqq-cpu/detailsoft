@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
 import { visitsLabel } from './format';
+import { NO_PLATE } from './shared/normalize.ts';
 import type { Customer, VehicleProfile } from './types';
 
 const statusLabels = { active: 'В работе', inactive: 'Неактивен', sold: 'Продан' } as const;
@@ -36,6 +37,7 @@ export function VehicleProfileScreen({ vehicleId, onBack, onOpenCustomer, backLa
   const [vehicleClasses, setVehicleClasses] = useState<string[]>([]);
   const [editBodyType, setEditBodyType] = useState('sedan');
   const [editTenantClass, setEditTenantClass] = useState('');
+  const [editPlate, setEditPlate] = useState('');
 
   const load = async (signal?: AbortSignal) => {
     setLoading(true);
@@ -106,6 +108,7 @@ export function VehicleProfileScreen({ vehicleId, onBack, onOpenCustomer, backLa
   const openVehicleEdit = async () => {
     setEditBodyType(profile?.vehicle.bodyType ?? 'other');
     setEditTenantClass(profile?.vehicle.tenantClass ?? '');
+    setEditPlate(profile?.vehicle.plate === NO_PLATE ? '' : profile?.vehicle.plate ?? '');
     setVehicleEditOpen(true);
     setSuccess('');
     if (!vehicleClasses.length) {
@@ -117,10 +120,10 @@ export function VehicleProfileScreen({ vehicleId, onBack, onOpenCustomer, backLa
   const saveVehicleDetails = async () => {
     setBusy(true); setError('');
     try {
-      await api.updateVehicleDetails(vehicleId, { bodyType: editBodyType, tenantClass: editTenantClass });
+      await api.updateVehicleDetails(vehicleId, { bodyType: editBodyType, plateDisplay: editPlate, ...(editTenantClass ? { tenantClass: editTenantClass } : {}) });
       await load();
       setVehicleEditOpen(false);
-      setSuccess('Кузов и тарификационный класс обновлены');
+      setSuccess('Параметры автомобиля обновлены');
     } catch (requestError) { setError((requestError as Error).message); }
     finally { setBusy(false); }
   };
@@ -150,10 +153,10 @@ export function VehicleProfileScreen({ vehicleId, onBack, onOpenCustomer, backLa
 
       <button className="vehicle-spec-action" data-testid="open-vehicle-spec" onClick={openVehicleEdit}><span><b>Параметры автомобиля</b><small>{bodyLabels[vehicle.bodyType ?? ''] ?? vehicle.bodyType} · класс {vehicle.tenantClass ?? 'не задан'}</small></span><strong>Изменить</strong></button>
       {vehicleEditOpen && <div className="vehicle-spec-editor" data-testid="vehicle-spec-editor">
-        <div className="vehicle-section-heading"><span>Кузов и расчёт цены</span><i>только этот центр</i></div>
+        <div className="vehicle-section-heading"><span>Госномер, кузов и расчёт цены</span><i>только этот центр</i></div>
         <p>Изменение повлияет на новые предварительные расчёты. История и готовые сметы останутся прежними.</p>
-        <div><label>Тип кузова<select value={editBodyType} onChange={(event) => setEditBodyType(event.target.value)}>{Object.entries(bodyLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Тарификационный класс<select value={editTenantClass} onChange={(event) => setEditTenantClass(event.target.value)}>{vehicleClasses.map((value) => <option key={value}>{value}</option>)}</select></label></div>
-        <div className="vehicle-spec-actions"><button onClick={() => setVehicleEditOpen(false)}>Отмена</button><button data-testid="save-vehicle-spec" disabled={busy || !editTenantClass} onClick={saveVehicleDetails}>Сохранить параметры</button></div>
+        <div><label>Госномер<input data-testid="edit-plate" autoComplete="off" value={editPlate} placeholder="Не указан" onChange={(event) => setEditPlate(event.target.value.toLocaleUpperCase('ru-RU'))}/></label><label>Тип кузова<select value={editBodyType} onChange={(event) => setEditBodyType(event.target.value)}>{Object.entries(bodyLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>{vehicleClasses.length > 0 && <label>Тарификационный класс<select value={editTenantClass} onChange={(event) => setEditTenantClass(event.target.value)}>{vehicleClasses.map((value) => <option key={value}>{value}</option>)}</select></label>}</div>
+        <div className="vehicle-spec-actions"><button onClick={() => setVehicleEditOpen(false)}>Отмена</button><button data-testid="save-vehicle-spec" disabled={busy || (vehicleClasses.length > 0 && !editTenantClass)} onClick={saveVehicleDetails}>Сохранить параметры</button></div>
       </div>}
 
       <article className="vehicle-owner-card">

@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
+import { allCarVariants } from '../src/shared/carCatalog.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -11,6 +12,7 @@ export function openDatabase(databasePath, { seed = false } = {}) {
   for (const migration of readdirSync(migrationsDirectory).filter((name) => name.endsWith('.sql')).sort()) {
     db.exec(readFileSync(resolve(migrationsDirectory, migration), 'utf8'));
   }
+  loadCarCatalog(db);
   allowEmailSignIn(db);
   if (seed) seedDatabase(db);
   return db;
@@ -52,6 +54,19 @@ function allowEmailSignIn(db) {
 function insertMany(db, sql, rows) {
   const statement = db.prepare(sql);
   for (const row of rows) statement.run(...row);
+}
+
+/** The makes and models the apps offer (src/shared/carCatalog.ts) must exist for a car to refer to them; new ones arrive with a release. */
+function loadCarCatalog(db) {
+  db.exec('BEGIN');
+  try {
+    insertMany(db, `INSERT OR IGNORE INTO vehicle_catalog_variants (id, make, model, body_type) VALUES (?, ?, ?, ?)`,
+      allCarVariants().map((variant) => [variant.id, variant.make, variant.model, variant.bodyType]));
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
 }
 
 export function seedDatabase(db) {
