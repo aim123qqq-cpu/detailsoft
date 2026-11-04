@@ -432,7 +432,7 @@ export const api = {
       method: 'PATCH', body: JSON.stringify({ status })
     });
   },
-  updateVehicleDetails(vehicleId: string, input: { bodyType: string; tenantClass?: string; plateDisplay?: string }) {
+  updateVehicleDetails(vehicleId: string, input: { bodyType: string; tenantClass?: string; plateDisplay?: string; color?: string }) {
     return request<Vehicle>(`/api/vehicles/${encodeURIComponent(vehicleId)}`, {
       method: 'PATCH', body: JSON.stringify(input)
     });

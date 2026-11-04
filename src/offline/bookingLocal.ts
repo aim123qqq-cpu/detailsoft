@@ -161,10 +161,10 @@ export function localCreateVehicle(pack: BookingPack, input: VehicleInput, varia
     bodyType: input.manual.bodyType, systemVehicleClass: input.manual.systemVehicleClass?.trim() || null
   } : null;
   if (!model || (input.catalogVariantId && model.id !== input.catalogVariantId) || model.make.length < 2 || !model.model.length) {
-    throw new ApiRequestError('Проверьте госномер, цвет и модель', 422, 'validation_error');
+    throw new ApiRequestError('Проверьте госномер и модель', 422, 'validation_error');
   }
   const plate = normalizePlate(input.plateDisplay);
-  if ((plate && plate.length < 3) || !input.color.trim()) throw new ApiRequestError('Проверьте госномер, цвет и модель', 422, 'validation_error');
+  if (plate && plate.length < 3) throw new ApiRequestError('Проверьте госномер и модель', 422, 'validation_error');
   const matches = !plate ? [] : pack.customers.flatMap((customer) => customer.vehicles.filter((vehicle) => normalizePlate(vehicle.plate) === plate)
     .map((vehicle) => ({ ...vehicle, customer: { id: customer.id, name: customer.name, phoneDisplay: customer.phoneDisplay } })));
   if (matches.length) throw new ApiRequestError('Возможно, автомобиль уже существует', 409, 'possible_duplicate', { matches });

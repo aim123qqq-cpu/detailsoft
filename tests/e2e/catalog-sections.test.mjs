@@ -41,6 +41,17 @@ test('mobile catalog: sections, a simple service with a class price, and the res
     await page.getByTestId('simple-service-form').waitFor();
     assert.equal(await page.getByTestId('service-section').locator('option:checked').innerText(), 'Защитные покрытия');
     await page.getByTestId('service-name').fill('Керамика кузова');
+    // A row scrolled into the band is the row that counts, however far down the drum it is.
+    const minutesDrum = page.getByTestId('duration-minutes');
+    for (const minutes of [15, 30, 55]) {
+      const chosen = await minutesDrum.evaluate(async (drum, label) => {
+        const row = [...drum.querySelectorAll('button')].find((item) => item.textContent === label);
+        drum.scrollTop += row.getBoundingClientRect().top - drum.parentElement.querySelector('.wheel-band').getBoundingClientRect().top;
+        await new Promise((done) => setTimeout(done, 400));
+        return drum.querySelector('button.selected').textContent;
+      }, `${minutes} мин`);
+      assert.equal(chosen, `${minutes} мин`);
+    }
     // 4 hours on the drums, like an alarm clock: the mistake with "2.30" in a minutes field is gone.
     await page.getByTestId('duration-hours').getByRole('button', { name: '4 ч', exact: true }).click();
     await page.getByTestId('duration-minutes').getByRole('button', { name: '0 мин', exact: true }).click();
@@ -48,7 +59,13 @@ test('mobile catalog: sections, a simple service with a class price, and the res
     await page.getByTestId('service-amount').fill('25000');
     await page.getByTestId('service-by-class').check();
     await page.getByLabel('SUV цена').fill('32000');
-    await page.getByLabel('SUV длительность').fill('300');
+    // A class gets its own time on drums too: 5 hours for SUV.
+    const classPrices = page.getByTestId('service-class-prices');
+    await page.getByLabel('SUV время').click();
+    await classPrices.getByTestId('duration-hours').getByRole('button', { name: '5 ч', exact: true }).click();
+    await classPrices.getByTestId('duration-minutes').getByRole('button', { name: '0 мин', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('[data-testid=service-class-prices] [data-testid=duration-hours]').getAttribute('aria-valuenow') === '5');
+    assert.equal(await page.getByLabel('SUV время').innerText(), '5 ч');
     await settle(page);
     await page.getByTestId('service-class-prices').scrollIntoViewIfNeeded();
     await page.screenshot({ path: resolve(artifacts, '104-simple-service-form.png') });

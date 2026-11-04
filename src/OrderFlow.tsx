@@ -266,7 +266,7 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId =
   if (order.status === 'READY' && deliveryOpen) return (
     <section className="screen delivery-screen" data-testid="order-delivery">
       <div className="production-top"><span>Выдача автомобиля</span><b>READY</b></div>
-      <div className="order-hero"><small>{customer.name}</small><strong>{vehicle.make} {vehicle.model}</strong><span>{vehicle.plate} · {vehicle.color}</span></div>
+      <div className="order-hero"><small>{customer.name}</small><strong>{vehicle.make} {vehicle.model}</strong><span>{[vehicle.plate, vehicle.color].filter(Boolean).join(' · ')}</span></div>
       <div className="delivery-photos">
         <div className={!intakePhoto ? 'missing' : ''}>{intakePhoto ? <img src={intakePhoto.dataUrl} alt={`Автомобиль до работ, ${intakePhoto.zone}`}/> : <span className="delivery-photo-empty">Нет фото приёмки</span>}<small>До работ</small></div>
         <label className={!resultPhoto ? 'missing' : ''}>{resultPhoto ? <img src={resultPhoto.dataUrl} alt="Автомобиль после работ"/> : <span className="delivery-photo-empty">{photoUploading ? 'Загрузка…' : '＋ Добавить фото'}</span>}<small>После работ</small><input data-testid="result-photo-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={photoUploading || Boolean(resultPhoto)} onChange={(event) => { void uploadPhoto(event.target.files?.[0], 'intake', 'result'); event.target.value = ''; }}/></label>
@@ -365,7 +365,7 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId =
   return (
     <section className="screen order-flow" data-testid={`order-${stage}`}>
       <div className="order-status-row"><span>Заказ открыт</span><b>{order.status === 'INTAKE' ? 'Приёмка' : 'Смета'}</b></div>
-      <div className="order-hero"><small>{customer.name}</small><strong>{vehicle.make} {vehicle.model} {vehicle.generation}</strong><span>{vehicle.plate} · {vehicle.color}</span></div>
+      <div className="order-hero"><small>{customer.name}</small><strong>{vehicle.make} {vehicle.model} {vehicle.generation}</strong><span>{[vehicle.plate, vehicle.color].filter(Boolean).join(' · ')}</span></div>
 
       {stage === 'intake' && <>
         <div className="inspection-tabs" role="group" aria-label="Раздел приёмки">

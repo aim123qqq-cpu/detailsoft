@@ -42,8 +42,7 @@ export function AddVehicle({ customer, onCancel, onCreated }: { customer: Custom
       ? [!make && 'марку', !model && 'модель', model && !variant && 'кузов']
       : [manualMake.trim().length < 2 && 'марку', !manualModel.trim() && 'модель']),
     vehicleClasses.length > 0 && !tenantClass && 'класс цены',
-    !plateValid && 'госномер полностью или оставьте пустым',
-    color.trim().length < 2 && 'цвет'
+    !plateValid && 'госномер полностью или оставьте пустым'
   ].filter(Boolean).join(', ');
   const openManual = (typedMake: string, typedModel: string) => { setManualMake(typedMake); setManualModel(typedModel); setEntryMode('manual'); };
   const submit = async () => {
@@ -96,7 +95,7 @@ export function AddVehicle({ customer, onCancel, onCreated }: { customer: Custom
       </div>}
       <div className="form-row">
         <div className="form-group"><label htmlFor="plate">Госномер <small>если известен</small></label><input id="plate" data-testid="plate-input" autoComplete="off" value={plate} onChange={(event) => setPlate(event.target.value.toLocaleUpperCase('ru-RU'))} placeholder="А123АА 55"/></div>
-        <div className="form-group"><label htmlFor="color">Цвет</label><input id="color" data-testid="color-input" autoComplete="off" value={color} onChange={(event) => setColor(event.target.value)} placeholder="Например, графит"/></div>
+        <div className="form-group"><label htmlFor="color">Цвет <small>если известен</small></label><input id="color" data-testid="color-input" autoComplete="off" value={color} onChange={(event) => setColor(event.target.value)} placeholder="Например, графит"/></div>
       </div>
       {error && <p className="form-error">{error}</p>}
       {missing && <p className="catalog-missing" data-testid="vehicle-missing">Осталось указать: {missing}</p>}

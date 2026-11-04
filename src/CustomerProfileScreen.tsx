@@ -263,7 +263,7 @@ export function CustomerProfileScreen({ customerId, backLabel, onBack, onOpenVeh
             <div key={vehicle.id} className={`customer-vehicle ${vehicle.active ? '' : 'inactive'}`} data-testid={`customer-vehicle-${vehicle.id}`}>
               <span className="customer-vehicle-copy">
                 <strong>{vehicle.make} {vehicle.model} {vehicle.generation}</strong>
-                <small>{vehicle.color}{vehicle.tenantClass ? ` · класс ${vehicle.tenantClass}` : ''}{vehicle.active ? '' : ` · ${vehicleStatusLabels[vehicle.status]}`}</small>
+                <small>{[vehicle.color, vehicle.tenantClass && `класс ${vehicle.tenantClass}`, !vehicle.active && vehicleStatusLabels[vehicle.status]].filter(Boolean).join(' · ')}</small>
               </span>
               <span className="plate">{vehicle.plate}</span>
               <div className="customer-vehicle-actions">

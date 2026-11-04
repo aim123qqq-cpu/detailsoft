@@ -40,8 +40,12 @@ test('a car from the lists is saved with no plate, two such cars are no duplicat
     assert.equal(first.body.vehicle.bodyType, 'hatchback');
     assert.equal(first.body.vehicle.customer.id, 'cust_alexey');
 
-    const second = await call('/api/vehicles', 'POST', { customerId: 'cust_alexey', catalogVariantId: golf.id, color: 'белый' });
-    assert.equal(second.status, 201, 'the field may be left out altogether');
+    const second = await call('/api/vehicles', 'POST', { customerId: 'cust_alexey', catalogVariantId: golf.id });
+    assert.equal(second.status, 201, 'the fields may be left out altogether');
+    assert.equal(second.body.vehicle.color, '');
+    const painted = await call(`/api/vehicles/${second.body.vehicle.id}`, 'PATCH', { color: 'синий' });
+    assert.equal(painted.status, 200);
+    assert.equal(painted.body.color, 'синий', 'the colour can be added later');
 
     assert.equal((await call('/api/vehicles', 'POST', { customerId: 'cust_alexey', catalogVariantId: golf.id, plateDisplay: 'А1', color: 'белый' })).status, 422, 'half a plate is a typo');
     assert.equal((await call(`/api/vehicles?plate=${encodeURIComponent('БЕЗ')}`)).body.items.length, 0, 'the label is not a plate to find');

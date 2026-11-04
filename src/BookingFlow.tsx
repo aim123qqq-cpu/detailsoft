@@ -38,7 +38,7 @@ function VehicleSummary({ vehicle, onChange, changeLabel = 'Изменить' }:
       <span>
         <small>{vehicle.plate}</small>
         <strong>{vehicle.make} {vehicle.model} {vehicle.generation}</strong>
-        <em>{vehicle.color} · {vehicle.tenantClass ?? 'класс уточняется'}</em>
+        <em>{[vehicle.color, vehicle.tenantClass ?? 'класс уточняется'].filter(Boolean).join(' · ')}</em>
       </span>
       <button onClick={onChange}>{changeLabel}</button>
     </div>

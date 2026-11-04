@@ -44,7 +44,7 @@ export function DocumentPaper({ content, number, pendingNumber, signerName, sign
         <div><dt>Телефон</dt><dd>{content.customer.phoneDisplay}</dd></div>
         <div><dt>Автомобиль</dt><dd>{vehicle}</dd></div>
         <div><dt>Госномер</dt><dd>{content.vehicle.plate}</dd></div>
-        <div><dt>Цвет</dt><dd>{content.vehicle.color}</dd></div>
+        <div><dt>Цвет</dt><dd>{content.vehicle.color || '—'}</dd></div>
         <div><dt>Заказ открыт</dt><dd>{formatDate(content.order.createdAt)}</dd></div>
       </dl>
 

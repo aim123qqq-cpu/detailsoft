@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from './api';
-import { DurationWheel } from './DurationWheel';
+import { DurationWheel, durationText } from './DurationWheel';
 import type { CatalogSection, ManagedCatalogItem } from './types';
 
 type ClassRow = { tenantClass: string; amount: string; duration: string };
@@ -39,8 +39,10 @@ export function SimpleServiceForm({ item, sections, vehicleClasses, defaultSecti
     const price = item?.classPrices?.find((value) => value.tenantClass === tenantClass);
     return { tenantClass, amount: price ? rubles(price.amountMinor) : '', duration: price ? String(price.durationMinutes) : '' };
   }));
+  const [openWheel, setOpenWheel] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const setRowDuration = (index: number, value: string) => setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, duration: value } : row));
 
   // An empty class row means "same as the base".
   const classPrices = byClass ? rows.filter((row) => row.amount !== '' || row.duration !== '').map((row) => ({
@@ -55,7 +57,7 @@ export function SimpleServiceForm({ item, sections, vehicleClasses, defaultSecti
     name.trim().length < 2 && 'название',
     !validDuration(duration) && 'время',
     !validAmount(amount) && 'цену',
-    !rowsValid && 'цены по классам'
+    !rowsValid && 'цены и время по классам'
   ].filter(Boolean).join(', ');
   const valid = !missing;
 
@@ -91,7 +93,11 @@ export function SimpleServiceForm({ item, sections, vehicleClasses, defaultSecti
     {byClass && <div className="catalog-price-editor" data-testid="service-class-prices"><div><span>Цены по классам</span><strong>Остальные — {amount || '—'} ₽ · {duration || '—'} мин</strong></div>
       {rows.map((row, index) => <div className="catalog-price-row" key={row.tenantClass}><strong>{row.tenantClass}</strong>
         <label>Цена, ₽<input aria-label={`${row.tenantClass} цена`} type="number" min="0" step="50" placeholder={amount} value={row.amount} onChange={(event) => setRows(rows.map((value, rowIndex) => rowIndex === index ? { ...value, amount: event.target.value } : value))}/></label>
-        <label>Минуты<input aria-label={`${row.tenantClass} длительность`} type="number" min="1" max="1440" placeholder={duration} value={row.duration} onChange={(event) => setRows(rows.map((value, rowIndex) => rowIndex === index ? { ...value, duration: event.target.value } : value))}/></label>
+        <div className="class-duration">Время<button type="button" aria-label={`${row.tenantClass} время`} aria-expanded={openWheel === row.tenantClass} data-testid="class-duration" onClick={() => setOpenWheel(openWheel === row.tenantClass ? '' : row.tenantClass)}>{row.duration ? durationText(Number(row.duration)) : 'Как основное'}</button></div>
+        {openWheel === row.tenantClass && <div className="class-wheel">
+          <DurationWheel minutes={Number(row.duration || duration)} onChange={(minutes) => setRowDuration(index, String(minutes))}/>
+          {row.duration && <button type="button" className="class-wheel-reset" onClick={() => { setRowDuration(index, ''); setOpenWheel(''); }}>Как основное время</button>}
+        </div>}
       </div>)}
     </div>}
     {error && <p className="form-error" role="alert">{error}</p>}

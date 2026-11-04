@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react';
-import { StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import type { ManagedCatalog, ManagedCatalogItem } from '@df/types';
-import { DurationWheel } from '@/features/duration-wheel';
+import { DurationWheel, durationText } from '@/features/duration-wheel';
 import { useSession } from '@/lib/session';
 import { colors, radius, space } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
@@ -44,8 +44,10 @@ function ServiceForm({ item, catalog }: { item: ManagedCatalogItem | null; catal
     const price = item?.classPrices?.find((entry) => entry.tenantClass === tenantClass);
     return { tenantClass, amount: price ? rubles(price.amountMinor) : '', minutes: price ? String(price.durationMinutes) : '' };
   }));
+  const [openWheel, setOpenWheel] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const setRowMinutes = (index: number, value: string) => setRows((current) => current.map((entry, at) => at === index ? { ...entry, minutes: value } : entry));
 
   // An empty class field means "as the base price".
   const classPrices = byClass ? rows.filter((row) => row.amount || row.minutes).map((row) => ({
@@ -57,7 +59,7 @@ function ServiceForm({ item, catalog }: { item: ManagedCatalogItem | null; catal
     name.trim().length < 2 && 'название',
     !validDuration(minutes) && 'время',
     amount === '' && 'цену',
-    byClass && !rows.every((row) => !row.minutes || validDuration(row.minutes)) && 'цены по классам'
+    byClass && !rows.every((row) => !row.minutes || validDuration(row.minutes)) && 'цены и время по классам'
   ].filter(Boolean).join(', ');
 
   const save = async () => {
@@ -100,14 +102,20 @@ function ServiceForm({ item, catalog }: { item: ManagedCatalogItem | null; catal
       {byClass ? <Card>
         <Label>Цены по классам</Label>
         {rows.map((row, index) => (
-          <View key={row.tenantClass} style={styles.classRow}>
-            <Text style={styles.className}>{row.tenantClass}</Text>
-            <TextInput value={row.amount} placeholder={amount || '₽'} placeholderTextColor={colors.soft} keyboardType="number-pad" accessibilityLabel={`${row.tenantClass}: цена`}
-              onChangeText={(value) => setRows(rows.map((entry, at) => at === index ? { ...entry, amount: digits(value) } : entry))} style={styles.small}/>
-            <Text style={styles.unit}>₽</Text>
-            <TextInput value={row.minutes} placeholder={minutes || 'мин'} placeholderTextColor={colors.soft} keyboardType="number-pad" accessibilityLabel={`${row.tenantClass}: минуты`}
-              onChangeText={(value) => setRows(rows.map((entry, at) => at === index ? { ...entry, minutes: digits(value) } : entry))} style={styles.small}/>
-            <Text style={styles.unit}>мин</Text>
+          <View key={row.tenantClass} style={styles.classBlock}>
+            <View style={styles.classRow}>
+              <Text style={styles.className}>{row.tenantClass}</Text>
+              <TextInput value={row.amount} placeholder={amount || '₽'} placeholderTextColor={colors.soft} keyboardType="number-pad" accessibilityLabel={`${row.tenantClass}: цена`}
+                onChangeText={(value) => setRows(rows.map((entry, at) => at === index ? { ...entry, amount: digits(value) } : entry))} style={styles.small}/>
+              <Text style={styles.unit}>₽</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel={`${row.tenantClass}: время`} accessibilityState={{ expanded: openWheel === row.tenantClass }} onPress={() => setOpenWheel(openWheel === row.tenantClass ? '' : row.tenantClass)} style={styles.timeButton}>
+                <Text style={styles.timeText}>{row.minutes ? durationText(Number(row.minutes)) : 'Как основное'}</Text>
+              </Pressable>
+            </View>
+            {openWheel === row.tenantClass ? <>
+              <DurationWheel minutes={Number(row.minutes || minutes)} onChange={(value) => setRowMinutes(index, String(value))}/>
+              {row.minutes ? <Button title="Как основное время" tone="secondary" onPress={() => { setRowMinutes(index, ''); setOpenWheel(''); }}/> : null}
+            </> : null}
           </View>
         ))}
       </Card> : null}
@@ -132,7 +140,10 @@ function Toggle({ title, note, value, onChange }: { title: string; note: string;
 const styles = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
   multiline: { minHeight: 80, paddingTop: 14, textAlignVertical: 'top' },
+  classBlock: { gap: space.s },
   classRow: { flexDirection: 'row', alignItems: 'center', gap: space.s },
+  timeButton: { width: 96, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.s, backgroundColor: colors.surfaceRaised, paddingHorizontal: space.xs },
+  timeText: { color: colors.text, fontSize: 13, fontWeight: '700', textAlign: 'center' },
   className: { color: colors.text, fontSize: 15, fontWeight: '700', flex: 1 },
   small: { minWidth: 76, minHeight: 44, borderRadius: radius.s, backgroundColor: colors.surfaceRaised, color: colors.text, fontSize: 16, paddingHorizontal: space.s, textAlign: 'right' },
   unit: { color: colors.muted, fontSize: 13 },

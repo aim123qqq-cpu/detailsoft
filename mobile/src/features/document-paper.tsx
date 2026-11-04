@@ -38,7 +38,7 @@ export function DocumentPaper({ content, number, signerName, signatureDataUrl, s
         <Party label="Телефон" value={content.customer.phoneDisplay}/>
         <Party label="Автомобиль" value={vehicle}/>
         <Party label="Госномер" value={content.vehicle.plate}/>
-        <Party label="Цвет" value={content.vehicle.color}/>
+        <Party label="Цвет" value={content.vehicle.color || '—'}/>
         <Party label="Заказ открыт" value={documentDate(content.order.createdAt)}/>
       </View>
 

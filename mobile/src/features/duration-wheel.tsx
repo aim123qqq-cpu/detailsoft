@@ -10,14 +10,24 @@ const MAX_MINUTES = 1440;
 function Drum({ label, options, value, unit, onChange }: { label: string; options: number[]; value: number; unit: string; onChange: (value: number) => void }) {
   const list = useRef<ComponentRef<typeof ScrollView>>(null);
   const index = Math.max(0, options.indexOf(value));
+  const [start] = useState({ x: 0, y: index * ROW });
+  const afterDrag = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => { list.current?.scrollTo({ y: index * ROW, animated: true }); }, [index]);
-  const settle = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const next = options[Math.min(options.length - 1, Math.max(0, Math.round(event.nativeEvent.contentOffset.y / ROW)))];
+  useEffect(() => () => clearTimeout(afterDrag.current), []);
+  const pick = (offset: number) => {
+    const next = options[Math.min(options.length - 1, Math.max(0, Math.round(offset / ROW)))];
     if (next !== value) onChange(next);
+  };
+  const settle = (event: NativeSyntheticEvent<NativeScrollEvent>) => pick(event.nativeEvent.contentOffset.y);
+  // When the finger lifts the drum may still be gliding: a row counts only where it stops.
+  const lifted = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offset = event.nativeEvent.contentOffset.y;
+    clearTimeout(afterDrag.current);
+    afterDrag.current = setTimeout(() => pick(offset), 150);
   };
   return (
     <ScrollView ref={list} style={styles.drum} accessibilityLabel={label} nestedScrollEnabled showsVerticalScrollIndicator={false} snapToInterval={ROW} decelerationRate="fast"
-      contentOffset={{ x: 0, y: index * ROW }} contentContainerStyle={styles.drumContent} onMomentumScrollEnd={settle} onScrollEndDrag={settle}>
+      contentOffset={start} contentContainerStyle={styles.drumContent} onScrollEndDrag={lifted} onMomentumScrollBegin={() => clearTimeout(afterDrag.current)} onMomentumScrollEnd={settle}>
       {options.map((option) => (
         <Pressable key={option} accessibilityRole="button" accessibilityState={{ selected: option === value }} onPress={() => onChange(option)} style={styles.row}>
           <Text style={[styles.rowText, option === value && styles.rowSelected]}>{option} {unit}</Text>
@@ -26,6 +36,8 @@ function Drum({ label, options, value, unit, onChange }: { label: string; option
     </ScrollView>
   );
 }
+
+export const durationText = (minutes: number) => [Math.floor(minutes / 60) && `${Math.floor(minutes / 60)} ч`, minutes % 60 && `${minutes % 60} мин`].filter(Boolean).join(' ') || '0 мин';
 
 /** The time of a service as on an alarm clock: hours and minutes on two drums, nothing to mistype. */
 export function DurationWheel({ minutes, onChange }: { minutes: number; onChange: (minutes: number) => void }) {

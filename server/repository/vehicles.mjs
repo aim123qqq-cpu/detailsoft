@@ -97,7 +97,7 @@ export const vehiclesMethods = {
       WHERE tenant_id = ? AND tenant_class = ? LIMIT 1`).get(tenantId, tenantClass)) return { kind: 'invalid' };
     // The plate is often unknown when booking by phone: without one there is nothing to be a duplicate of.
     const plateNormalized = normalizePlate(input.plateDisplay ?? '');
-    if ((plateNormalized && plateNormalized.length < 3) || !String(input.color ?? '').trim()) return { kind: 'invalid' };
+    if (plateNormalized && plateNormalized.length < 3) return { kind: 'invalid' };
 
     const matches = plateNormalized ? this.searchVehicles(tenantId, plateNormalized)
       .filter((vehicle) => normalizePlate(vehicle.plate) === plateNormalized) : [];
@@ -116,7 +116,7 @@ export const vehiclesMethods = {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
           vehicleId, tenantId, variant?.id ?? null, vehicleData.make, vehicleData.model, vehicleData.generation,
           vehicleData.body_type, plateNormalized ? String(input.plateDisplay).trim() : NO_PLATE, plateNormalized,
-          String(input.color).trim(), vehicleData.system_vehicle_class
+          String(input.color ?? '').trim(), vehicleData.system_vehicle_class
         );
       this.db.prepare(`INSERT INTO customer_vehicles
         (id, tenant_id, customer_id, vehicle_id, relation_type, is_primary)
@@ -180,6 +180,7 @@ export const vehiclesMethods = {
       this.db.prepare('UPDATE vehicles SET body_type = ? WHERE id = ? AND tenant_id = ?').run(bodyType, vehicleId, tenantId);
       if (plateNormalized !== undefined) this.db.prepare('UPDATE vehicles SET plate_display = ?, plate_normalized = ? WHERE id = ? AND tenant_id = ?')
         .run(plateNormalized ? String(input.plateDisplay).trim() : NO_PLATE, plateNormalized, vehicleId, tenantId);
+      if (input.color !== undefined) this.db.prepare('UPDATE vehicles SET color = ? WHERE id = ? AND tenant_id = ?').run(String(input.color).trim(), vehicleId, tenantId);
       if (tenantClass !== undefined) this.db.prepare(`INSERT INTO vehicle_pricing_overrides
         (vehicle_id, tenant_id, tenant_class, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(vehicle_id) DO UPDATE SET tenant_class = excluded.tenant_class, updated_at = CURRENT_TIMESTAMP`)

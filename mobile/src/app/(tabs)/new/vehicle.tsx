@@ -48,8 +48,7 @@ export default function NewVehicleScreen() {
       ? [!listedMake && 'марку', !listedModel && 'модель', listedModel && !variant && 'кузов']
       : [make.trim().length < 2 && 'марку', !model.trim() && 'модель']),
     !classless && !chosenClass && 'класс цены',
-    plate.trim() && normalizePlate(plate).length < 3 && 'госномер полностью или оставьте пустым',
-    color.trim().length < 2 && 'цвет'
+    plate.trim() && normalizePlate(plate).length < 3 && 'госномер полностью или оставьте пустым'
   ].filter(Boolean).join(', ');
   const openManual = (typedMake: string, typedModel: string) => { setMake(typedMake); setModel(typedModel); setEntry('manual'); };
   const save = async () => {
@@ -101,7 +100,7 @@ export default function NewVehicleScreen() {
       </>}
       <View style={styles.pair}>
         <View style={styles.half}><Field label="Госномер, если известен" value={plate} onChangeText={(value) => setPlate(value.toLocaleUpperCase('ru-RU'))} autoCapitalize="characters" autoCorrect={false} placeholder="А123АА 55"/></View>
-        <View style={styles.half}><Field label="Цвет" value={color} onChangeText={setColor} placeholder="графит"/></View>
+        <View style={styles.half}><Field label="Цвет, если известен" value={color} onChangeText={setColor} placeholder="графит"/></View>
       </View>
       {error ? <Notice>{error}</Notice> : null}
       {missing ? <Notice tone="info">Осталось указать: {missing}</Notice> : null}

@@ -43,7 +43,7 @@ export function documentHtml(document: OrderDocument) {
   parts.push(`<p class="muted">${escape(content.center.name)}</p>${contractor ? `<p class="muted">Исполнитель: ${escape(contractor)}</p>` : ''}<h1>${escape(content.title)}</h1><p class="muted">№ ${escape(document.number)} · заказ #${escape(content.order.number)}</p>`);
   parts.push(`<table class="parties"><tr><td>Клиент<br><b>${escape(content.customer.name)}</b></td><td>Телефон<br><b>${escape(content.customer.phoneDisplay)}</b></td></tr>`
     + `<tr><td>Автомобиль<br><b>${escape(vehicle)}</b></td><td>Госномер<br><b>${escape(content.vehicle.plate)}</b></td></tr>`
-    + `<tr><td>Цвет<br><b>${escape(content.vehicle.color)}</b></td><td>Заказ открыт<br><b>${escape(documentDate(content.order.createdAt))}</b></td></tr></table>`);
+    + `<tr><td>Цвет<br><b>${escape(content.vehicle.color || '—')}</b></td><td>Заказ открыт<br><b>${escape(documentDate(content.order.createdAt))}</b></td></tr></table>`);
   if (intake) {
     parts.push(`<h2>Состояние при приёмке</h2><p>${escape(intake.conditionSummary)}</p><h2>Зафиксированные повреждения</h2>`);
     if (intake.bodyType) parts.push(`<div class="diagram">${diagramSvg(intake.bodyType, intake.findings)}<p class="muted">Схема осмотра · ${escape(BODY_TYPES.find((item) => item.code === intake.bodyType)?.label ?? 'кузов')}. Номера в списке соответствуют элементам на схеме.</p></div>`);

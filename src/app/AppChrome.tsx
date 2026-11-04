@@ -29,7 +29,7 @@ export function VehicleCard({ vehicle, onSelect }: { vehicle: Vehicle; onSelect:
       <span className="vehicle-mark"><Icon name="car" size={22}/></span>
       <span className="vehicle-copy">
         <strong>{vehicle.make} {vehicle.model} {vehicle.generation}</strong>
-        <span>{bodyLabels[vehicle.bodyType ?? ''] ?? vehicle.bodyType} · {vehicle.color}</span>
+        <span>{[bodyLabels[vehicle.bodyType ?? ''] ?? vehicle.bodyType, vehicle.color].filter(Boolean).join(' · ')}</span>
       </span>
       <span className="plate">{vehicle.plate}</span>
       <span className="card-arrow">›</span>

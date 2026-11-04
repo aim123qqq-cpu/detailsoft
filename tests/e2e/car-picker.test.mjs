@@ -28,11 +28,10 @@ test('the car of a new booking comes from make and model lists, and the plate ma
     await page.getByTestId('car-search').fill('golf');
     await page.getByTestId('car-option').filter({ hasText: /^Golf$/ }).click();
     assert.equal(await page.getByTestId('car-sheet').count(), 0);
-    assert.match(await page.getByTestId('vehicle-missing').innerText(), /кузов, цвет/);
+    assert.match(await page.getByTestId('vehicle-missing').innerText(), /кузов$/);
     await page.getByRole('button', { name: /хэтчбек/ }).click();
 
-    // No plate: only the colour is left, and the button says so until it is given.
-    await page.getByTestId('color-input').fill('серый');
+    // Neither the plate nor the colour is needed: nothing is left to fill in.
     assert.equal(await page.getByTestId('vehicle-missing').count(), 0);
     await page.screenshot({ path: resolve('artifacts', '111-car-without-plate.png'), fullPage: true });
     await page.getByTestId('save-vehicle').click();

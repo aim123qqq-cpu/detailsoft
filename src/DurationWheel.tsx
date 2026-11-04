@@ -37,6 +37,8 @@ function Drum({ label, testId, options, value, unit, onChange }: { label: string
   </div>;
 }
 
+export const durationText = (minutes: number) => [Math.floor(minutes / 60) && `${Math.floor(minutes / 60)} ч`, minutes % 60 && `${minutes % 60} мин`].filter(Boolean).join(' ') || '0 мин';
+
 /** The time of a service as on a phone's alarm clock: hours and minutes on two drums, nothing to mistype. */
 export function DurationWheel({ minutes, onChange }: { minutes: number; onChange: (minutes: number) => void }) {
   const hours = Math.floor(minutes / 60);

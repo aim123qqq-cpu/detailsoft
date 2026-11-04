@@ -59,7 +59,7 @@ test('mobile customer → vehicle → services → booking flow works end to end
 
     await page.getByRole('button', { name: 'Добавить автомобиль' }).click();
     await page.getByTestId('add-vehicle-screen').waitFor();
-    assert.match(await page.getByTestId('vehicle-missing').innerText(), /марку, модель, цвет/);
+    assert.match(await page.getByTestId('vehicle-missing').innerText(), /марку, модель$/);
     await page.getByTestId('car-make').click();
     await page.getByTestId('car-search').fill('мазд');
     await page.getByTestId('car-option').filter({ hasText: 'Mazda' }).click();

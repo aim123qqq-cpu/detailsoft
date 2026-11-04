@@ -604,7 +604,7 @@ export function createDetailFlowServer({
             error: { code: 'possible_duplicate', message: 'Возможно, автомобиль уже существует', details: { matches: result.matches } }
           });
           if (result.kind === 'not_found') return sendJson(response, 404, { error: { code: `${result.resource}_not_found`, message: 'Связанная запись не найдена' } });
-          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте госномер, цвет и модель' } });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте госномер и модель' } });
         }
         const vehicleProfile = url.pathname.match(/^\/api\/vehicles\/([^/]+)\/profile$/);
         if (request.method === 'GET' && vehicleProfile) {
@@ -639,7 +639,7 @@ export function createDetailFlowServer({
             error: { code: 'forbidden', message: 'Недостаточно прав для изменения автомобиля' }
           });
           const input = await readJson(request);
-          const detailKeys = ['bodyType', 'tenantClass', 'plateDisplay'];
+          const detailKeys = ['bodyType', 'tenantClass', 'plateDisplay', 'color'];
           const hasDetails = detailKeys.some((key) => Object.hasOwn(input, key));
           if (hasDetails && Object.hasOwn(input, 'status')) return sendJson(response, 422, {
             error: { code: 'validation_error', message: 'Изменяйте статус и параметры автомобиля отдельными действиями' }
