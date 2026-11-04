@@ -53,7 +53,17 @@ test('manual vehicle and catalog builder work as one mobile management complex',
     await page.getByTestId('create-operation').click();
     await page.getByLabel('Очистка панорамной крыши цена').waitFor();
     await page.getByLabel('Очистка панорамной крыши цена').fill('1800');
-    await page.getByLabel('Очистка панорамной крыши длительность').fill('40');
+    // The time of an operation comes from the drums, and 0 is not a time.
+    await page.getByLabel('Очистка панорамной крыши время').click();
+    const operationDrums = page.locator('.catalog-price-editor');
+    await operationDrums.getByTestId('duration-minutes').getByRole('button', { name: '0 мин', exact: true }).click();
+    await page.getByTestId('operation-time-missing').waitFor();
+    assert.equal(await page.getByTestId('save-new-catalog-item').isDisabled(), true);
+    await operationDrums.getByTestId('duration-minutes').getByRole('button', { name: '40 мин', exact: true }).click();
+    await page.getByTestId('operation-time-missing').waitFor({ state: 'detached' });
+    await page.waitForFunction(() => document.querySelector('.catalog-price-editor [data-testid=duration-minutes]').getAttribute('aria-valuenow') === '40');
+    await page.waitForTimeout(500);
+    assert.equal(await page.getByLabel('Очистка панорамной крыши время').innerText(), '40 мин');
     await page.locator('.operation-create-inline').scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
     await page.screenshot({ path: resolve(artifacts, '50-catalog-builder.png') });
