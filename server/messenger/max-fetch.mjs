@@ -15,6 +15,8 @@ export function maxFetch(url, { method = 'GET', headers = {}, body, signal } = {
       const chunks = [];
       response.on('data', (chunk) => chunks.push(chunk));
       response.on('error', reject);
+      // A connection cut in the middle of the answer: without this the promise would never settle.
+      response.on('close', () => { if (!response.complete) reject(new Error('max answer was cut off')); });
       response.on('end', () => {
         const text = Buffer.concat(chunks).toString('utf8');
         const status = response.statusCode ?? 0;

@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTelegramAdapter, normalizeTelegramUpdate } from '../server/messenger/telegram.mjs';
 import { createMaxAdapter, normalizeMaxUpdate } from '../server/messenger/max.mjs';
+import { createPollWatch, sendWithRetry } from '../server/messenger/resilience.mjs';
+import { captureConsole, createEventLog } from '../server/event-log.mjs';
 
 test('telegram updates normalize to start, text and callback events; group chats are ignored', () => {
   const from = { id: 42, first_name: 'Анна', last_name: 'Смирнова' };
@@ -80,6 +82,136 @@ test('MAX adapter authenticates with the Authorization header and sends callback
   await adapter.answerCallback('c1', 'Готово');
   assert.equal(calls.at(-1).url, 'https://max.test/answers?callback_id=c1');
   assert.deepEqual(calls.at(-1).body, { notification: 'Готово' });
+});
+
+/** A logger that remembers, and a clock the test moves by hand. */
+function watchRig(options = {}) {
+  const lines = [];
+  const clock = { now: 1_000_000 };
+  const logger = { error: (...args) => lines.push(args.join(' ')), log: (...args) => lines.push(args.join(' ')) };
+  const events = [];
+  const watch = createPollWatch({ provider: 'telegram', logger, now: () => clock.now, onDown: (why) => events.push(`down: ${why}`), onUp: () => events.push('up'), ...options });
+  return { lines, clock, events, watch };
+}
+const broken = (message = 'fetch failed', status) => Object.assign(new Error(message), { ...(status ? { status } : {}), cause: status ? undefined : { code: 'ECONNRESET' } });
+
+test('a short break in polling is retried quietly, and only a summary reaches the journal', () => {
+  const { lines, clock, events, watch } = watchRig({ summaryMs: 3_600_000 });
+  assert.deepEqual([watch.failed(broken()), watch.failed(broken()), watch.failed(broken())], [1000, 2000, 5000], 'the wait grows');
+  clock.now += 10_000;
+  watch.ok();
+  assert.deepEqual(lines, [], 'nothing to tell about a break of a few seconds');
+  assert.deepEqual(events, []);
+  assert.equal(watch.failed(broken()), 1000, 'a new break starts from the short wait again');
+  watch.ok();
+  clock.now += 3_600_000;
+  watch.ok();
+  assert.deepEqual(lines, ['telegram polling had 2 short breaks, last: fetch failed (ECONNRESET)']);
+});
+
+test('a long outage is told once, marks the bot down, and its end is told too', () => {
+  const { lines, clock, events, watch } = watchRig();
+  watch.failed(broken());
+  clock.now += 61_000;
+  watch.failed(broken());
+  clock.now += 30_000;
+  watch.failed(broken());
+  assert.deepEqual(lines, ['telegram polling failed for 61 s: fetch failed (ECONNRESET)'], 'not on every retry');
+  assert.deepEqual(events, ['down: fetch failed (ECONNRESET)']);
+  clock.now += 10 * 60_000;
+  watch.failed(broken());
+  assert.equal(lines.length, 2, 'reminded every 10 minutes');
+  watch.ok();
+  assert.match(lines.at(-1), /^telegram polling recovered after \d+ s$/);
+  assert.deepEqual(events.at(-1), 'up');
+});
+
+test('a second copy of the bot and a refused token are told apart from a bad network', () => {
+  const conflict = watchRig();
+  for (let at = 0; at < 2; at += 1) { conflict.watch.failed(broken('Conflict', 409)); conflict.watch.ok(); }
+  assert.deepEqual(conflict.lines.filter((line) => line.includes('conflict')), [], 'one or two can be a restart overlapping');
+  conflict.watch.failed(broken('Conflict: terminated by other getUpdates request', 409));
+  assert.match(conflict.lines.find((line) => line.includes('conflict')), /^telegram polling conflict:/, 'counted though successes come between');
+  const refused = watchRig();
+  refused.watch.failed(broken('Unauthorized', 401));
+  assert.deepEqual(refused.lines, ['telegram polling refused: Unauthorized'], 'at once: waiting will not help');
+  assert.equal(watchRig().watch.failed(Object.assign(broken('Too Many Requests', 429), { retryAfter: 7 })), 7000, 'the messenger says how long to wait');
+});
+
+test('a send is repeated over a break, but not when the messenger refused', async () => {
+  let attempts = 0;
+  assert.equal(await sendWithRetry(async () => { attempts += 1; if (attempts < 3) throw broken(); return 'sent'; }, [1, 1]), 'sent');
+  assert.equal(attempts, 3);
+  attempts = 0;
+  await assert.rejects(sendWithRetry(async () => { attempts += 1; throw broken('Forbidden: bot was blocked by the user', 403); }, [1, 1]), /blocked/);
+  assert.equal(attempts, 1, 'a person who blocked the bot is not asked three times');
+  attempts = 0;
+  await assert.rejects(sendWithRetry(async () => { attempts += 1; throw broken(); }, [1, 1]), /fetch failed/);
+  assert.equal(attempts, 3, 'it gives up in the end');
+});
+
+test('the adapters ride out a broken connection: polling and sends go on, a hung poll has an end', async () => {
+  let polls = 0;
+  let sends = 0;
+  const signals = [];
+  const fetchImpl = async (url, init) => {
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    if (url.endsWith('/getMe')) return { ok: true, status: 200, json: async () => ({ ok: true, result: { username: 'df_bot' } }) };
+    if (url.endsWith('/getUpdates')) { polls += 1; signals.push(init.signal); if (polls <= 2) throw new TypeError('fetch failed'); return { ok: true, status: 200, json: async () => ({ ok: true, result: [] }) }; }
+    sends += 1;
+    if (sends === 1) throw new TypeError('fetch failed');
+    return { ok: true, status: 200, json: async () => ({ ok: true, result: true }) };
+  };
+  const lines = [];
+  const logger = { error: (...args) => lines.push(args.join(' ')), log: (...args) => lines.push(args.join(' ')) };
+  const adapter = createTelegramAdapter({ token: 'T', fetchImpl, apiBase: 'https://tg.test', logger, pollOptions: { delays: [1] }, sendRetryDelays: [1] });
+  await adapter.start(async () => {});
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  await adapter.sendMessage('1', 'Подтвердите вход');
+  adapter.stop();
+  assert.ok(polls > 2, 'polling went on after the breaks');
+  assert.equal(sends, 2, 'the message went out on the second try');
+  assert.ok(signals.every((signal) => signal instanceof AbortSignal), 'every poll can be ended');
+  assert.deepEqual(lines, [], 'a break this short is not worth an entry');
+});
+
+test('a bot that lost the messenger is unavailable until it is back, then available again', async () => {
+  const { createDetailFlowServer } = await import('../server/app.mjs');
+  let line = null;
+  const adapter = {
+    provider: 'telegram', title: 'Telegram', botName: 'detailflow_bot', deepLink: () => null,
+    async start(onEvent, hooks) { line = hooks; },
+    stop() {}, async sendMessage() {}, async answerCallback() {}
+  };
+  const server = createDetailFlowServer({ databasePath: ':memory:', seed: true, messengers: [adapter] });
+  await new Promise((done) => server.listen(0, '127.0.0.1', done));
+  try {
+    const ready = async () => (await (await fetch(`http://127.0.0.1:${server.address().port}/api/ready`)).json()).messengers.telegram;
+    for (let wait = 0; wait < 50 && await ready() !== 'ready'; wait += 1) await new Promise((done) => setTimeout(done, 10));
+    assert.equal(await ready(), 'ready');
+    line.onDown('fetch failed (ECONNRESET)');
+    assert.equal(await ready(), 'unavailable');
+    const providers = await (await fetch(`http://127.0.0.1:${server.address().port}/api/auth/providers`)).json();
+    assert.deepEqual(providers.items, [], 'sign-in does not offer a bot that cannot hear');
+    line.onUp();
+    assert.equal(await ready(), 'ready');
+  } finally {
+    await new Promise((done) => server.close(done));
+  }
+});
+
+test('the journal explains each case in its own words', () => {
+  const events = createEventLog();
+  const target = { log() {}, warn() {}, error() {} };
+  captureConsole(events, target);
+  target.error('telegram polling failed for 61 s:', 'fetch failed');
+  target.error('max polling conflict:', 'Conflict');
+  target.log('telegram polling had 12 short breaks, last: fetch failed');
+  target.log('telegram polling recovered after 90 s');
+  assert.deepEqual(events.since(0).items.map((item) => [item.level, item.title]), [
+    ['error', 'Нет связи с мессенджером'], ['error', 'Бот запущен в двух местах'],
+    ['info', 'Короткие обрывы связи с мессенджером'], ['info', 'Связь с мессенджером восстановилась']
+  ]);
 });
 
 test('a bot that cannot start (no network yet after a reboot) is tried again until it is ready', async () => {

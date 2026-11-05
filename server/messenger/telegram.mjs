@@ -1,5 +1,6 @@
 // Telegram Bot API adapter. Uses long polling (getUpdates), so the server needs only
 // outbound HTTPS access to api.telegram.org — no public domain or webhook.
+import { POLL_TIMEOUT_MS, SEND_TIMEOUT_MS, createPollWatch, requestSignal, sendWithRetry, wait } from './resilience.mjs';
 
 function displayNameOf(user) {
   return [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || null;
@@ -24,13 +25,13 @@ export function normalizeTelegramUpdate(update) {
   return null;
 }
 
-export function createTelegramAdapter({ token, fetchImpl = fetch, apiBase = 'https://api.telegram.org', logger = console, retryDelayMs = 3000 }) {
+export function createTelegramAdapter({ token, fetchImpl = fetch, apiBase = 'https://api.telegram.org', logger = console, pollOptions = {}, sendRetryDelays }) {
   let botName = null;
   let running = false;
   let controller = null;
   let offset = 0;
 
-  async function call(method, body = {}, signal) {
+  async function call(method, body = {}, signal = requestSignal(SEND_TIMEOUT_MS)) {
     const response = await fetchImpl(`${apiBase}/bot${token}/${method}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -38,14 +39,20 @@ export function createTelegramAdapter({ token, fetchImpl = fetch, apiBase = 'htt
       signal
     });
     const payload = await response.json();
-    if (!payload.ok) throw new Error(`telegram ${method} failed: ${payload.description ?? response.status}`);
+    if (!payload.ok) {
+      const error = new Error(`telegram ${method} failed: ${payload.description ?? response.status}`);
+      error.status = payload.error_code ?? response.status;
+      error.retryAfter = payload.parameters?.retry_after;
+      throw error;
+    }
     return payload.result;
   }
 
-  async function loop(onEvent) {
+  async function loop(onEvent, watch) {
     while (running) {
       try {
-        const updates = await call('getUpdates', { offset, timeout: 25, allowed_updates: ['message', 'callback_query'] }, controller.signal);
+        const updates = await call('getUpdates', { offset, timeout: 25, allowed_updates: ['message', 'callback_query'] }, requestSignal(POLL_TIMEOUT_MS, controller.signal));
+        watch.ok();
         for (const update of updates) {
           offset = update.update_id + 1;
           const event = normalizeTelegramUpdate(update);
@@ -53,8 +60,7 @@ export function createTelegramAdapter({ token, fetchImpl = fetch, apiBase = 'htt
         }
       } catch (error) {
         if (!running) return;
-        logger.error('telegram polling failed', error.message);
-        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+        await wait(watch.failed(error));
       }
     }
   }
@@ -64,26 +70,26 @@ export function createTelegramAdapter({ token, fetchImpl = fetch, apiBase = 'htt
     title: 'Telegram',
     get botName() { return botName; },
     deepLink: (payload) => botName ? `https://t.me/${botName}?start=${payload}` : null,
-    async start(onEvent) {
+    async start(onEvent, { onDown, onUp } = {}) {
       controller = new AbortController();
-      const me = await call('getMe', {}, controller.signal);
+      const me = await call('getMe', {}, requestSignal(SEND_TIMEOUT_MS, controller.signal));
       botName = me.username;
       running = true;
-      void loop(onEvent);
+      void loop(onEvent, createPollWatch({ provider: 'telegram', logger, onDown, onUp, ...pollOptions }));
     },
     stop() {
       running = false;
       controller?.abort();
     },
     async sendMessage(userId, text, buttons) {
-      await call('sendMessage', {
+      await sendWithRetry(() => call('sendMessage', {
         chat_id: userId,
         text,
         ...(buttons ? { reply_markup: { inline_keyboard: buttons.map((row) => row.map((button) => ({ text: button.text, callback_data: button.payload }))) } } : {})
-      });
+      }), sendRetryDelays);
     },
     async answerCallback(callbackId, text) {
-      await call('answerCallbackQuery', { callback_query_id: callbackId, text });
+      await sendWithRetry(() => call('answerCallbackQuery', { callback_query_id: callbackId, text }), sendRetryDelays);
     }
   };
 }

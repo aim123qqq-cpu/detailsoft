@@ -105,7 +105,16 @@ export function createDetailFlowServer({
   const botRetries = new Set();
   const botDownSince = new Map();
   let closed = false;
-  const startBot = (adapter, attempt = 0) => adapter.start(botDialog)
+  // A bot that started and then lost the messenger for a minute is unavailable too: sign-in does not offer it, the owner is told.
+  const botLine = (adapter) => ({
+    onDown(problem) {
+      readyProviders.delete(adapter.provider);
+      botProblems.set(adapter.provider, String(problem).slice(0, 200));
+      if (!botDownSince.has(adapter.provider)) botDownSince.set(adapter.provider, Date.now());
+    },
+    onUp() { readyProviders.add(adapter.provider); botProblems.delete(adapter.provider); botDownSince.delete(adapter.provider); }
+  });
+  const startBot = (adapter, attempt = 0) => adapter.start(botDialog, botLine(adapter))
     .then(() => { readyProviders.add(adapter.provider); botProblems.delete(adapter.provider); botDownSince.delete(adapter.provider); })
     .catch((error) => {
       if (closed) return;
