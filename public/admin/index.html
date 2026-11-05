@@ -73,6 +73,25 @@
     .comment { margin: 8px 0 0; padding: 10px; border-radius: 10px; background: var(--raised); white-space: pre-line; }
     .comment small { display: block; margin-top: 4px; color: var(--soft); }
     .pill.warn { color: var(--warn); background: rgba(242,193,78,.14); }
+    .pill.info { color: #7fb4f2; background: rgba(57,135,229,.16); } .pill.soft { color: var(--muted); background: var(--raised); }
+    .period { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .period-dates { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; } .period-dates[hidden] { display: none; }
+    .period-dates label { color: var(--muted); font-size: 13px; }
+    .period-dates input { min-height: 40px; padding: 0 10px; border: 1px solid #33404d; border-radius: 10px; color: var(--ink); background: #0c1218; font: inherit; color-scheme: dark; }
+    .kpi-link { color: inherit; text-decoration: none; } .kpi-link:hover { border-color: var(--accent); }
+    .request-hint { margin: 0 0 10px; font-size: 13px; }
+    .request-group { border-top: 1px solid var(--line); padding: 10px 0; }
+    .request-group summary { display: flex; justify-content: space-between; gap: 12px; cursor: pointer; }
+    .request-count { font-variant-numeric: tabular-nums; font-weight: 700; }
+    .request-group[open] summary { margin-bottom: 8px; }
+    button.link { min-height: 0; padding: 0; border: 0; background: none; color: var(--accent); font-size: inherit; font-weight: 600; }
+    .center-actions { display: flex; gap: 12px; margin-top: 2px; }
+    tr.skipped td { opacity: .6; }
+    td b { font-weight: 700; }
+    .event-who { margin: 4px 0 0; color: var(--ink); font-size: 13px; }
+    .journal-find { margin-top: 10px; display: flex; grid-template-columns: none; }
+    .journal-find select { max-width: 280px; } .journal-find input { flex: 1; min-width: 200px; }
+    .journal-more { width: 100%; margin-top: 12px; } .journal-more[hidden] { display: none; }
     .journal-bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; }
     .journal-note { margin: 10px 0 4px; font-size: 12px; }
     .journal { display: grid; }
@@ -151,51 +170,130 @@ async function startLogin(provider) {
   }
 }
 
-/** Grouped daily bars for bookings, orders and acts; a plain SVG, no library. */
-function activityChart(days) {
-  const width = 640, height = 180, pad = 22, groupWidth = (width - pad) / days.length;
-  const max = Math.max(1, ...days.flatMap((day) => [day.bookings, day.orders, day.documents]));
-  const series = [['bookings', 'var(--bar)'], ['orders', 'var(--bar2)'], ['documents', 'var(--bar3)']];
-  const barWidth = Math.max(2, (groupWidth - 4) / 3);
-  const bars = days.map((day, index) => series.map(([key, color], s) => {
-    const h = (day[key] / max) * (height - pad - 6);
-    return h ? `<rect x="${pad + index * groupWidth + 2 + s * barWidth}" y="${height - pad - h}" width="${barWidth - 0.5}" height="${h}" rx="1.5" fill="${color}"><title>${day.day}: ${key === 'bookings' ? 'записей' : key === 'orders' ? 'заказов' : 'актов'} ${day[key]}</title></rect>` : '';
+const CHART_SERIES = [['bookings', 'записи', 'var(--bar)'], ['orders', 'заказы', 'var(--bar2)'], ['closed', 'выдано автомобилей', 'var(--bar3)'], ['documents', 'акты', 'var(--warn)']];
+
+/** Short label of a chart step: an hour, a day, the first day of a week, a month. */
+function stepLabel(key, granularity) {
+  if (granularity === 'hour') return `${key.slice(11)}:00`;
+  if (granularity === 'month') return `${key.slice(5, 7)}.${key.slice(2, 4)}`;
+  return `${key.slice(8)}.${key.slice(5, 7)}`;
+}
+
+/** Grouped bars across the chosen period; a plain SVG, no library. */
+function activityChart(points, granularity) {
+  const width = 640, height = 180, pad = 22, groupWidth = (width - pad) / Math.max(1, points.length);
+  const max = Math.max(1, ...points.flatMap((point) => CHART_SERIES.map(([key]) => point[key])));
+  const barWidth = Math.max(1.5, (groupWidth - 2) / CHART_SERIES.length);
+  const bars = points.map((point, index) => CHART_SERIES.map(([key, label, color], s) => {
+    const h = (point[key] / max) * (height - pad - 6);
+    return h ? `<rect x="${pad + index * groupWidth + 1 + s * barWidth}" y="${height - pad - h}" width="${Math.max(1, barWidth - 0.5)}" height="${h}" rx="1.5" fill="${color}"><title>${esc(stepLabel(point.day, granularity))}: ${label} — ${point[key]}</title></rect>` : '';
   }).join('')).join('');
-  const labels = days.map((day, index) => index % 5 === 0 ? `<text x="${pad + index * groupWidth}" y="${height - 6}" fill="var(--soft)" font-size="10">${day.day.slice(8)}.${day.day.slice(5, 7)}</text>` : '').join('');
-  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Записи, заказы и акты по дням за 30 дней">
+  const every = Math.max(1, Math.ceil(points.length / 8));
+  const labels = points.map((point, index) => index % every === 0 ? `<text x="${pad + index * groupWidth}" y="${height - 6}" fill="var(--soft)" font-size="10">${esc(stepLabel(point.day, granularity))}</text>` : '').join('');
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Записи, заказы, выданные автомобили и акты за период">
     <line x1="${pad}" x2="${width}" y1="${height - pad}" y2="${height - pad}" stroke="var(--line)"/>
     <text x="0" y="12" fill="var(--soft)" font-size="10">${max}</text>${bars}${labels}</svg>`;
 }
 
-function requestsChart(minutes) {
-  const width = 640, height = 120, max = Math.max(1, ...minutes.map((m) => m.requests));
-  const step = width / (minutes.length - 1);
-  const line = minutes.map((m, i) => `${(i * step).toFixed(1)},${(height - 14 - (m.requests / max) * (height - 24)).toFixed(1)}`).join(' ');
-  const errors = minutes.map((m, i) => m.errors ? `<circle cx="${i * step}" cy="${height - 14 - (m.requests / max) * (height - 24)}" r="3" fill="var(--bad)"><title>${m.errors} ошибок</title></circle>` : '').join('');
-  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Запросы в минуту за последний час">
-    <polyline points="${line}" fill="none" stroke="var(--bar)" stroke-width="2" stroke-linejoin="round"/>${errors}
-    <text x="0" y="10" fill="var(--soft)" font-size="10">${max}/мин</text><text x="${width}" y="${height - 2}" text-anchor="end" fill="var(--soft)" font-size="10">сейчас</text><text x="0" y="${height - 2}" fill="var(--soft)" font-size="10">−60 мин</text></svg>`;
+function requestsChart(series) {
+  if (series.length < 2) return '<p class="muted">Период слишком короткий для графика.</p>';
+  const width = 640, height = 120, max = Math.max(1, ...series.map((step) => Math.max(step.people, step.other)));
+  const stepWidth = width / (series.length - 1);
+  const y = (value) => (height - 14 - (value / max) * (height - 24)).toFixed(1);
+  const line = (key) => series.map((step, index) => `${(index * stepWidth).toFixed(1)},${y(step[key])}`).join(' ');
+  const errors = series.map((step, index) => step.errors ? `<circle cx="${index * stepWidth}" cy="${y(step.people)}" r="3" fill="var(--bad)"><title>${step.errors} ошибок сервера</title></circle>` : '').join('');
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Запросы за период">
+    <polyline points="${line('other')}" fill="none" stroke="var(--soft)" stroke-width="1.5" stroke-dasharray="3 3" stroke-linejoin="round"/>
+    <polyline points="${line('people')}" fill="none" stroke="var(--bar)" stroke-width="2" stroke-linejoin="round"/>${errors}
+    <text x="0" y="10" fill="var(--soft)" font-size="10">${num(max)}</text></svg>`;
 }
 
 const meter = (share) => `<div class="meter"><i class="${share > 0.9 ? 'bad' : share > 0.75 ? 'warn' : ''}" style="width:${Math.min(100, Math.round(share * 100))}%"></i></div>`;
 
+const PERIODS = { hour: 'Час', today: 'Сегодня', yesterday: 'Вчера', '7d': '7 дней', '30d': '30 дней', '90d': '90 дней', '365d': 'Год', all: 'Всё время', custom: 'Свои даты' };
+const readPeriod = () => { try { return JSON.parse(localStorage.getItem('detailflow.admin.period')) ?? { preset: '30d' }; } catch { return { preset: '30d' }; } };
+let period = readPeriod();
+const keepPeriod = () => { try { localStorage.setItem('detailflow.admin.period', JSON.stringify(period)); } catch {} };
+const periodQuery = () => period.preset === 'custom' && period.from && period.to ? `from=${period.from}&to=${period.to}` : `preset=${period.preset === 'custom' ? '30d' : period.preset}`;
+
+function periodBar(stats) {
+  return `<section class="card period" data-testid="period-bar">
+    <div class="segmented">${Object.entries(PERIODS).map(([value, label]) => `<label><input type="radio" name="period" value="${value}" ${period.preset === value ? 'checked' : ''}><span>${label}</span></label>`).join('')}</div>
+    <form id="period-dates" class="period-dates" ${period.preset === 'custom' ? '' : 'hidden'}>
+      <label>с <input type="date" name="from" value="${esc(period.from ?? stats.period.from)}" data-testid="period-from"></label>
+      <label>по <input type="date" name="to" value="${esc(period.to ?? stats.period.to)}" data-testid="period-to"></label>
+      <button class="primary" data-testid="period-apply">Показать</button>
+    </form>
+  </section>`;
+}
+
+/** «было 4»: the same length of time just before, to see the direction. */
+const before = (now, was) => period.preset === 'all' ? '' : now === was ? ' · как и раньше' : ` · было ${num(was)}`;
+const PROVIDER_NAMES = { telegram: 'Telegram', max: 'MAX', email: 'email' };
+const STAGE_TONES = { working: 'ok', trying: 'info', setup: 'soft', new: 'soft', silent: 'bad' };
+const GROUP_HINTS = {
+  work: 'Настоящая работа: люди открывают разделы и что-то меняют. Приложение само обновляет открытые экраны, поэтому просмотры идут и без нажатий.',
+  signin: 'Экран входа. «Ждёт подтверждения» — это экран опрашивает сервер раз в полторы секунды, пока человек в боте: таких запросов всегда много.',
+  site: 'Открытие сайта и загрузка его файлов: посетители лендинга и обновление приложения.',
+  admin: 'Эта страница сама себя обновляет: журнал раз в 2 секунды. Людей здесь нет, поэтому в «запросы от людей» не входит.',
+  service: 'Сервер проверяет сам себя при обновлениях. На работу не влияет.',
+  unknown: 'Роботы в интернете перебирают адреса на всех сайтах подряд. Обычное дело, защита от этого не требует действий.'
+};
+const openGroups = new Set(['work']);
+
+function requestsCard(breakdown) {
+  const rows = breakdown.groups.map((group) => `<details class="request-group" data-group="${esc(group.id)}" ${openGroups.has(group.id) ? 'open' : ''}>
+    <summary><b>${esc(group.title)}</b><span class="request-count">${num(group.requests)}${group.serverErrors ? ` <span class="pill bad">сбоев: ${num(group.serverErrors)}</span>` : ''}</span></summary>
+    <p class="muted request-hint">${esc(GROUP_HINTS[group.id] ?? '')}</p>
+    <div class="table"><table><thead><tr><th>Что происходит</th><th>Запросов</th><th>Отказов</th><th>Сбоев</th><th>Среднее время</th></tr></thead><tbody>
+      ${group.routes.map((route) => `<tr><td>${esc(route.label)}${route.address ? `<small>${esc(route.address)}</small>` : ''}</td><td>${num(route.requests)}</td><td>${num(route.clientErrors)}</td><td>${route.serverErrors ? `<span class="pill bad">${num(route.serverErrors)}</span>` : '0'}</td><td>${num(route.averageMs)} мс${route.slow ? `<small>медленных: ${num(route.slow)}</small>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>
+  </details>`).join('');
+  return `<section class="card" id="requests-card" data-testid="requests-card" style="margin-bottom:14px">
+    <h2>Какие запросы идут</h2>
+    <p class="muted request-hint">От людей: <b>${num(breakdown.people)}</b> · всего: ${num(breakdown.total)}${breakdown.errors ? ` · <span class="pill bad">сбоев сервера: ${num(breakdown.errors)}</span>` : ' · сбоев нет'}. Отказ — сервер не выполнил запрос по правилам (нет прав, ошибка в форме). Сбой — ошибка на сервере.</p>
+    <div class="chart">${requestsChart(breakdown.series)}</div>
+    <div class="legend"><span><i style="background:var(--bar)"></i>от людей</span><span><i style="background:var(--soft)"></i>админка, проверки, роботы</span></div>
+    ${rows || '<p class="muted">За этот период запросов нет. Разбивка копится с момента обновления сервера и хранится 90 дней.</p>'}
+  </section>`;
+}
+
+function centerRow(c) {
+  const created = c.signedUpAt ? `создан ${when(c.signedUpAt)} через ${esc(PROVIDER_NAMES[c.signedUpWith] ?? c.signedUpWith)}` : 'создан вручную';
+  return `<tr class="${c.skipped ? 'skipped' : ''}" data-testid="center-row"><td>
+      <b>${esc(c.name)}</b> <span class="pill ${c.skipped ? 'soft' : STAGE_TONES[c.stage]}" title="${esc(c.stageMeaning)}">${c.skipped ? 'не считается' : esc(c.stageTitle)}</span>
+      <small>${created} · услуг: ${num(c.services)} · клиентов: ${num(c.customers)}</small>
+      <small class="center-actions"><button class="link" data-center-journal="${esc(c.id)}">журнал</button>${['tenant_demo', 'tenant_other'].includes(c.id) || c.name === 'Тестовый центр для проверки' ? '' : `<button class="link" data-center-skip="${esc(c.id)}" data-skip="${c.skipped ? 'false' : 'true'}" data-testid="center-skip">${c.skipped ? 'учитывать' : 'не учитывать'}</button>`}</small>
+    </td>
+    <td>${num(c.activePeople)} из ${num(c.members)}</td>
+    <td>${num(c.bookings)}${c.cancelled ? `<small>отменено ${num(c.cancelled)}</small>` : ''}</td>
+    <td>${num(c.orders)}<small>всего ${num(c.allOrders)}</small></td>
+    <td>${num(c.closed)}<small>всего ${num(c.allClosed)}</small></td>
+    <td>${num(c.periodDocuments)}</td>
+    <td>${num(c.newCustomers)}</td>
+    <td>${num(c.changes)}</td>
+    <td>${when(c.lastWorkAt)}${c.lastSeenAt ? `<small>заходили ${when(c.lastSeenAt)}</small>` : ''}</td></tr>`;
+}
+
 function render(stats) {
-  const s = stats.system, u = stats.users, lastHour = stats.requests.reduce((sum, m) => sum + m.requests, 0), errors = stats.requests.reduce((sum, m) => sum + m.errors, 0);
+  const s = stats.system, u = stats.users, now = stats.summary, was = stats.previous, requests = stats.requestBreakdown;
   const load = s.loadAverage[0] / s.cpuCount, memUsed = 1 - s.memory.freeBytes / s.memory.totalBytes, diskUsed = s.disk ? 1 - s.disk.freeBytes / s.disk.totalBytes : 0;
-  const lastWeek = stats.activity.slice(-7);
-  const sum = (key) => lastWeek.reduce((total, day) => total + day[key], 0);
+  const stageTotals = Object.entries({ working: 'работают', trying: 'пробуют', setup: 'настраиваются', new: 'только созданы', silent: 'затихли' })
+    .filter(([stage]) => stats.centers.stages[stage]).map(([stage, label]) => `<span class="pill ${STAGE_TONES[stage]}">${label}: ${num(stats.centers.stages[stage])}</span>`).join(' ');
   app.innerHTML = `
     <header><h1>DetailFlow · Админка<small>Обновлено ${when(stats.generatedAt)} · версия ${esc(stats.version)}</small></h1>${nav('overview')}</header>
+    ${periodBar(stats)}
     <section class="grid kpis">
-      <div class="card kpi"><span>Центров</span><strong>${num(stats.centers.total)}</strong><small>активны за неделю: ${num(stats.centers.activeWeek)}</small></div>
-      <div class="card kpi"><span>Сотрудников</span><strong>${num(u.members)}</strong><small>входили за сутки: ${num(u.signedInDay)}, за неделю: ${num(u.signedInWeek)}</small></div>
-      <div class="card kpi"><span>Записей за 7 дней</span><strong>${num(sum('bookings'))}</strong><small>всего: ${num(stats.totals.bookings)}</small></div>
-      <div class="card kpi"><span>Заказов за 7 дней</span><strong>${num(sum('orders'))}</strong><small>актов: ${num(sum('documents'))} · всего заказов ${num(stats.totals.orders)}</small></div>
-      <div class="card kpi"><span>Запросов за час</span><strong>${num(lastHour)}</strong><small>${errors ? `<span class="pill bad">ошибок: ${errors}</span>` : 'ошибок нет'}</small></div>
+      <div class="card kpi"><span>Центров работали</span><strong>${num(stats.centers.workedInPeriod)}</strong><small>из ${num(stats.centers.total)} · новых: ${num(now.newCenters)}</small></div>
+      <div class="card kpi"><span>Людей работали</span><strong>${num(now.activePeople)}</strong><small>из ${num(u.members)}${before(now.activePeople, was.activePeople)}</small></div>
+      <div class="card kpi"><span>Записей</span><strong>${num(now.bookings)}</strong><small>${now.cancelled ? `отменено ${num(now.cancelled)}` : 'без отмен'}${before(now.bookings, was.bookings)}</small></div>
+      <div class="card kpi"><span>Заказов</span><strong>${num(now.orders)}</strong><small>новых клиентов: ${num(now.newCustomers)}${before(now.orders, was.orders)}</small></div>
+      <div class="card kpi"><span>Выдано автомобилей</span><strong>${num(now.closed)}</strong><small>актов: ${num(now.documents)}${before(now.closed, was.closed)}</small></div>
+      <a class="card kpi kpi-link" href="#requests-card"><span>Запросов от людей</span><strong>${num(requests.people)}</strong><small>${requests.errors ? `<span class="pill bad">сбоев: ${num(requests.errors)}</span>` : 'сбоев нет'} · посмотреть какие →</small></a>
     </section>
     <section class="grid two">
-      <div class="card chart"><h2>Активность за 30 дней</h2>${activityChart(stats.activity)}
-        <div class="legend"><span><i style="background:var(--bar)"></i>записи</span><span><i style="background:var(--bar2)"></i>заказы</span><span><i style="background:var(--bar3)"></i>акты</span></div></div>
+      <div class="card chart"><h2>Активность за период</h2>${activityChart(stats.activity, stats.activityGranularity)}
+        <div class="legend">${CHART_SERIES.map(([, label, color]) => `<span><i style="background:${color}"></i>${label}</span>`).join('')}</div></div>
       <div class="card"><h2>Сервер</h2><div class="rows">
         <div><div class="row"><span>Нагрузка (1 мин)</span><b>${s.loadAverage[0].toFixed(2)} на ${s.cpuCount} ядр.</b></div>${meter(load)}</div>
         <div><div class="row"><span>Память</span><b>${bytes(s.memory.totalBytes - s.memory.freeBytes)} из ${bytes(s.memory.totalBytes)}</b></div>${meter(memUsed)}</div>
@@ -207,15 +305,42 @@ function render(stats) {
         ${Object.entries(stats.bots).map(([provider, bot]) => `<div class="row"><span>Бот ${provider === 'max' ? 'MAX' : 'Telegram'}</span><b>${bot.status === 'ready' ? '<span class="pill ok">работает</span>' : `<span class="pill bad">недоступен с ${when(bot.downSince)}</span>`}</b></div>`).join('')}
       </div></div>
     </section>
-    <section class="card chart" style="margin-bottom:14px"><h2>Запросы в минуту, последний час</h2>${requestsChart(stats.requests)}</section>
-    <section class="card"><h2>Центры</h2><div class="table"><table>
-      <thead><tr><th>Центр</th><th>Сотрудников</th><th>Услуг</th><th>Клиентов</th><th>Записей</th><th>Заказов</th><th>Актов</th><th>Активность</th></tr></thead>
-      <tbody>${stats.centers.list.map((c) => `<tr><td>${esc(c.name)}<small>${c.signedUpAt ? `создан ${when(c.signedUpAt)} через ${c.signedUpWith === 'max' ? 'MAX' : 'Telegram'}` : 'создан вручную'}</small></td>
-        <td>${num(c.members)}</td><td>${num(c.services)}</td><td>${num(c.customers)}</td><td>${num(c.bookings)}</td><td>${num(c.orders)}</td><td>${num(c.documents)}</td><td>${when(c.lastActivityAt)}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">Центров пока нет</td></tr>'}</tbody>
+    ${requestsCard(requests)}
+    <section class="card" data-testid="centers-card"><h2>Центры за период</h2>
+      <p class="request-hint">${stageTotals || '<span class="muted">Центров пока нет.</span>'}</p>
+      <div class="table"><table>
+      <thead><tr><th>Центр</th><th>Людей работали</th><th>Записей</th><th>Заказов</th><th>Выдано</th><th>Актов</th><th>Новых клиентов</th><th>Действий</th><th>Последняя работа</th></tr></thead>
+      <tbody>${stats.centers.list.map(centerRow).join('') || '<tr><td colspan="9" class="muted">Центров пока нет.</td></tr>'}</tbody>
     </table></div></section>
-    <footer>Входы по мессенджерам: ${u.byProvider.map((p) => `${p.provider === 'max' ? 'MAX' : 'Telegram'} — ${num(p.accounts)}`).join(', ') || 'нет'} · кодов доступа: ${num(u.accessCodes)}. Данные клиентов центров здесь не показываются. Обновляется каждые 30 секунд.</footer>`;
+    <footer>Стадия центра считается по делу: услуги, записи, заказы и выданные автомобили, а не по входам. «Людей работали» и «Действий» — с момента этого обновления; раньше видны только входы. Не считаются демо-центры, центр для модераторов магазина и те, что вы отметили «не учитывать». Способы входа: ${u.byProvider.map((p) => `${esc(PROVIDER_NAMES[p.provider] ?? p.provider)} — ${num(p.accounts)}`).join(', ') || 'нет'} · кодов доступа: ${num(u.accessCodes)}. Данные клиентов центров здесь не показываются. Обновляется каждые 30 секунд.</footer>`;
   centersCache = stats.centers.list.map((center) => ({ id: center.id, name: center.name }));
   bindNav();
+  app.querySelectorAll('[name="period"]').forEach((input) => input.addEventListener('change', () => {
+    period = { ...period, preset: input.value };
+    keepPeriod();
+    if (input.value === 'custom') { document.getElementById('period-dates').hidden = false; return; }
+    showDashboard();
+  }));
+  document.getElementById('period-dates').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const data = new FormData(event.target);
+    period = { preset: 'custom', from: String(data.get('from')), to: String(data.get('to')) };
+    keepPeriod();
+    showDashboard();
+  });
+  app.querySelectorAll('.request-group').forEach((details) => details.addEventListener('toggle', () => {
+    if (details.open) openGroups.add(details.dataset.group); else openGroups.delete(details.dataset.group);
+  }));
+  app.querySelectorAll('[data-center-journal]').forEach((button) => button.addEventListener('click', () => {
+    journal.tenant = button.dataset.centerJournal;
+    journal.filter = 'all';
+    resetJournal();
+    showJournal();
+  }));
+  app.querySelectorAll('[data-center-skip]').forEach((button) => button.addEventListener('click', async () => {
+    await api(`/api/admin/centers/${encodeURIComponent(button.dataset.centerSkip)}`, { method: 'PATCH', body: JSON.stringify({ excluded: button.dataset.skip === 'true' }) });
+    showDashboard();
+  }));
 }
 
 // Tabs: the overview (refreshed every 30 s) and the broadcasts (not refreshed, so a draft is never lost).
@@ -251,7 +376,7 @@ async function showBroadcasts() {
       <form class="card form" id="broadcast-form" data-testid="broadcast-form">
         <h2>Новая рассылка</h2>
         <div class="segmented">${Object.entries(KIND_LABELS).map(([value, label], index) => `<label><input type="radio" name="kind" value="${value}" ${index === 0 ? 'checked' : ''}><span>${label}</span></label>`).join('')}</div>
-        <label>Заголовок<input name="title" maxlength="120" required placeholder="Например: Напоминания о записях"></label>
+        <label>Заголовок (можно без него)<input name="title" maxlength="120" placeholder="Например: Напоминания о записях"></label>
         <label>Текст<textarea name="body" rows="4" maxlength="2000" placeholder="Что нового и чем это поможет"></textarea></label>
         <div id="survey-fields" hidden>
           <label>Варианты ответа — каждый с новой строки (можно без них)<textarea name="options" rows="3" placeholder="Удобно&#10;Нормально&#10;Неудобно"></textarea></label>
@@ -281,12 +406,12 @@ async function showBroadcasts() {
   document.getElementById('preview-broadcast').addEventListener('click', async () => {
     errorBox.textContent = '';
     const draft = readDraft();
-    if (draft.title.length < 3) { errorBox.textContent = 'Напишите заголовок — от 3 символов.'; return; }
+    if (!draft.title && !draft.body) { errorBox.textContent = 'Напишите заголовок или текст.'; return; }
     try {
       const reach = await api('/api/admin/broadcasts/preview', { method: 'POST', body: JSON.stringify({ audience: draft.audience, tenantId: draft.tenantId }) });
       previewBox.innerHTML = `<div class="preview" data-testid="broadcast-preview">
         <span class="muted">Так увидят в ленте:</span>
-        <b>${esc(KIND_LABELS[draft.kind])} DetailFlow: ${esc(draft.title)}</b>
+        <b>${esc(KIND_LABELS[draft.kind])} DetailFlow${draft.title ? `: ${esc(draft.title)}` : ''}</b>
         ${draft.body ? `<p>${esc(draft.body)}</p>` : ''}
         ${draft.survey ? `<p class="muted">${draft.survey.options.map(esc).join(' · ')}${draft.survey.rating ? ' · оценка 1–5' : ''}${draft.survey.comment ? ' · комментарий' : ''}</p>` : ''}
         <p>Получат: <b>${num(reach.recipients)}</b> чел. в ${num(reach.centers)} центр. — в ленте, копией в мессенджер и на устройство, если включено.</p>
@@ -312,7 +437,7 @@ async function loadList() {
   try {
     const { items } = await api('/api/admin/broadcasts');
     box.innerHTML = items.length ? `<table><thead><tr><th>Рассылка</th><th>Кому</th><th>Получили</th><th>Прочитали</th><th>Ответили</th></tr></thead><tbody>
-      ${items.map((item) => `<tr class="clickable" data-id="${esc(item.id)}" data-testid="broadcast-row"><td>${esc(KIND_LABELS[item.kind])}: ${esc(item.title)}<small>${when(item.createdAt)}</small></td>
+      ${items.map((item) => `<tr class="clickable" data-id="${esc(item.id)}" data-testid="broadcast-row"><td>${esc(KIND_LABELS[item.kind])}: ${esc(item.title || item.excerpt)}<small>${when(item.createdAt)}</small></td>
         <td>${esc(item.center ?? AUDIENCE_LABELS[item.audience])}</td><td>${num(item.sent)}</td><td>${num(item.read)}</td><td>${item.kind === 'survey' ? num(item.answers) : '—'}</td></tr>`).join('')}
       </tbody></table>` : '<p class="muted">Рассылок пока не было.</p>';
     box.querySelectorAll('[data-id]').forEach((row) => row.addEventListener('click', () => showResults(row.dataset.id)));
@@ -326,7 +451,7 @@ async function showResults(id) {
   const result = await api(`/api/admin/broadcasts/${encodeURIComponent(id)}`);
   const bar = (count) => `<div class="meter"><i style="width:${result.answers ? Math.round(count / result.answers * 100) : 0}%"></i></div>`;
   box.innerHTML = `<h2>Результаты</h2><div class="rows" data-testid="broadcast-results">
-    <b>${esc(KIND_LABELS[result.kind])}: ${esc(result.title)}</b>
+    <b>${esc(KIND_LABELS[result.kind])}${result.title ? `: ${esc(result.title)}` : ''}</b>${result.title ? '' : `<p class="comment">${esc(result.body)}</p>`}
     <div class="row"><span>Получили</span><b>${num(result.sent)}</b></div>
     ${result.kind === 'survey' ? `<div class="row"><span>Ответили</span><b>${num(result.answers)}</b></div>
       ${result.options.map((option) => `<div><div class="row"><span>${esc(option.label)}</span><b>${num(option.count)}</b></div>${bar(option.count)}</div>`).join('')}
@@ -336,22 +461,40 @@ async function showResults(id) {
   </div>`;
 }
 
-// The live journal: new entries every 2 s, newest on top, each with what it means. Kept in the server's
-// memory (the last 1000), so it starts empty after a restart.
+// The live journal: new entries every 2 s, newest on top, each with what it means. Kept on the server for 90 days.
 const LEVEL_LABELS = { info: ['ok', 'событие'], warn: ['warn', 'внимание'], error: ['bad', 'ошибка'] };
-const JOURNAL_FILTERS = { all: 'Все', auth: 'Вход и боты', problems: 'Только проблемы' };
-const journal = { items: [], last: 0, filter: 'all', paused: false };
+const KIND_LABELS_JOURNAL = { action: 'действие', view: 'просмотр', auth: 'вход', bot: 'бот', admin: 'админка', http: 'запрос', server: 'сервер' };
+const JOURNAL_FILTERS = {
+  all: ['Все', { kinds: 'action,auth,bot,admin,http,server' }],
+  actions: ['Действия людей', { kinds: 'action' }],
+  views: ['Просмотры разделов', { kinds: 'view' }],
+  auth: ['Вход и боты', { kinds: 'auth,bot' }],
+  problems: ['Только проблемы', { levels: 'warn,error' }],
+  server: ['Сервер', { kinds: 'server,http' }]
+};
+const journal = { items: [], last: 0, more: false, filter: 'all', tenant: '', search: '', paused: false, generation: 0 };
+function resetJournal() { journal.items = []; journal.last = 0; journal.more = false; journal.generation += 1; }
+
+function journalQuery(extra) {
+  const query = new URLSearchParams({ ...JOURNAL_FILTERS[journal.filter][1], ...extra });
+  if (journal.tenant) query.set('tenant', journal.tenant);
+  if (journal.search) query.set('search', journal.search);
+  return `/api/admin/events?${query}`;
+}
 
 function journalRows() {
-  const shown = journal.items.filter((item) => journal.filter === 'all' || (journal.filter === 'auth' ? ['auth', 'bot'].includes(item.kind) : item.level !== 'info'));
-  if (!shown.length) return `<p class="muted">${journal.items.length ? 'Под этот фильтр записей нет.' : 'Пока тихо. Записи появятся, как только кто-нибудь начнёт вход, напишет боту или на сервере что-то случится. Журнал хранит последние 1000 событий с момента запуска сервера.'}</p>`;
-  return shown.slice().reverse().map((item) => {
+  if (!journal.items.length) return `<p class="muted">${journal.search || journal.tenant || journal.filter !== 'all' ? 'Под этот отбор записей нет.' : 'Пока тихо. Записи появятся, как только кто-нибудь начнёт вход, что-то изменит в центре или на сервере что-то случится. Журнал хранится 90 дней.'}</p>`;
+  const today = new Date().toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow' });
+  return journal.items.slice().reverse().map((item) => {
     const [tone, label] = LEVEL_LABELS[item.level] ?? LEVEL_LABELS.info;
-    const time = new Date(item.at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Europe/Moscow' });
+    const at = new Date(item.at);
+    const day = at.toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow' });
+    const time = `${day === today ? '' : `${at.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', timeZone: 'Europe/Moscow' })} `}${at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Europe/Moscow' })}`;
     return `<article class="event ${tone}" data-seq="${item.seq}" data-testid="journal-entry">
       <div class="event-head"><time>${time}</time><span class="pill ${tone}">${label}</span><b>${esc(item.title)}</b></div>
+      ${item.center || item.actor ? `<p class="event-who">${item.center ? `<button class="link" data-event-center="${esc(item.tenantId)}">${esc(item.center)}</button>` : ''}${item.center && item.actor ? ' · ' : ''}${esc(item.actor ?? '')}</p>` : ''}
       ${item.meaning ? `<p class="event-meaning">${esc(item.meaning)}</p>` : ''}
-      ${item.detail ? `<details><summary>Технические подробности</summary><pre>${esc(item.detail)}</pre></details>` : ''}
+      ${item.detail ? `<details><summary>Технические подробности (${esc(KIND_LABELS_JOURNAL[item.kind] ?? item.kind)})</summary><pre>${esc(item.detail)}</pre></details>` : ''}
     </article>`;
   }).join('');
 }
@@ -363,50 +506,83 @@ function renderJournal() {
   const open = new Set([...box.querySelectorAll('details[open]')].map((details) => details.closest('[data-seq]').dataset.seq));
   box.innerHTML = journalRows();
   box.querySelectorAll('[data-seq]').forEach((entry) => { if (open.has(entry.dataset.seq)) entry.querySelector('details')?.setAttribute('open', ''); });
-  document.getElementById('journal-count').textContent = `${num(journal.items.length)} записей · ${journal.paused ? 'пауза' : 'обновляется каждые 2 с'}`;
+  box.querySelectorAll('[data-event-center]').forEach((button) => button.addEventListener('click', () => {
+    journal.tenant = button.dataset.eventCenter;
+    document.getElementById('journal-center').value = journal.tenant;
+    resetJournal();
+    loadJournal();
+  }));
+  document.getElementById('journal-more').hidden = !journal.more;
+  document.getElementById('journal-count').textContent = `Показано: ${num(journal.items.length)} · ${journal.paused ? 'пауза' : 'обновляется каждые 2 с'}`;
+}
+
+/** New entries for what is chosen now; a change of filter makes an answer that is on its way useless. */
+async function loadJournal() {
+  if (journal.paused) return;
+  const generation = journal.generation;
+  try {
+    const fresh = await api(journalQuery({ after: journal.last }));
+    if (generation !== journal.generation) return;
+    const first = !journal.last;
+    if (first) journal.more = fresh.more;
+    if (fresh.items.length || first) {
+      journal.items = journal.items.concat(fresh.items).slice(-2000);
+      journal.last = fresh.last;
+      renderJournal();
+    } else journal.last = fresh.last;
+  } catch (error) { if (error.status === 401) { clearInterval(refreshTimer); setToken(null); showLogin('Сессия закончилась, войдите снова.'); } }
 }
 
 async function showJournal() {
   clearInterval(refreshTimer);
+  if (!centersCache.length) { try { centersCache = (await api('/api/admin/stats?preset=hour')).centers.list.map((center) => ({ id: center.id, name: center.name })); } catch {} }
   app.innerHTML = `
     <header><h1>DetailFlow · Журнал<small id="journal-count">Загрузка…</small></h1>${nav('journal')}</header>
     <section class="card">
       <div class="journal-bar">
-        <div class="segmented">${Object.entries(JOURNAL_FILTERS).map(([value, label]) => `<label><input type="radio" name="journal-filter" value="${value}" ${journal.filter === value ? 'checked' : ''}><span>${label}</span></label>`).join('')}</div>
+        <div class="segmented">${Object.entries(JOURNAL_FILTERS).map(([value, [label]]) => `<label><input type="radio" name="journal-filter" value="${value}" ${journal.filter === value ? 'checked' : ''}><span>${label}</span></label>`).join('')}</div>
         <button id="journal-pause" data-testid="journal-pause">${journal.paused ? 'Продолжить' : 'Пауза'}</button>
       </div>
-      <p class="muted journal-note">Имена, коды входа и токены сюда не попадают: аккаунты показаны последними цифрами, адреса почты — частично.</p>
+      <div class="journal-bar journal-find form">
+        <select id="journal-center" data-testid="journal-center" aria-label="Центр"><option value="">Все центры</option>${centersCache.map((center) => `<option value="${esc(center.id)}" ${journal.tenant === center.id ? 'selected' : ''}>${esc(center.name)}</option>`).join('')}</select>
+        <input id="journal-search" data-testid="journal-search" type="search" value="${esc(journal.search)}" placeholder="Поиск: заказ, акт, код ошибки…" aria-label="Поиск по журналу">
+      </div>
+      <p class="muted journal-note">Записывается каждое изменение, вход и сбой; просмотр раздела — раз в 30 минут. Данные клиентов, имена, коды входа и токены сюда не попадают: человек показан ролью и коротким номером. Хранится 90 дней.</p>
       <div id="journal-list" class="journal" data-testid="journal-list"></div>
+      <button id="journal-more" class="journal-more" data-testid="journal-more" hidden>Показать раньше</button>
     </section>`;
   bindNav();
-  app.querySelectorAll('[name="journal-filter"]').forEach((input) => input.addEventListener('change', () => { journal.filter = input.value; renderJournal(); }));
+  const restart = () => { resetJournal(); renderJournal(); loadJournal(); };
+  app.querySelectorAll('[name="journal-filter"]').forEach((input) => input.addEventListener('change', () => { journal.filter = input.value; restart(); }));
+  document.getElementById('journal-center').addEventListener('change', (event) => { journal.tenant = event.target.value; restart(); });
+  let typing = 0;
+  document.getElementById('journal-search').addEventListener('input', (event) => {
+    clearTimeout(typing);
+    typing = setTimeout(() => { journal.search = event.target.value.trim(); restart(); }, 300);
+  });
   document.getElementById('journal-pause').addEventListener('click', (event) => {
     journal.paused = !journal.paused;
     event.target.textContent = journal.paused ? 'Продолжить' : 'Пауза';
     renderJournal();
   });
-  const load = async () => {
-    if (journal.paused) return;
-    try {
-      const fresh = await api(`/api/admin/events?after=${journal.last}`);
-      // A restarted server counts from zero again: start the list over.
-      if (fresh.last < journal.last) { journal.items = []; journal.last = 0; return load(); }
-      if (fresh.items.length || !journal.items.length) {
-        journal.items = journal.items.concat(fresh.items).slice(-1000);
-        journal.last = fresh.last;
-        renderJournal();
-      }
-    } catch (error) { if (error.status === 401) { clearInterval(refreshTimer); setToken(null); showLogin('Сессия закончилась, войдите снова.'); } }
-  };
+  document.getElementById('journal-more').addEventListener('click', async () => {
+    const older = await api(journalQuery({ before: journal.items[0]?.seq ?? 0 }));
+    journal.items = older.items.concat(journal.items);
+    journal.more = older.more;
+    renderJournal();
+  });
+  resetJournal();
   renderJournal();
-  await load();
-  refreshTimer = setInterval(load, 2000);
+  await loadJournal();
+  refreshTimer = setInterval(loadJournal, 2000);
 }
 
 async function showDashboard() {
   clearInterval(refreshTimer);
   const load = async () => {
-    try { render(await api('/api/admin/stats')); }
+    // Someone choosing dates would lose them to a refresh.
+    if (document.activeElement?.matches?.('#period-dates input')) return;
+    try { render(await api(`/api/admin/stats?${periodQuery()}`)); }
     catch (error) { if (error.status === 401) { setToken(null); showLogin('Сессия закончилась, войдите снова.'); } }
   };
   await load();

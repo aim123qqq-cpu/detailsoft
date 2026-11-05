@@ -24,7 +24,7 @@ export function createBroadcasts({ db, repository, notifications }) {
     const body = String(input?.body ?? '').trim();
     const audience = String(input?.audience ?? '');
     const tenantId = audience === 'center' ? String(input?.tenantId ?? '') : null;
-    if (!KINDS[kind] || title.length < 3 || title.length > 120 || body.length > 2000 || !AUDIENCES.includes(audience)) return null;
+    if (!KINDS[kind] || (!title && !body) || title.length > 120 || body.length > 2000 || !AUDIENCES.includes(audience)) return null;
     if (audience === 'center' && !db.prepare('SELECT 1 FROM tenants WHERE id = ?').get(tenantId)) return null;
     let survey = null;
     if (kind === 'survey') {
@@ -52,7 +52,7 @@ export function createBroadcasts({ db, repository, notifications }) {
     const count = [...byCenter.values()].reduce((sum, ids) => sum + ids.length, 0);
     db.prepare(`INSERT INTO broadcasts (id, kind, title, body, audience, tenant_id, survey_json, sent_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(id, message.kind, message.title, message.body, message.audience, message.tenantId, message.survey ? JSON.stringify(message.survey) : null, count);
-    const title = `${KINDS[message.kind]} DetailFlow: ${message.title}`;
+    const title = message.title ? `${KINDS[message.kind]} DetailFlow: ${message.title}` : `${KINDS[message.kind]} DetailFlow`;
     for (const [tenantId, memberIds] of byCenter) {
       await notifications.deliver(tenantId, memberIds, { kind: 'broadcast', title, body: message.body, link: null, broadcastId: id });
     }
@@ -60,11 +60,11 @@ export function createBroadcasts({ db, repository, notifications }) {
   }
 
   function list() {
-    return db.prepare(`SELECT b.id, b.kind, b.title, b.audience, b.created_at, b.sent_count, t.name AS center,
+    return db.prepare(`SELECT b.id, b.kind, b.title, b.body, b.audience, b.created_at, b.sent_count, t.name AS center,
         (SELECT COUNT(*) FROM notifications n WHERE n.broadcast_id = b.id AND n.read_at IS NOT NULL) AS read_count,
         (SELECT COUNT(*) FROM broadcast_answers a WHERE a.broadcast_id = b.id) AS answers
       FROM broadcasts b LEFT JOIN tenants t ON t.id = b.tenant_id ORDER BY b.created_at DESC, b.rowid DESC LIMIT 100`).all()
-      .map((row) => ({ id: row.id, kind: row.kind, title: row.title, audience: row.audience, center: row.center, createdAt: row.created_at, sent: row.sent_count, read: row.read_count, answers: row.answers }));
+      .map((row) => ({ id: row.id, kind: row.kind, title: row.title, excerpt: row.body.slice(0, 60), audience: row.audience, center: row.center, createdAt: row.created_at, sent: row.sent_count, read: row.read_count, answers: row.answers }));
   }
 
   /** A survey's results: the share of each option, the ratings, the comments with the center's name only. */

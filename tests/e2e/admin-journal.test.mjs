@@ -52,7 +52,37 @@ test('the journal in /admin shows what happens in the bot as it happens, with an
     await admin.screenshot({ path: resolve('artifacts', '103-admin-journal.png'), fullPage: true });
 
     await admin.getByText('Только проблемы', { exact: true }).click();
-    assert.equal(await admin.getByTestId('journal-entry').count(), 1, 'only the stale link is a problem');
+    await admin.waitForFunction(() => document.querySelectorAll('[data-testid="journal-entry"]').length === 1);
+    assert.match(await list.innerText(), /устаревшая ссылка/, 'only the stale link is a problem');
+
+    // The overview: another period, the requests by kind, the centers.
+    await admin.locator('[data-tab="overview"]').click();
+    await admin.getByTestId('period-bar').waitFor();
+    await admin.getByTestId('period-bar').getByText('7 дней', { exact: true }).click();
+    await admin.waitForFunction(() => document.querySelector('[name="period"][value="7d"]')?.checked);
+    const requests = admin.getByTestId('requests-card');
+    await requests.getByText('Вход и регистрация').click();
+    assert.match(await requests.innerText(), /Начало входа через мессенджер/);
+    await admin.screenshot({ path: resolve('artifacts', '104-admin-overview.png'), fullPage: true });
+
+    // Any dates, and the choice is still there after a reload.
+    await admin.getByTestId('period-bar').getByText('Свои даты', { exact: true }).click();
+    await admin.getByTestId('period-from').fill('2020-01-01');
+    await admin.getByTestId('period-to').fill('2020-01-31');
+    await admin.getByTestId('period-apply').click();
+    await admin.waitForFunction(() => document.querySelector('[data-testid="period-from"]')?.value === '2020-01-01' && document.querySelector('[name="period"][value="custom"]')?.checked);
+    await admin.reload({ waitUntil: 'domcontentloaded' });
+    await admin.getByTestId('period-bar').waitFor();
+    assert.equal(await admin.getByTestId('period-to').inputValue(), '2020-01-31');
+    await admin.screenshot({ path: resolve('artifacts', '105-admin-past-period.png'), fullPage: true });
+
+    // A broadcast with no title: the form lets it through.
+    await admin.getByTestId('tab-broadcasts').click();
+    const form = admin.getByTestId('broadcast-form');
+    await form.locator('[name=body]').fill('Только текст, без заголовка');
+    await admin.getByTestId('preview-broadcast').click();
+    await admin.getByTestId('broadcast-preview').waitFor();
+    assert.match(await admin.getByTestId('broadcast-preview').innerText(), /Новость DetailFlow\s+Только текст/);
   } finally {
     await browser.close();
     await new Promise((done) => server.close(done));

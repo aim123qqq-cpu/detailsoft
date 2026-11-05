@@ -10,6 +10,8 @@ const EMAIL_LOGIN_TTL_MS = 10 * 60 * 1000;
 const EMAIL_CODE_ATTEMPTS = 5;
 const INVITE_TTL_MS = 24 * 60 * 60 * 1000;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// The owner's admin stays open while it is used; signing out or removing the admin ends it at once.
+const ADMIN_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 /** One messenger account can create this many centers itself (more go through support). */
 export const CENTERS_PER_ACCOUNT = 5;
@@ -291,7 +293,7 @@ export class AuthRepository {
     const consumed = this.db.prepare(`UPDATE login_requests SET status = 'CONSUMED' WHERE id = ? AND status = 'CONFIRMED'`).run(id);
     if (consumed.changes !== 1) return { kind: 'conflict', code: 'login_already_consumed', message: 'Этот вход уже использован' };
     const token = `dfa_${randomBytes(32).toString('hex')}`;
-    const expiresAt = sqlTime(new Date(Date.now() + 12 * 60 * 60 * 1000));
+    const expiresAt = sqlTime(new Date(Date.now() + ADMIN_SESSION_TTL_MS));
     this.db.prepare('INSERT INTO admin_sessions (token_hash, provider, external_user_id, expires_at) VALUES (?, ?, ?, ?)')
       .run(hash(token), row.provider, row.external_user_id, expiresAt);
     return { kind: 'created', token, expiresAt: apiTime(expiresAt) };
@@ -299,10 +301,16 @@ export class AuthRepository {
 
   authenticateAdmin(token) {
     if (typeof token !== 'string' || !token.startsWith('dfa_')) return null;
-    const row = this.db.prepare(`SELECT s.provider, s.external_user_id FROM admin_sessions s
+    const row = this.db.prepare(`SELECT s.provider, s.external_user_id, s.expires_at FROM admin_sessions s
       JOIN platform_admins a ON a.provider = s.provider AND a.external_user_id = s.external_user_id
       WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ?`).get(hash(token), nowSql());
-    return row ? { provider: row.provider, externalUserId: row.external_user_id } : null;
+    if (!row) return null;
+    // Each day of use moves the end of the session forward.
+    const renewed = sqlTime(new Date(Date.now() + ADMIN_SESSION_TTL_MS));
+    if (row.expires_at < sqlTime(new Date(Date.now() + ADMIN_SESSION_TTL_MS - 24 * 60 * 60 * 1000))) {
+      this.db.prepare('UPDATE admin_sessions SET expires_at = ? WHERE token_hash = ?').run(renewed, hash(token));
+    }
+    return { provider: row.provider, externalUserId: row.external_user_id };
   }
 
   revokeAdminSession(token) {

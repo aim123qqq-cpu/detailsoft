@@ -1,9 +1,10 @@
-// The service owner's live journal (/admin → «Журнал»): what happens on the server, each entry with a plain
-// explanation of what it means and what to do. Kept in memory only (the last entries, gone on restart):
-// the system journal on the server stays the full record.
+// The service owner's live journal (/admin → «Журнал»): what people do and what happens on the server, each
+// entry with a plain explanation of what it means and what to do. Kept in the database for 90 days.
 //
-// No personal data and no secrets go in: messenger ids and addresses are masked, bot tokens and
-// session tokens are cut out of every text, sign-in codes are never written.
+// No names, no customers' data and no secrets go in: people are a role and a short tag, messenger ids and
+// addresses are masked, bot tokens and session tokens are cut out of every text, sign-in codes are never written.
+
+import { DatabaseSync } from 'node:sqlite';
 
 const LIMIT = 1000;
 
@@ -60,19 +61,73 @@ export function maskAccount(provider, externalUserId) {
 
 export const PROVIDER_TITLES = { telegram: 'Telegram', max: 'MAX', email: 'email' };
 
+const ROLE_TITLES = { owner: 'Владелец', admin: 'Администратор', intake: 'Приёмщик', master: 'Мастер', qc: 'Контроль качества' };
+
+/** «Мастер #a1b2»: who acted, enough to tell people apart, without a name. */
+export function actorTag(roles, memberId) {
+  // The senior role of several: an owner is usually an administrator too.
+  const held = Array.isArray(roles) ? roles : [];
+  const role = Object.entries(ROLE_TITLES).find(([name]) => held.includes(name))?.[1] ?? 'Сотрудник';
+  return memberId ? `${role} #${String(memberId).slice(-4)}` : role;
+}
+
+const TABLE = `CREATE TABLE IF NOT EXISTS platform_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, level TEXT NOT NULL,
+  kind TEXT NOT NULL, title TEXT NOT NULL, meaning TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '', tenant_id TEXT, actor TEXT)`;
+
+/**
+ * Starts in its own memory (the server's first messages come before the database opens), moves to the
+ * main database on attach(), so the journal survives restarts and updates. A failure here never reaches a request.
+ */
 export function createEventLog({ limit = LIMIT, now = () => new Date() } = {}) {
-  const items = [];
-  let seq = 0;
+  let store = new DatabaseSync(':memory:');
+  store.exec(TABLE);
+  let attached = false;
+  const insert = (target, item) => target.prepare(`INSERT INTO platform_events (at, level, kind, title, meaning, detail, tenant_id, actor)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(item.at, item.level, item.kind, item.title, item.meaning, item.detail, item.tenant_id, item.actor);
   return {
     /** level: info | warn | error. `meaning` is the explanation shown under the title. */
-    add({ level = 'info', kind, title, meaning = '', detail = '' }) {
-      seq += 1;
-      items.push({ seq, at: now().toISOString(), level, kind, title, meaning, detail: redact(detail) });
-      if (items.length > limit) items.splice(0, items.length - limit);
+    add({ level = 'info', kind, title, meaning = '', detail = '', tenantId = null, actor = null }) {
+      try {
+        insert(store, { at: now().toISOString(), level, kind, title, meaning, detail: redact(detail), tenant_id: tenantId, actor });
+        if (!attached) store.prepare('DELETE FROM platform_events WHERE seq <= (SELECT MAX(seq) FROM platform_events) - ?').run(limit);
+      } catch { /* the journal never breaks the work */ }
     },
-    since(after = 0, max = 300) {
-      const fresh = items.filter((item) => item.seq > after);
-      return { items: fresh.slice(-max), last: seq };
+    attach(db) {
+      for (const item of store.prepare('SELECT * FROM platform_events ORDER BY seq').all()) insert(db, item);
+      store.close();
+      store = db;
+      attached = true;
+    },
+    /** Back to memory when the database closes: the last messages of a stopping server have nowhere else to go. */
+    detach() {
+      if (!attached) return;
+      attached = false;
+      store = new DatabaseSync(':memory:');
+      store.exec(TABLE);
+    },
+    /** Newest `max` entries that fit, oldest first. `after` asks for what is new, `before` for older pages. */
+    query({ after = 0, before = 0, max = 300, levels = [], kinds = [], tenantId = '', search = '' } = {}) {
+      const where = ['e.seq > ?']; const params = [after];
+      const anyOf = (column, values) => { where.push(`${column} IN (${values.map(() => '?').join(', ')})`); params.push(...values); };
+      if (before) { where.push('e.seq < ?'); params.push(before); }
+      if (levels.length) anyOf('e.level', levels);
+      if (kinds.length) anyOf('e.kind', kinds);
+      if (tenantId) { where.push('e.tenant_id = ?'); params.push(tenantId); }
+      if (search) {
+        where.push("(e.title LIKE ? ESCAPE '!' OR e.meaning LIKE ? ESCAPE '!' OR e.detail LIKE ? ESCAPE '!' OR e.actor LIKE ? ESCAPE '!')");
+        const like = `%${String(search).replace(/[!%_]/g, '!$&')}%`;
+        params.push(like, like, like, like);
+      }
+      // The center's current name, so a renamed center reads the same through its whole history.
+      const center = attached ? '(SELECT name FROM tenants t WHERE t.id = e.tenant_id)' : 'NULL';
+      const rows = store.prepare(`SELECT e.seq, e.at, e.level, e.kind, e.title, e.meaning, e.detail, e.tenant_id AS tenantId, e.actor, ${center} AS center
+        FROM platform_events e WHERE ${where.join(' AND ')} ORDER BY e.seq DESC LIMIT ?`).all(...params, Math.min(max + 1, 1001));
+      const more = rows.length > max;
+      return { items: rows.slice(0, max).reverse().map((row) => ({ ...row })), last: store.prepare('SELECT COALESCE(MAX(seq), 0) AS seq FROM platform_events').get().seq, more };
+    },
+    since(after = 0, max = 300) { return this.query({ after, max }); },
+    purge(days = 90) {
+      try { store.prepare('DELETE FROM platform_events WHERE at < ?').run(new Date(now().getTime() - days * 86_400_000).toISOString()); } catch { /* next hour */ }
     }
   };
 }

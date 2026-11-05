@@ -7,12 +7,13 @@ import { DetailFlowRepository } from './repository.mjs';
 import { AuthRepository, MESSENGER_PROVIDERS, normalizeEmail } from './auth-repository.mjs';
 import { signInLetter } from './mailer.mjs';
 import { createBotDialog } from './messenger/bot-dialog.mjs';
-import { PROVIDER_TITLES, createEventLog, maskAccount } from './event-log.mjs';
+import { PROVIDER_TITLES, actorTag, createEventLog, maskAccount } from './event-log.mjs';
+import { classifyRequest } from './request-catalog.mjs';
 import { PERMISSIONS } from './roles-repository.mjs';
 import { createIdempotency } from './idempotency.mjs';
 import { buildBookingPack } from './offline-pack.mjs';
 import { LEGAL_VERSION, hasAcceptedLegal, recordLegalAcceptance } from './legal.mjs';
-import { createRequestMetrics, platformStats } from './platform-stats.mjs';
+import { createRequestMetrics, platformStats, createRequestLedger, parsePeriod } from './platform-stats.mjs';
 import { createAdminNotifier } from './admin-notify.mjs';
 import { createNotificationCenter } from './notifications.mjs';
 import { createBroadcasts } from './broadcasts.mjs';
@@ -28,6 +29,8 @@ const contentTypes = {
 };
 
 function sendJson(response, status, payload) {
+  // For the journal: why a request was refused. Only the error's code and message, never the request's data.
+  if (status >= 400 && payload?.error) response.problem = payload.error;
   // API data must never come from an HTTP cache: the app keeps its own offline copy.
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   response.end(JSON.stringify(payload));
@@ -85,6 +88,10 @@ export function createDetailFlowServer({
   const readyProviders = new Set();
   // Why a bot is down, for /api/ready (adapter messages name the method and the API's answer, never the token).
   const botProblems = new Map();
+  events.attach(db);
+  const ledger = createRequestLedger(db);
+  const ledgerTimer = setInterval(() => { try { ledger.flush(); } catch (error) { console.error('Request stats were not saved:', error.message); } }, 30_000);
+  ledgerTimer.unref?.();
   const botDialog = createBotDialog({ auth, adapters, events });
   const via = (provider) => PROVIDER_TITLES[provider] ?? provider;
   const allowLoginRequest = createRateLimiter(20, 60_000);
@@ -112,7 +119,7 @@ export function createDetailFlowServer({
     });
   for (const adapter of adapters.values()) startBot(adapter);
   // Expired sign-in data is deleted on start and every hour (retention, see AuthRepository.purgeExpired).
-  const purgeExpired = () => { try { auth.purgeExpired(); } catch (error) { console.error('Purging expired sign-in data failed:', error.message); } };
+  const purgeExpired = () => { try { auth.purgeExpired(); events.purge(); ledger.purge(); } catch (error) { console.error('Purging expired sign-in data failed:', error.message); } };
   purgeExpired();
   const purgeTimer = setInterval(purgeExpired, 60 * 60 * 1000);
   purgeTimer.unref?.();
@@ -140,10 +147,58 @@ export function createDetailFlowServer({
     downSince: botDownSince.has(provider) ? new Date(botDownSince.get(provider)).toISOString() : null
   }]));
 
+  // A person looking at a screen is written once in a while, a change every time.
+  const lastViews = new Map();
+  function noteRequest(request, response, durationMs, actor, adminRequest) {
+    try {
+      const path = (request.url ?? '').split('?')[0];
+      const status = response.statusCode;
+      const info = classifyRequest(request.method, path, status);
+      ledger.record(info.key, status, durationMs);
+      const objectRef = info.ref ? `, объект …${info.ref}` : '';
+      const technical = `${request.method} ${path.replace(/[^/]{16,}/g, (id) => `…${id.slice(-6)}`)} → ${status}, ${durationMs} мс${objectRef}`;
+      const failed = status >= 400;
+      // A refusal may quote a customer ("this phone belongs to …"): such texts stay out, the code is enough.
+      const problem = response.problem && /customer|vehicle|lead|phone|plate/.test(response.problem.code ?? '')
+        ? { code: response.problem.code, message: 'Сервер отклонил действие. Данные клиента в журнал не пишутся, причина — в коде ниже.' } : response.problem;
+      const reason = problem ? `${problem.code}: ${problem.message}` : '';
+      if (adminRequest && info.change && !failed) events.add({ kind: 'admin', title: info.label, meaning: info.meaning, detail: technical });
+      if (!actor?.tenantId || info.group === 'unknown') return;
+      ledger.touch(actor.tenantId, actor.memberId ?? 'token', info.change && !failed);
+      const who = { tenantId: actor.tenantId, actor: actorTag(actor.roles, actor.memberId) };
+      if (info.change) {
+        if (!info.meaning && !failed) return; // Counting a price or checking a form changes nothing.
+        events.add({ ...who, kind: 'action', level: status >= 500 ? 'error' : failed ? 'warn' : 'info',
+          title: failed ? `Не получилось: ${info.label.toLowerCase()}` : info.label,
+          meaning: failed ? (problem?.message ?? 'Сервер отказал в этом действии.') : info.meaning,
+          detail: [technical, reason].filter(Boolean).join('\n') });
+        return;
+      }
+      if (failed && status !== 401) {
+        events.add({ ...who, kind: 'action', level: status >= 500 ? 'error' : 'warn', title: `Не открылось: ${info.label.toLowerCase()}`,
+          meaning: problem?.message ?? 'Сервер отказал в этом запросе.', detail: [technical, reason].filter(Boolean).join('\n') });
+        return;
+      }
+      if (failed) return;
+      const seen = `${actor.memberId}|${info.key}`;
+      const now = Date.now();
+      if (now - (lastViews.get(seen) ?? 0) < 30 * 60_000) return;
+      if (lastViews.size > 20_000) lastViews.clear();
+      lastViews.set(seen, now);
+      events.add({ ...who, kind: 'view', title: info.label, meaning: 'Сотрудник открыл этот раздел. Повторные открытия за 30 минут не пишутся.', detail: technical });
+    } catch (error) {
+      console.error('Request was not noted:', error.message);
+    }
+  }
+
   const server = createServer(async (request, response) => {
     const startedAt = Date.now();
+    // Who sent the request, once the session is known: for the journal and the days of work.
+    let requestActor = null;
+    let adminRequest = false;
     response.on('finish', () => {
       metrics.record(response.statusCode, Date.now() - startedAt);
+      noteRequest(request, response, Date.now() - startedAt, requestActor, adminRequest);
       // Failures and refusals for too many attempts go to the journal; ordinary 4xx answers (a wrong form, no session) do not.
       const path = (request.url ?? '').split('?')[0];
       if (response.statusCode >= 500) events.add({ level: 'error', kind: 'http', title: `Сбой запроса ${request.method} ${path} → ${response.statusCode}`,
@@ -258,7 +313,7 @@ export function createDetailFlowServer({
         if (result.kind === 'created') {
           const total = db.prepare('SELECT COUNT(*) AS count FROM tenants').get().count;
           void notifier.notify(`🎉 Новый центр в DetailFlow: «${result.session.tenant.name}». Всего центров: ${total}`);
-          events.add({ kind: 'auth', title: `Создан центр «${result.session.tenant.name}»`, meaning: `Новый владелец назвал центр и вошёл. Всего центров: ${total}.` });
+          events.add({ kind: 'auth', title: `Создан центр «${result.session.tenant.name}»`, meaning: `Новый владелец назвал центр и вошёл. Всего центров: ${total}.`, tenantId: result.session.tenant.id });
           return sendJson(response, 201, result.session);
         }
         if (result.kind === 'invalid') return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите название центра и своё имя (от 2 символов)' } });
@@ -280,7 +335,8 @@ export function createDetailFlowServer({
           const input = await readJson(request);
           const result = auth.createSessionFromLogin(loginRequest[1], pollSecret, typeof input.tenantId === 'string' ? input.tenantId : null);
           if (result.kind === 'created') {
-            events.add({ kind: 'auth', title: `Вход выполнен: центр «${result.session.tenant.name}»`, meaning: 'Сотрудник вошёл в рабочее место.' });
+            events.add({ kind: 'auth', title: `Вход выполнен: центр «${result.session.tenant.name}»`, meaning: 'Сотрудник вошёл в рабочее место.',
+              tenantId: result.session.tenant.id, actor: actorTag(result.session.member.roles, result.session.member.id) });
             return sendJson(response, 201, result.session);
           }
           if (result.kind === 'conflict' && result.code === 'no_active_membership') events.add({ level: 'warn', kind: 'auth', title: 'Вход не выполнен: аккаунт не привязан к центру',
@@ -302,14 +358,30 @@ export function createDetailFlowServer({
         if (result.kind === 'conflict') return sendJson(response, 409, { error: { code: result.code, message: result.message } });
         return sendJson(response, 404, { error: { code: 'login_not_found', message: 'Запрос входа не найден' } });
       }
-      if (url.pathname === '/api/admin/stats' || url.pathname === '/api/admin/logout' || url.pathname === '/api/admin/events' || url.pathname.startsWith('/api/admin/broadcasts')) {
+      if (url.pathname === '/api/admin/stats' || url.pathname === '/api/admin/logout' || url.pathname === '/api/admin/events' || url.pathname.startsWith('/api/admin/broadcasts') || url.pathname.startsWith('/api/admin/centers/')) {
         const authorization = request.headers.authorization;
         const adminToken = typeof authorization === 'string' && authorization.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : '';
         if (!auth.authenticateAdmin(adminToken)) return sendJson(response, 401, { error: { code: 'admin_unauthorized', message: 'Войдите как владелец сервиса' } });
+        adminRequest = true;
         if (url.pathname === '/api/admin/logout' && request.method === 'POST') return sendJson(response, 200, { revoked: auth.revokeAdminSession(adminToken) });
         // The live journal: entries after the last one the page has seen.
-        if (url.pathname === '/api/admin/events' && request.method === 'GET') return sendJson(response, 200, events.since(Number(url.searchParams.get('after')) || 0));
-        if (url.pathname === '/api/admin/stats' && request.method === 'GET') return sendJson(response, 200, platformStats({ db, databasePath, backupDirectory, version, bots: botStates(), metrics }));
+        if (url.pathname === '/api/admin/events' && request.method === 'GET') {
+          const list = (name) => (url.searchParams.get(name) ?? '').split(',').filter(Boolean);
+          return sendJson(response, 200, events.query({
+            after: Number(url.searchParams.get('after')) || 0, before: Number(url.searchParams.get('before')) || 0, max: 200,
+            levels: list('levels'), kinds: list('kinds'), tenantId: url.searchParams.get('tenant') ?? '', search: (url.searchParams.get('search') ?? '').slice(0, 80)
+          }));
+        }
+        // A center of the owner's own tests stays in the list, but out of the totals.
+        const centerMatch = url.pathname.match(/^\/api\/admin\/centers\/([^/]+)$/);
+        if (centerMatch && request.method === 'PATCH') {
+          if (!db.prepare('SELECT 1 FROM tenants WHERE id = ?').get(centerMatch[1])) return sendJson(response, 404, { error: { code: 'not_found', message: 'Центр не найден' } });
+          const input = await readJson(request);
+          if (input.excluded === true) db.prepare('INSERT OR IGNORE INTO platform_excluded_centers (tenant_id) VALUES (?)').run(centerMatch[1]);
+          else db.prepare('DELETE FROM platform_excluded_centers WHERE tenant_id = ?').run(centerMatch[1]);
+          return sendJson(response, 200, { excluded: input.excluded === true });
+        }
+        if (url.pathname === '/api/admin/stats' && request.method === 'GET') return sendJson(response, 200, platformStats({ db, databasePath, backupDirectory, version, bots: botStates(), metrics, ledger, period: parsePeriod(url.searchParams, db) }));
         // News, updates and surveys to the people of the centers (broadcasts.mjs).
         if (url.pathname === '/api/admin/broadcasts' && request.method === 'GET') return sendJson(response, 200, { items: broadcasts.list() });
         if (url.pathname === '/api/admin/broadcasts/preview' && request.method === 'POST') {
@@ -319,7 +391,7 @@ export function createDetailFlowServer({
         if (url.pathname === '/api/admin/broadcasts' && request.method === 'POST') {
           const result = await broadcasts.send(await readJson(request));
           if (result.kind === 'sent') return sendJson(response, 201, result);
-          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Проверьте заголовок, текст, получателей и варианты опроса' } });
+          return sendJson(response, 422, { error: { code: 'validation_error', message: 'Напишите заголовок или текст, проверьте получателей и варианты опроса' } });
         }
         const broadcastResults = url.pathname.match(/^\/api\/admin\/broadcasts\/([^/]+)$/);
         if (broadcastResults && request.method === 'GET') {
@@ -337,6 +409,7 @@ export function createDetailFlowServer({
         const session = authTokens.get(token) ?? auth.authenticateSession(token) ?? repository.authenticateTeamToken(token);
         const tenantId = typeof session === 'string' ? session : session?.tenantId;
         const roles = typeof session === 'string' ? ['admin', 'intake', 'master', 'qc'] : session?.roles ?? [];
+        if (tenantId) requestActor = { tenantId, roles, memberId: typeof session === 'string' ? null : session?.memberId ?? null };
         const hasRole = (...allowed) => allowed.some((role) => roles.includes(role));
         const actorName = typeof session === 'string' ? 'Сотрудник' : session?.displayName ?? 'Сотрудник';
         // Permissions come from the center's roles (system roles with the owner's edits, plus custom roles).
@@ -1251,7 +1324,10 @@ export function createDetailFlowServer({
     clearInterval(purgeTimer);
     clearInterval(healthTimer);
     clearInterval(reminderTimer);
+    clearInterval(ledgerTimer);
     for (const adapter of adapters.values()) adapter.stop();
+    try { ledger.flush(); } catch (error) { console.error('Request stats were not saved:', error.message); }
+    events.detach();
     db.close();
   });
   // For server/index.mjs: a failed scheduled backup is reported to the service owner too.
