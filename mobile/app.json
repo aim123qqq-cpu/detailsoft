@@ -2,7 +2,7 @@
   "expo": {
     "name": "DetailFlow",
     "slug": "detailflow",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "detailflow",
@@ -14,7 +14,7 @@
     },
     "android": {
       "package": "ru.detailflow.app",
-      "versionCode": 10,
+      "versionCode": 11,
       "adaptiveIcon": {
         "backgroundColor": "#0b1016",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

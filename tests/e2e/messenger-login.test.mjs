@@ -88,7 +88,7 @@ test('mobile messenger sign-in: owner invite, bot confirmation, session and sign
     await telegram.handler({ provider: 'telegram', kind: 'start', userId: '1001', displayName: 'Анна', payload: new URL(botHref).searchParams.get('start') });
     const prompt = telegram.sent.at(-1);
     assert.match(prompt.text, new RegExp(code), 'the bot shows the same code as the screen');
-    await page.getByText('Подтвердите вход кнопкой').waitFor();
+    await page.getByText('Откройте сообщение бота').waitFor();
     await settle(page);
     await page.screenshot({ path: resolve(artifacts, '76-login-awaiting-confirmation.png') });
     await page.waitForTimeout(3500);

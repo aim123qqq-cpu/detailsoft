@@ -31,7 +31,7 @@ test('a production server: a person creates a center in the browser and lands in
   try {
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
     await page.getByTestId('toggle-signup').click();
-    await page.getByRole('heading', { name: 'Создайте свой центр' }).waitFor();
+    await page.getByRole('heading', { name: 'Создать центр' }).waitFor();
     await page.screenshot({ path: resolve(artifacts, '95-signup-start.png'), fullPage: true });
     await page.getByTestId('login-telegram').click();
     const startPayload = new URL(await page.getByTestId('open-bot').getAttribute('href')).searchParams.get('start');

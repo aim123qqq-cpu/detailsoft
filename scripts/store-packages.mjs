@@ -26,7 +26,7 @@ const full = between('**Полное описание:**', '**Категория
 if (short.length > 80) throw new Error(`The short description is ${short.length} characters, the stores allow 80`);
 if (full.length > 4000) throw new Error(`The full description is ${full.length} characters, Google Play allows 4000`);
 
-const whatsNew = 'Первая версия DetailFlow: запись клиентов, приёмка по схеме автомобиля с фото, смета и согласование, работа мастера, акты приёмки и выдачи с подписью клиента, работа без интернета, напоминания о записях.';
+const whatsNew = 'Новый экран входа и создания центра. При записи марка и модель выбираются из справочника, госномер и цвет необязательны. Время услуги задаётся барабанами часов и минут.';
 const listing = (iconName) => [
   `Название: DetailFlow`,
   `Краткое описание (${short.length} симв.): ${short}`,
@@ -55,12 +55,12 @@ const access = [
   '',
   'Как войти:',
   '1. Приложение сразу открывает экран входа.',
-  '2. Введите код в поле «Код доступа сотрудника» и нажмите «Войти по коду».',
+  '2. Нажмите «Войти по коду доступа», введите код в поле «Код доступа сотрудника» и нажмите «Войти по коду».',
   '3. Отметьте «Принимаю Пользовательское соглашение» и «Даю согласие на обработку персональных данных», нажмите «Продолжить».',
   '4. Откроется «Тестовый центр для проверки» с примерами услуг, клиентов, записей и заказом на приёмке. Изменения в нём ни на кого не влияют.',
   '',
   'Access for review (English):',
-  'No username. On the sign-in screen enter the code above into "Код доступа сотрудника" (employee access code), tap "Войти по коду",',
+  'No username. On the sign-in screen tap "Войти по коду доступа" (sign in with an access code), enter the code above into "Код доступа сотрудника" (employee access code), tap "Войти по коду",',
   'tick both boxes (user agreement, consent to personal data processing) and tap "Продолжить". A demo detailing center with sample data opens.'
 ].join('\n');
 

@@ -91,7 +91,12 @@ try {
 
   step('first launch opens sign-in on the public server; the test points it at its own');
   await launch('ru.detailflow.app', { clear: true });
-  const title = await waitFor('Вход в DetailFlow', { timeout: 45_000 });
+  await waitFor('Войти в центр', { timeout: 45_000 });
+  // The ways in are asked from the public server; wait for them, and the title must stay where it was.
+  for (let wait = 0; wait < 40 && find('Загружаем способы входа…').length; wait += 1) await sleep(500);
+  const title = await waitFor('Войти в центр');
+  const ways = find(/^Продолжить с /);
+  if (ways.length > 1) assert.match(ways[0].text || ways[0].desc, /^Продолжить с Telegram/, 'Telegram is the main way in');
   assert.ok(!find('Адрес сервера').length && !find(/Сменить/).length, 'no server choice for people');
   screenshot(resolve(out, '01-first-launch.png'));
   // The hidden way to another server: a long press on the title.
@@ -505,7 +510,7 @@ try {
   screenshot(resolve(out, '05-profile.png'));
   await tapNode(await scrollTo('Выйти из демо-режима'));
   // (checked by the server and the web test: a demo session has no account to delete)
-  await waitFor('Вход в DetailFlow');
+  await waitFor('Войти в центр');
 
   step('an employee signs in with an access code and deletes the account');
   const created = await (await api('/api/tenants/current/team', { method: 'POST', body: JSON.stringify({ displayName: 'Мария Орлова', roles: ['intake'] }) })).json();
@@ -514,6 +519,7 @@ try {
     kind: 'survey', title: 'Удобно ли записывать клиентов?', audience: 'center', tenantId: 'tenant_demo', survey: { options: ['Udobno', 'Normalno'], rating: true, comment: false }
   }) });
   assert.equal(survey.status, 201);
+  await tap('Войти по коду доступа');
   await tap(/^df_/);
   await type(created.accessToken);
   back(); // hide the keyboard
@@ -545,18 +551,19 @@ try {
   await waitFor(/^Удалить навсегда$/i);
   screenshot(resolve(out, '06-delete-confirm.png'));
   await tap(/^Удалить навсегда$/i);
-  await waitFor('Вход в DetailFlow');
+  await waitFor('Войти в центр');
   const after = await fetch(`http://127.0.0.1:${SERVER_PORT}/api/session`, { headers: { authorization: `Bearer ${created.accessToken}` } });
   assert.equal(after.status, 401, 'the access code no longer works');
   screenshot(resolve(out, '07-after-delete.png'));
 
   step('a new owner creates a center from the sign-in screen by email, without a messenger');
-  await tap('Создать свой центр');
-  await waitFor('Новый центр');
+  await tap('Создать центр');
+  await waitFor(/^Подтвердите аккаунт через/);
+  await tap('Продолжить по почте');
   await tapNode(await scrollTo('name@mail.ru'));
   await type('owner@example.test');
   back(); // hide the keyboard
-  await tapNode(await scrollTo('Продолжить с email'));
+  await tapNode(await scrollTo('Продолжить с почтой'));
   await waitFor('Код из письма', { timeout: 20_000 });
   const letter = mailer.letters.at(-1);
   assert.equal(letter.to, 'owner@example.test');
@@ -565,7 +572,7 @@ try {
   await type(letter.text.match(/Ваш код: (\d{6})/)[1]);
   back();
   await tap('Подтвердить');
-  await tapNode(await scrollTo('Например, Детейлинг Север'));
+  await tapNode(await scrollTo('Название детейлинг-центра'));
   await type('Email Center');
   back();
   await tapNode(await scrollTo('Имя Фамилия'));
@@ -579,22 +586,22 @@ try {
   await scrollTo('Вы вошли по email');
   screenshot(resolve(out, '34b-email-owner.png'));
   await tapNode(await scrollTo(/^Выйти$/));
-  await waitFor('Вход в DetailFlow');
+  await waitFor('Войти в центр');
 
   step('a new owner creates a center from the sign-in screen through Telegram');
-  await tap('Создать свой центр');
-  await waitFor('Новый центр');
-  await tap('Продолжить через Telegram');
+  await tap('Создать центр');
+  await waitFor(/^Подтвердите аккаунт через/);
+  await tap('Продолжить с Telegram');
   await sleep(2500);
   // The bot link opens a browser (no Telegram on the emulator): come back to the app.
-  for (let attempt = 0; attempt < 3 && !find(/^Отмена$/).length; attempt += 1) { back(); await sleep(1500); }
+  for (let attempt = 0; attempt < 3 && !find(/^Выбрать другой способ$/).length; attempt += 1) { back(); await sleep(1500); }
   assert.ok(telegram.lastStart, 'the app asked for a bot link');
   // The person starts the bot and confirms; the app is polling meanwhile.
   await telegram.handler({ provider: 'telegram', kind: 'start', userId: '880001', displayName: 'Nikita', payload: telegram.lastStart });
   const prompt = telegram.sent.at(-1);
   assert.match(prompt.text, /Создание центра/);
   await telegram.handler({ provider: 'telegram', kind: 'callback', userId: '880001', payload: prompt.buttons[0][0].payload, callbackId: 'signup' });
-  await tapNode(await scrollTo('Например, Детейлинг Север'));
+  await tapNode(await scrollTo('Название детейлинг-центра'));
   await type('Detailing Test');
   back();
   await tapNode(await scrollTo('Имя Фамилия'));
