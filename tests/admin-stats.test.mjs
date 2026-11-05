@@ -121,6 +121,9 @@ test('stats answer for any period, show what requests come and what a center rea
     assert.equal(center.signedUpWith, 'telegram');
     assert.ok(center.lastSeenAt);
     assert.equal(today.centers.workedInPeriod, 1);
+    // The customer is saved on the first step of a booking: one with no booking yet is told apart.
+    assert.deepEqual([center.newCustomers, center.customers, center.customersWithoutBooking, center.bookings, center.allBookings], [1, 1, 1, 0, 0]);
+    assert.equal(center.createdAt, center.signedUpAt);
 
     assert.equal((await stats('preset=7d')).activity.length, 7);
     assert.equal((await stats('preset=90d')).activityGranularity, 'day');

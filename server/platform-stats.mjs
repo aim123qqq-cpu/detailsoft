@@ -147,7 +147,10 @@ function centers(db, period) {
       t.id IN ${SKIPPED} AS skipped,
       (SELECT COUNT(*) FROM tenant_members m WHERE m.tenant_id = t.id AND m.status = 'active') AS members,
       (SELECT COUNT(*) FROM tenant_services v WHERE v.tenant_id = t.id AND v.active = 1) AS services,
+      (SELECT MIN(created_at) FROM tenant_members m WHERE m.tenant_id = t.id) AS firstMemberAt,
       (SELECT COUNT(*) FROM customers c WHERE c.tenant_id = t.id) AS customers,
+      (SELECT COUNT(*) FROM customers c WHERE c.tenant_id = t.id AND c.archived_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.customer_id = c.id) AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id)) AS customersWithoutBooking,
       (SELECT COUNT(*) FROM bookings b WHERE b.tenant_id = t.id) AS allBookings,
       (SELECT COUNT(*) FROM orders o WHERE o.tenant_id = t.id) AS allOrders,
       (SELECT COUNT(*) FROM order_handovers h WHERE h.tenant_id = t.id) AS allClosed,
@@ -173,7 +176,7 @@ function centers(db, period) {
     period.fromDay, period.toDay, ...range, period.fromDay, period.toDay, period.fromDay, period.toDay);
   const now = Date.now();
   return rows.map((row) => {
-    const center = { ...row, skipped: Boolean(row.skipped), lastWorkAt: row.lastWorkAt || null };
+    const center = { ...row, skipped: Boolean(row.skipped), lastWorkAt: row.lastWorkAt || null, createdAt: row.signedUpAt ?? row.firstMemberAt };
     // Older code and tests read these under their first names.
     center.lastActivityAt = center.lastSeenAt && center.lastSeenAt > (center.lastWorkAt ?? '') ? center.lastSeenAt : center.lastWorkAt;
     const [stage, stageTitle, stageMeaning] = stageOf(center, now);

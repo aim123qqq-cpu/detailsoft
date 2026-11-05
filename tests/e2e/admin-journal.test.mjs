@@ -18,6 +18,9 @@ test('the journal in /admin shows what happens in the bot as it happens, with an
   setup.prepare(`INSERT INTO platform_admins (provider, external_user_id) VALUES ('telegram', '995001')`).run();
   setup.prepare(`INSERT INTO admin_sessions (token_hash, provider, external_user_id, expires_at) VALUES (?, 'telegram', '995001', '2999-01-01 00:00:00')`)
     .run(createHash('sha256').update(ADMIN).digest('hex'));
+  // Two centers: one has a customer whose booking was never finished.
+  setup.prepare(`INSERT INTO tenants (id, name) VALUES ('tenant_a', 'Альфа'), ('tenant_b', 'Бета')`).run();
+  setup.prepare(`INSERT INTO customers (id, tenant_id, name, phone_display, phone_normalized) VALUES ('c_a', 'tenant_a', 'Клиент', '+7 999 000-11-22', '+79990001122')`).run();
   setup.close();
   const telegram = {
     provider: 'telegram', title: 'Telegram', botName: 'detailflow_test_bot', handler: null,
@@ -64,6 +67,34 @@ test('the journal in /admin shows what happens in the bot as it happens, with an
     await requests.getByText('Вход и регистрация').click();
     assert.match(await requests.innerText(), /Начало входа через мессенджер/);
     await admin.screenshot({ path: resolve('artifacts', '104-admin-overview.png'), fullPage: true });
+
+    // The centers: sorted by clicking a column, filtered, with the two dates apart.
+    const centers = admin.getByTestId('centers-card');
+    const names = async () => (await centers.getByTestId('center-row').locator('td:first-child b').allInnerTexts());
+    assert.deepEqual(await names(), ['Альфа', 'Бета'], 'the latest activity first');
+    assert.match(await centers.locator('th').nth(9).innerText(), /Создан/);
+    assert.match(await centers.locator('th').nth(10).innerText(), /Последняя активность/);
+    assert.match(await centers.getByTestId('center-created').first().innerText(), /вручную|через/);
+    assert.match(await centers.getByTestId('center-active').first().innerText(), /—|\d/);
+    await admin.getByTestId('sort-bookings').click();
+    await admin.getByTestId('sort-name').click();
+    assert.deepEqual(await names(), ['Альфа', 'Бета']);
+    await admin.getByTestId('sort-name').click();
+    assert.deepEqual(await names(), ['Бета', 'Альфа'], 'a second click turns the order round');
+    await admin.getByTestId('center-search').fill('аль');
+    assert.deepEqual(await names(), ['Альфа']);
+    await admin.getByTestId('center-search').fill('');
+    await admin.getByTestId('center-stuck').check();
+    assert.deepEqual(await names(), ['Альфа'], 'only the center with a customer but no booking');
+    await admin.getByTestId('center-stuck').uncheck();
+    await admin.getByTestId('center-provider').selectOption('email');
+    assert.equal(await centers.getByTestId('center-row').count(), 0);
+    assert.match(await centers.innerText(), /Под этот отбор центров нет/);
+    await admin.getByTestId('center-provider').selectOption('');
+    await admin.reload({ waitUntil: 'domcontentloaded' });
+    await centers.waitFor();
+    assert.deepEqual(await names(), ['Бета', 'Альфа'], 'the chosen order is still there after a reload');
+    await admin.screenshot({ path: resolve('artifacts', '106-admin-centers.png'), fullPage: true });
 
     // Any dates, and the choice is still there after a reload.
     await admin.getByTestId('period-bar').getByText('Свои даты', { exact: true }).click();
