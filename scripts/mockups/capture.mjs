@@ -267,6 +267,8 @@ async function shot(page, name, { full = true } = {}) {
   await page.waitForTimeout(120);
   await page.screenshot({ path: join(OUT, 'png', `${file}.png`) });
   const layers = await page.evaluate(([w, h, prefix]) => window.__domToSvg(w, h, prefix), [WIDTH, height, `s${number}-`]);
+  // The car diagram's gradients have the same names on every screen: on one board they must not mix.
+  layers.body = layers.body.replace(/\bid="(r\d+\w*)"/g, `id="s${number}$1"`).replace(/url\(#(r\d+\w*)\)/g, `url(#s${number}$1)`);
   layers.body = layers.body.replace(/<g id="s\d+-([^"]*)"/g, (_all, name) => {
     const seen = (layerNames.get(name) ?? 0) + 1;
     layerNames.set(name, seen);
