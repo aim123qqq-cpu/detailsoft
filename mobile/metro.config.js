@@ -17,4 +17,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   return next.resolveRequest(next, moduleName, platform);
 };
 
+// The browser build of the screens for design mockups (scripts/mockups); never in an Android build.
+if (process.env.DF_MOCKUPS) require('../scripts/mockups/metro-shims.cjs')(config);
+
 module.exports = config;

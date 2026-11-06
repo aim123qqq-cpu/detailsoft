@@ -48,12 +48,12 @@ export function Button({ title, tone = 'primary', busy, disabled, style, ...prop
   );
 }
 
-export function Field({ label, error, ref, ...props }: TextInputProps & { label: string; error?: string; ref?: React.Ref<React.ComponentRef<typeof TextInput>> }) {
+export function Field({ label, error, ref, style, ...props }: TextInputProps & { label: string; error?: string; ref?: React.Ref<React.ComponentRef<typeof TextInput>> }) {
   return (
     <View style={styles.field}>
       <Label>{label}</Label>
       <TextInput ref={ref} placeholderTextColor={colors.soft} selectionColor={colors.primary} cursorColor={colors.primary}
-        style={[styles.input, error ? styles.inputError : null]} {...props}/>
+        style={[styles.input, error ? styles.inputError : null, style]} {...props}/>
       {error ? <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text> : null}
     </View>
   );
