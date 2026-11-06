@@ -86,6 +86,7 @@
     .request-group[open] summary { margin-bottom: 8px; }
     button.link { min-height: 0; padding: 0; border: 0; background: none; color: var(--accent); font-size: inherit; font-weight: 600; }
     .center-actions { display: flex; gap: 12px; margin-top: 2px; }
+    #centers-table th .sort { white-space: normal; }
     .funnel { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 12px; font-size: 13px; color: var(--muted); }
     .funnel b { color: var(--ink); } .funnel i { font-style: normal; color: var(--soft); }
     .center-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 10px; }
@@ -313,7 +314,7 @@ function usedInCell(c) {
 
 function centerRow(c) {
   const fixed = ['tenant_demo', 'tenant_other'].includes(c.id) || c.name === 'Тестовый центр для проверки';
-  const looked = c.lastSeenAt && c.lastSeenAt > (c.lastActionAt ?? '') ? `<small>заходил: ${when(c.lastSeenAt)}</small>` : '';
+  const looked = c.lastSeenAt && c.lastSeenAt > (c.lastActionAt ?? '') ? `<small>заходил ${when(c.lastSeenAt).split(',')[0]}</small>` : '';
   const how = [c.origin ? CLIENT_NAMES[c.origin] : '', isManual(c) ? 'вручную' : (PROVIDER_NAMES[c.signedUpWith] ?? c.signedUpWith)].filter(Boolean).join(' · ');
   return `<tr class="${c.skipped ? 'skipped' : ''}" data-testid="center-row"><td>
       <b>${esc(c.name)}</b>
