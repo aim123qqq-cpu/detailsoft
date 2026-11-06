@@ -8,7 +8,7 @@ import { AuthRepository, MESSENGER_PROVIDERS, normalizeEmail } from './auth-repo
 import { signInLetter } from './mailer.mjs';
 import { createBotDialog } from './messenger/bot-dialog.mjs';
 import { PROVIDER_TITLES, actorTag, createEventLog, maskAccount } from './event-log.mjs';
-import { classifyRequest } from './request-catalog.mjs';
+import { classifyRequest, clientOf } from './request-catalog.mjs';
 import { PERMISSIONS } from './roles-repository.mjs';
 import { createIdempotency } from './idempotency.mjs';
 import { buildBookingPack } from './offline-pack.mjs';
@@ -173,8 +173,9 @@ export function createDetailFlowServer({
       const reason = problem ? `${problem.code}: ${problem.message}` : '';
       if (adminRequest && info.change && !failed) events.add({ kind: 'admin', title: info.label, meaning: info.meaning, detail: technical });
       if (!actor?.tenantId || info.group === 'unknown') return;
-      ledger.touch(actor.tenantId, actor.memberId ?? 'token', info.change && !failed);
-      const who = { tenantId: actor.tenantId, actor: actorTag(actor.roles, actor.memberId) };
+      const client = clientOf(request.headers['user-agent']);
+      ledger.touch(actor.tenantId, actor.memberId ?? 'token', info.work && !failed, client);
+      const who = { tenantId: actor.tenantId, actor: actorTag(actor.roles, actor.memberId), client };
       if (info.change) {
         if (!info.meaning && !failed) return; // Counting a price or checking a form changes nothing.
         events.add({ ...who, kind: 'action', level: status >= 500 ? 'error' : failed ? 'warn' : 'info',
@@ -242,6 +243,7 @@ export function createDetailFlowServer({
           email: Boolean(mailer)
         });
       }
+      const noteAuth = (entry) => events.add({ client: clientOf(request.headers['user-agent']), ...entry });
       // Sign-in by email: a 6-digit code goes to the address. Once the code is confirmed, the request opens a
       // session or a new center through the same routes as a messenger sign-in.
       if (url.pathname === '/api/auth/email-requests' && request.method === 'POST') {
@@ -258,7 +260,7 @@ export function createDetailFlowServer({
         const login = auth.createEmailLogin(email, input.purpose === 'signup' ? 'signup' : 'login');
         try {
           await mailer.send(signInLetter(login));
-          events.add({ kind: 'auth', title: `Письмо с кодом отправлено на ${maskAccount('email', email)}`,
+          noteAuth({ kind: 'auth', title: `Письмо с кодом отправлено на ${maskAccount('email', email)}`,
             meaning: login.purpose === 'signup' ? 'Человек создаёт центр по email. Дальше он вводит код из письма.' : 'Вход по email. Дальше человек вводит код из письма; если письма нет — пусть посмотрит «Спам».' });
         } catch (error) {
           console.error('Sign-in letter was not sent:', error.message);
@@ -276,11 +278,11 @@ export function createDetailFlowServer({
         });
         const result = auth.confirmEmailLogin(emailConfirm[1], request.headers['x-login-secret'], (await readJson(request)).code);
         if (result.kind === 'confirmed') {
-          events.add({ kind: 'auth', title: 'Код из письма подтверждён', meaning: result.status.purpose === 'signup'
+          noteAuth({ kind: 'auth', title: 'Код из письма подтверждён', meaning: result.status.purpose === 'signup'
             ? 'Человек создаёт центр (или адрес не привязан ни к одному центру — тогда экран входа предложил создать свой). Дальше — название центра.' : 'Сейчас откроется рабочее место сотрудника.' });
           return sendJson(response, 200, result.status);
         }
-        if (result.kind === 'wrong_code') events.add({ level: 'warn', kind: 'auth', title: `Неверный код из письма, осталось попыток: ${result.attemptsLeft}`,
+        if (result.kind === 'wrong_code') noteAuth({ level: 'warn', kind: 'auth', title: `Неверный код из письма, осталось попыток: ${result.attemptsLeft}`,
           meaning: 'Человек ошибся в коде или ввёл код из старого письма. После 5 ошибок нужно запросить новый код.' });
         if (result.kind === 'wrong_code') return sendJson(response, 422, {
           error: { code: 'wrong_code', message: `Код не подошёл. Осталось попыток: ${result.attemptsLeft}`, details: { attemptsLeft: result.attemptsLeft } }
@@ -297,7 +299,7 @@ export function createDetailFlowServer({
         });
         const input = await readJson(request);
         const provider = input.provider;
-        if (MESSENGER_PROVIDERS.includes(provider) && !readyProviders.has(provider)) events.add({ level: 'error', kind: 'auth', title: `Вход через ${via(provider)} не начат: бот недоступен`,
+        if (MESSENGER_PROVIDERS.includes(provider) && !readyProviders.has(provider)) noteAuth({ level: 'error', kind: 'auth', title: `Вход через ${via(provider)} не начат: бот недоступен`,
           meaning: 'Человек нажал кнопку мессенджера, но бот сейчас не подключён — войти так нельзя. Проверьте блок «Сервер» на вкладке «Обзор».' });
         if (!MESSENGER_PROVIDERS.includes(provider) || !readyProviders.has(provider)) return sendJson(response, 422, {
           error: { code: 'provider_unavailable', message: 'Вход через этот мессенджер не настроен' }
@@ -305,7 +307,7 @@ export function createDetailFlowServer({
         // purpose "signup": the person creates a new center and becomes its owner.
         const login = auth.createLoginRequest(provider, input.purpose === 'signup' ? 'signup' : 'login');
         const adapter = adapters.get(provider);
-        events.add({ kind: 'auth', title: login.purpose === 'signup' ? `Начато создание центра через ${via(provider)}` : `Начат вход через ${via(provider)}`,
+        noteAuth({ kind: 'auth', title: login.purpose === 'signup' ? `Начато создание центра через ${via(provider)}` : `Начат вход через ${via(provider)}`,
           meaning: 'На экране входа нажата кнопка мессенджера. Дальше человек открывает бота и подтверждает. Если следующей записи от бота нет — бот не открылся или человек передумал.' });
         return sendJson(response, 201, {
           id: login.id, provider, purpose: login.purpose, shortCode: login.shortCode, pollSecret: login.pollSecret, expiresAt: login.expiresAt,
@@ -320,14 +322,16 @@ export function createDetailFlowServer({
         });
         const result = auth.createCenterFromLogin(signup[1], request.headers['x-login-secret'], await readJson(request));
         if (result.kind === 'created') {
+          const origin = clientOf(request.headers['user-agent']);
+          if (origin) db.prepare('INSERT OR IGNORE INTO platform_center_origins (tenant_id, client) VALUES (?, ?)').run(result.session.tenant.id, origin);
           const total = db.prepare('SELECT COUNT(*) AS count FROM tenants').get().count;
           void notifier.notify(`🎉 Новый центр в DetailFlow: «${result.session.tenant.name}». Всего центров: ${total}`);
-          events.add({ kind: 'auth', title: `Создан центр «${result.session.tenant.name}»`, meaning: `Новый владелец назвал центр и вошёл. Всего центров: ${total}.`, tenantId: result.session.tenant.id });
+          noteAuth({ kind: 'auth', title: `Создан центр «${result.session.tenant.name}»`, meaning: `Новый владелец назвал центр и вошёл. Всего центров: ${total}.`, tenantId: result.session.tenant.id });
           return sendJson(response, 201, result.session);
         }
         if (result.kind === 'invalid') return sendJson(response, 422, { error: { code: 'validation_error', message: 'Укажите название центра и своё имя (от 2 символов)' } });
         if (result.kind === 'conflict') {
-          if (result.code === 'too_many_centers') events.add({ level: 'warn', kind: 'auth', title: 'Отказано в создании центра: лимит на аккаунт',
+          if (result.code === 'too_many_centers') noteAuth({ level: 'warn', kind: 'auth', title: 'Отказано в создании центра: лимит на аккаунт',
             meaning: 'С одного аккаунта уже создано максимальное число центров. Если человеку правда нужно больше — свяжитесь с ним.' });
           return sendJson(response, 409, { error: { code: result.code, message: result.message } });
         }
@@ -344,11 +348,11 @@ export function createDetailFlowServer({
           const input = await readJson(request);
           const result = auth.createSessionFromLogin(loginRequest[1], pollSecret, typeof input.tenantId === 'string' ? input.tenantId : null);
           if (result.kind === 'created') {
-            events.add({ kind: 'auth', title: `Вход выполнен: центр «${result.session.tenant.name}»`, meaning: 'Сотрудник вошёл в рабочее место.',
+            noteAuth({ kind: 'auth', title: `Вход выполнен: центр «${result.session.tenant.name}»`, meaning: 'Сотрудник вошёл в рабочее место.',
               tenantId: result.session.tenant.id, actor: actorTag(result.session.member.roles, result.session.member.id) });
             return sendJson(response, 201, result.session);
           }
-          if (result.kind === 'conflict' && result.code === 'no_active_membership') events.add({ level: 'warn', kind: 'auth', title: 'Вход не выполнен: аккаунт не привязан к центру',
+          if (result.kind === 'conflict' && result.code === 'no_active_membership') noteAuth({ level: 'warn', kind: 'auth', title: 'Вход не выполнен: аккаунт не привязан к центру',
             meaning: 'Человек подтвердил вход, но не числится сотрудником ни одного центра (или заблокирован). Владельцу центра нужно пригласить его из «Команды» — или человек может создать свой центр.' });
           if (result.kind === 'choose_tenant') return sendJson(response, 409, {
             error: { code: 'choose_tenant', message: 'Выберите центр', details: { memberships: result.memberships } }
@@ -378,7 +382,7 @@ export function createDetailFlowServer({
           const list = (name) => (url.searchParams.get(name) ?? '').split(',').filter(Boolean);
           return sendJson(response, 200, events.query({
             after: Number(url.searchParams.get('after')) || 0, before: Number(url.searchParams.get('before')) || 0, max: 200,
-            levels: list('levels'), kinds: list('kinds'), tenantId: url.searchParams.get('tenant') ?? '', search: (url.searchParams.get('search') ?? '').slice(0, 80)
+            levels: list('levels'), kinds: list('kinds'), tenantId: url.searchParams.get('tenant') ?? '', client: url.searchParams.get('client') ?? '', search: (url.searchParams.get('search') ?? '').slice(0, 80)
           }));
         }
         // A center of the owner's own tests stays in the list, but out of the totals.

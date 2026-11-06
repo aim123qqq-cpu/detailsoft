@@ -72,8 +72,12 @@ test('the journal in /admin shows what happens in the bot as it happens, with an
     const centers = admin.getByTestId('centers-card');
     const names = async () => (await centers.getByTestId('center-row').locator('td:first-child b').allInnerTexts());
     assert.deepEqual(await names(), ['Альфа', 'Бета'], 'the latest activity first');
-    assert.match(await centers.locator('th').nth(9).innerText(), /Создан/);
-    assert.match(await centers.locator('th').nth(10).innerText(), /Последняя активность/);
+    assert.match(await centers.locator('th').nth(10).innerText(), /Создан/);
+    assert.match(await centers.locator('th').nth(11).innerText(), /Последнее действие/);
+    assert.equal(await centers.getByTestId('center-reached').first().innerText(), 'Клиент');
+    assert.equal(await centers.getByTestId('center-status').first().innerText(), 'Активен');
+    assert.match(await centers.getByTestId('center-funnel').innerText(), /Регистрация 2[\s\S]*Клиент 1[\s\S]*Выдача 0/);
+    assert.doesNotMatch(await centers.getByTestId('center-row').first().innerText(), /всего| из /, 'one number per cell');
     assert.match(await centers.getByTestId('center-created').first().innerText(), /вручную|через/);
     assert.match(await centers.getByTestId('center-active').first().innerText(), /—|\d/);
     await admin.getByTestId('sort-bookings').click();

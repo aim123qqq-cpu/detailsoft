@@ -142,6 +142,15 @@ const ROUTES = [
 const PROBE = /\.(php|env|git|asp|aspx|jsp|cgi|sql|bak|ini|yml|yaml|xml)\b|\/wp-|\/\.|\/(phpmyadmin|cgi-bin|vendor|boaform|actuator)\b/i;
 
 const CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+// Changes of a person's own account: push switched on at start, a feed marked read. They happen without any work.
+const NOT_WORK = /^\/api\/(auth|legal|me|notifications)(\/|$)/;
+
+/** 'app', 'site', or null for anything else (robots, scripts). A browser always says Mozilla; the app sends its own name. */
+export function clientOf(userAgent) {
+  const value = String(userAgent ?? '');
+  if (value.startsWith('Mozilla/')) return 'site';
+  return /detailflow|okhttp|dalvik|cfnetwork/i.test(value) ? 'app' : null;
+}
 const LABELS = new Map(ROUTES.map((route) => [`${route.method} ${route.path}`, route]));
 const FILES = { 'site:pages': 'Страницы сайта', 'site:files': 'Файлы сайта (картинки, скрипты, шрифты)', 'site:admin': 'Страница админки',
   'unknown:api': 'Другой запрос к API', 'unknown:probe': 'Роботы ищут уязвимости', 'unknown:missing': 'Несуществующие адреса' };
@@ -151,14 +160,19 @@ export function classifyRequest(method, path, status = 200) {
   for (const route of ROUTES) {
     if (route.method !== method) continue;
     const match = route.pattern.exec(path);
-    if (match) return { key: `${method} ${route.path}`, group: route.group, label: route.label, meaning: route.meaning, change: CHANGING.has(method), ref: match[1] ? String(match[1]).slice(-6) : '' };
+    if (match) {
+      const change = CHANGING.has(method);
+      // Counting a price sends a POST too, but changes nothing: only what has a meaning is an action in a center.
+      const work = change && route.group === 'work' && Boolean(route.meaning) && !NOT_WORK.test(route.path);
+      return { key: `${method} ${route.path}`, group: route.group, label: route.label, meaning: route.meaning, change, work, ref: match[1] ? String(match[1]).slice(-6) : '' };
+    }
   }
   const key = path.startsWith('/api/') ? 'unknown:api'
     : PROBE.test(path) ? 'unknown:probe'
     : status === 404 ? 'unknown:missing'
     : path.startsWith('/admin') ? 'site:admin'
     : /\.[a-z0-9]{1,6}$/i.test(path) ? 'site:files' : 'site:pages';
-  return { key, group: key.split(':')[0], label: FILES[key], meaning: '', change: false, ref: '' };
+  return { key, group: key.split(':')[0], label: FILES[key], meaning: '', change: false, work: false, ref: '' };
 }
 
 /** Back from a stored key to the words, for the breakdown. */

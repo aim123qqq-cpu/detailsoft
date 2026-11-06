@@ -47,6 +47,7 @@ const VALID_DAY = /^\d{4}-\d{2}-\d{2}$/;
 export function createRequestLedger(db, now = () => Date.now()) {
   const requests = new Map();
   const people = new Map();
+  const clients = new Map();
   return {
     record(key, statusCode, durationMs) {
       const bucket = sqlTime(Math.floor(now() / 600_000) * 600_000);
@@ -59,9 +60,16 @@ export function createRequestLedger(db, now = () => Date.now()) {
       entry.totalMs += Math.round(durationMs);
       requests.set(id, entry);
     },
-    touch(tenantId, memberId, changed) {
+    touch(tenantId, memberId, changed, client = null) {
       const at = sqlTime(now());
       const day = moscowDay(now());
+      if (client) {
+        const key = `${day}|${tenantId}|${memberId}|${client}`;
+        const used = clients.get(key) ?? { day, tenantId, memberId, client, requests: 0, changes: 0 };
+        used.requests += 1;
+        if (changed) used.changes += 1;
+        clients.set(key, used);
+      }
       const id = `${day}|${tenantId}|${memberId}`;
       const entry = people.get(id) ?? { day, tenantId, memberId, requests: 0, changes: 0, lastAt: at, lastChangeAt: null };
       entry.requests += 1;
@@ -81,9 +89,13 @@ export function createRequestLedger(db, now = () => Date.now()) {
           ON CONFLICT(day, tenant_id, member_id) DO UPDATE SET requests = requests + excluded.requests, changes = changes + excluded.changes,
             last_at = excluded.last_at, last_change_at = COALESCE(excluded.last_change_at, last_change_at)`);
         for (const entry of people.values()) addPeople.run(entry.day, entry.tenantId, entry.memberId, entry.requests, entry.changes, entry.lastAt, entry.lastChangeAt);
+        const addClients = db.prepare(`INSERT INTO platform_client_days (day, tenant_id, member_id, client, requests, changes) VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(day, tenant_id, member_id, client) DO UPDATE SET requests = requests + excluded.requests, changes = changes + excluded.changes`);
+        for (const entry of clients.values()) addClients.run(entry.day, entry.tenantId, entry.memberId, entry.client, entry.requests, entry.changes);
         db.exec('COMMIT');
         requests.clear();
         people.clear();
+        clients.clear();
       } catch (error) {
         db.exec('ROLLBACK');
         throw error;
@@ -93,6 +105,7 @@ export function createRequestLedger(db, now = () => Date.now()) {
     purge() {
       db.prepare('DELETE FROM platform_request_stats WHERE bucket < ?').run(sqlTime(now() - 90 * DAY));
       db.prepare('DELETE FROM platform_member_days WHERE day < ?').run(moscowDay(now() - 730 * DAY));
+      db.prepare('DELETE FROM platform_client_days WHERE day < ?').run(moscowDay(now() - 730 * DAY));
     }
   };
 }
@@ -130,20 +143,37 @@ const REVIEW_CENTER = 'Тестовый центр для проверки';
 const SKIPPED = `(SELECT id FROM tenants WHERE id IN ('tenant_demo', 'tenant_other') OR name = '${REVIEW_CENTER}' UNION SELECT tenant_id FROM platform_excluded_centers)`;
 const inPeriod = (column) => `datetime(${column}) >= ? AND datetime(${column}) < ?`;
 
-/** What a center is really doing: a center's life in one word, from what it has done, not from how often it signed in. */
-function stageOf(center, now) {
-  const last = center.lastWorkAt ? Date.parse(`${center.lastWorkAt.replace(' ', 'T').slice(0, 19)}Z`) : 0;
-  const worked = center.allBookings + center.allOrders;
-  if (!center.services && !worked) return ['new', 'Только создан', 'Услуги не добавлены, записей и заказов нет. Человек зарегистрировался и дальше не пошёл.'];
-  if (!worked) return ['setup', 'Настраивается', 'Услуги есть, но ни одной записи или заказа ещё не было.'];
-  if (now - last > 14 * DAY) return ['silent', 'Затих', 'Работал, но больше 14 дней нет новых записей и заказов.'];
-  if (center.allClosed >= 3 && now - last <= 7 * DAY) return ['working', 'Работает', 'Выдано больше 3 автомобилей, и на этой неделе есть новая работа.'];
-  return ['trying', 'Пробует', 'Есть записи или заказы, но автомобилей выдано пока мало: сервис только пробуют.'];
+/** Is the center alive: only by the last real action. An open app refreshes itself, so looking does not count. */
+function statusOf(lastActionAt, now) {
+  if (!lastActionAt) return ['idle', 'Не начинал', 'Зарегистрировался, и в центре ещё ни одного действия.'];
+  const days = (now - Date.parse(`${lastActionAt.replace(' ', 'T').slice(0, 19)}Z`)) / DAY;
+  if (days <= 7) return ['active', 'Активен', 'Было действие за последние 7 дней.'];
+  if (days <= 30) return ['cooling', 'Притих', 'Последнее действие от 8 до 30 дней назад.'];
+  return ['gone', 'Пропал', 'Больше 30 дней ни одного действия.'];
 }
+
+/** How far a center has ever gone. The deepest step is a plain fact and never goes back. */
+const STEPS = [['signup', 'Регистрация'], ['services', 'Услуги'], ['customer', 'Клиент'], ['booking', 'Запись'], ['order', 'Заказ'], ['handover', 'Выдача']];
+function reachedOf(center) {
+  const depth = center.allClosed ? 5 : center.allOrders ? 4 : center.allBookings ? 3 : center.customers ? 2 : center.services ? 1 : 0;
+  return { reached: STEPS[depth][0], reachedTitle: STEPS[depth][1], reachedDepth: depth };
+}
+
+const noClients = () => ({ app: { people: 0, requests: 0, changes: 0 }, site: { people: 0, requests: 0, changes: 0 } });
 
 function centers(db, period) {
   const range = [period.from, period.to];
+  const usage = new Map();
+  for (const row of db.prepare(`SELECT tenant_id AS tenantId, client, COUNT(DISTINCT member_id) AS people, SUM(requests) AS requests, SUM(changes) AS changes
+    FROM platform_client_days WHERE day >= ? AND day <= ? GROUP BY tenant_id, client`).all(period.fromDay, period.toDay)) {
+    const entry = usage.get(row.tenantId) ?? noClients();
+    entry[row.client] = { people: row.people, requests: row.requests, changes: row.changes };
+    usage.set(row.tenantId, entry);
+  }
   const rows = db.prepare(`SELECT t.id, t.name, s.created_at AS signedUpAt, s.provider AS signedUpWith,
+      (SELECT client FROM platform_center_origins o WHERE o.tenant_id = t.id) AS origin,
+      (SELECT MAX(last_change_at) FROM platform_member_days p WHERE p.tenant_id = t.id) AS lastChangeAt,
+      (SELECT MAX(created_at) FROM customers c WHERE c.tenant_id = t.id) AS lastCustomerAt,
       t.id IN ${SKIPPED} AS skipped,
       (SELECT COUNT(*) FROM tenant_members m WHERE m.tenant_id = t.id AND m.status = 'active') AS members,
       (SELECT COUNT(*) FROM tenant_services v WHERE v.tenant_id = t.id AND v.active = 1) AS services,
@@ -179,8 +209,11 @@ function centers(db, period) {
     const center = { ...row, skipped: Boolean(row.skipped), lastWorkAt: row.lastWorkAt || null, createdAt: row.signedUpAt ?? row.firstMemberAt };
     // Older code and tests read these under their first names.
     center.lastActivityAt = center.lastSeenAt && center.lastSeenAt > (center.lastWorkAt ?? '') ? center.lastSeenAt : center.lastWorkAt;
-    const [stage, stageTitle, stageMeaning] = stageOf(center, now);
-    return { ...center, stage, stageTitle, stageMeaning, workedInPeriod: center.bookings + center.orders + center.closed + center.periodDocuments + center.changes > 0 };
+    center.lastActionAt = [center.lastWorkAt, center.lastChangeAt, center.lastCustomerAt].filter(Boolean).sort().at(-1) ?? null;
+    const [status, statusTitle, statusMeaning] = statusOf(center.lastActionAt, now);
+    const clients = usage.get(center.id) ?? noClients();
+    const usedIn = clients.app.people && clients.site.people ? 'both' : clients.app.people ? 'app' : clients.site.people ? 'site' : null;
+    return { ...center, ...reachedOf(center), status, statusTitle, statusMeaning, clients, usedIn, workedInPeriod: center.bookings + center.orders + center.closed + center.periodDocuments + center.changes > 0 };
   });
 }
 
@@ -201,8 +234,12 @@ function users(db) {
 /** The numbers of a period, without the centers that are not real work. */
 function summary(db, from, to, fromDay, toDay) {
   const of = (table, column = 'created_at', extra = '') => count(db, `SELECT COUNT(*) AS count FROM ${table} WHERE tenant_id NOT IN ${SKIPPED} ${extra} AND ${inPeriod(column)}`, from, to);
+  const peopleIn = (client) => count(db, `SELECT COUNT(DISTINCT member_id) AS count FROM platform_client_days WHERE client = ? AND day >= ? AND day <= ? AND tenant_id NOT IN ${SKIPPED}`, client, fromDay, toDay);
+  const createdIn = (client) => of('center_signups', 'created_at', `AND tenant_id IN (SELECT tenant_id FROM platform_center_origins WHERE client = '${client}')`);
   return {
     newCenters: of('center_signups'),
+    newCentersIn: { app: createdIn('app'), site: createdIn('site') },
+    peopleIn: { app: peopleIn('app'), site: peopleIn('site') },
     newCustomers: of('customers'),
     bookings: of('bookings'),
     cancelled: of('bookings', 'created_at', "AND status = 'CANCELLED'"),
@@ -331,13 +368,16 @@ export function platformStats({ db, databasePath, backupDirectory, version, bots
   // The same length just before, to see whether things go up or down.
   const span = period.toMs - period.fromMs;
   const previousFrom = period.fromMs - span;
-  const stages = {};
-  for (const center of real) stages[center.stage] = (stages[center.stage] ?? 0) + 1;
+  const statuses = {};
+  for (const center of real) statuses[center.status] = (statuses[center.status] ?? 0) + 1;
+  // How many centers have ever done each step. Plain counts: a center may take a customer before adding services.
+  const did = { signup: () => true, services: (c) => c.services, customer: (c) => c.customers, booking: (c) => c.allBookings, order: (c) => c.allOrders, handover: (c) => c.allClosed };
+  const funnel = STEPS.map(([id, title]) => ({ id, title, centers: real.filter((center) => did[id](center)).length }));
   return {
     generatedAt: new Date().toISOString(),
     version,
     period: { preset: period.preset, from: period.fromDay, to: period.toDay },
-    centers: { total: real.length, workedInPeriod: real.filter((center) => center.workedInPeriod).length, activeWeek: real.filter((center) => center.lastActivityAt && Date.parse(`${center.lastActivityAt.replace(' ', 'T').slice(0, 19)}Z`) > Date.now() - 7 * 86_400_000).length, stages, list },
+    centers: { total: real.length, workedInPeriod: real.filter((center) => center.workedInPeriod).length, activeWeek: real.filter((center) => center.lastActivityAt && Date.parse(`${center.lastActivityAt.replace(' ', 'T').slice(0, 19)}Z`) > Date.now() - 7 * 86_400_000).length, statuses, funnel, list },
     users: users(db),
     summary: summary(db, period.from, period.to, period.fromDay, period.toDay),
     previous: summary(db, sqlTime(previousFrom), period.from, moscowDay(previousFrom), moscowDay(period.fromMs - 1)),

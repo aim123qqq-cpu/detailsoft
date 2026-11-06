@@ -8,7 +8,7 @@ import { createDetailFlowServer } from '../server/app.mjs';
 import { openDatabase } from '../server/db.mjs';
 import { LEGAL_VERSION } from '../server/legal.mjs';
 import { createEventLog } from '../server/event-log.mjs';
-import { classifyRequest, describeRequestKey } from '../server/request-catalog.mjs';
+import { classifyRequest, clientOf, describeRequestKey } from '../server/request-catalog.mjs';
 
 function setup() {
   const folder = mkdtempSync(join(tmpdir(), 'df-admin-stats-'));
@@ -115,7 +115,9 @@ test('stats answer for any period, show what requests come and what a center rea
     assert.equal(today.activityGranularity, 'hour');
     assert.equal(today.activity.length, 24);
     const center = today.centers.list.find((item) => item.name === 'Детейлинг Юг');
-    assert.deepEqual([center.stage, center.stageTitle], ['new', 'Только создан'], 'signing in and one customer are not work yet');
+    assert.deepEqual([center.status, center.statusTitle], ['active', 'Активен'], 'a customer added today is an action');
+    assert.deepEqual([center.reached, center.reachedTitle], ['customer', 'Клиент'], 'the deepest step so far');
+    assert.deepEqual(today.centers.funnel.map((step) => [step.id, step.centers]).slice(0, 4), [['signup', 1], ['services', 0], ['customer', 1], ['booking', 0]], 'how many centers have done each step');
     assert.equal(center.activePeople, 1, 'the owner worked today');
     assert.equal(center.changes, 1);
     assert.equal(center.signedUpWith, 'telegram');
@@ -159,6 +161,53 @@ test('stats answer for any period, show what requests come and what a center rea
     await running.api(`/api/admin/centers/${tenant}`, { method: 'PATCH', token: admin, body: { excluded: false } });
     assert.equal((await stats('preset=today')).centers.total, 1);
     assert.equal((await running.api('/api/admin/centers/nope', { method: 'PATCH', token: admin, body: { excluded: true } })).status, 404);
+  } finally {
+    await running.stop();
+    rmSync(context.folder, { recursive: true, force: true });
+  }
+});
+
+test('the admin tells the app from the site: where a center was created, where people work, in the journal too', async () => {
+  const context = setup();
+  const running = await start(context);
+  const APP = { 'user-agent': 'DetailFlow/1.1.0' };
+  const SITE = { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0) Chrome/130' };
+  try {
+    const signup = await running.confirm('700125', 'signup');
+    const created = await (await running.api(`/api/auth/login-requests/${signup.id}/center`, { method: 'POST', headers: { 'x-login-secret': signup.pollSecret, ...APP },
+      body: { centerName: 'Детейлинг Север', ownerName: 'Олег', acceptedLegal: LEGAL_VERSION } })).json();
+    const token = created.token;
+    const owner = await running.confirm('995001');
+    const admin = (await (await running.api(`/api/admin/login-requests/${owner.id}/session`, { method: 'POST', headers: { 'x-login-secret': owner.pollSecret } })).json()).token;
+    const center = async () => (await (await running.api('/api/admin/stats?preset=today', { token: admin })).json());
+
+    // Only looking, and housekeeping that happens by itself: nothing was done in the center yet.
+    await running.api('/api/orders', { token, headers: APP });
+    await running.api('/api/notifications/read', { token, method: 'POST', headers: APP, body: {} });
+    await running.api('/api/bookings/quote-preview', { token, method: 'POST', headers: APP, body: {} });
+    let stats = await center();
+    let row = stats.centers.list.find((item) => item.name === 'Детейлинг Север');
+    assert.equal(row.origin, 'app');
+    assert.equal(row.usedIn, 'app');
+    assert.deepEqual([row.status, row.changes, row.workedInPeriod], ['idle', 0, false], 'opening the app and counting a price are not actions');
+    assert.equal(stats.summary.newCentersIn.app, 1);
+    assert.equal(stats.summary.peopleIn.app, 1);
+
+    await running.api('/api/customers', { token, method: 'POST', headers: SITE, body: { name: 'Клиент', phone: '+79990001144' } });
+    stats = await center();
+    row = stats.centers.list.find((item) => item.name === 'Детейлинг Север');
+    assert.equal(row.usedIn, 'both');
+    assert.equal(row.clients.site.changes, 1);
+    assert.equal(row.status, 'active');
+
+    const journal = async (query) => (await (await running.api(`/api/admin/events?${query}`, { token: admin })).json()).items;
+    assert.ok((await journal('client=site')).every((item) => item.client === 'site'));
+    assert.ok((await journal('client=site')).some((item) => item.title === 'Новый клиент'));
+    assert.ok((await journal('client=app')).some((item) => item.title.startsWith('Создан центр')), 'creating a center says where');
+    assert.ok(!(await journal('client=app')).some((item) => item.title === 'Новый клиент'));
+    // A robot or a script is neither.
+    await running.api('/api/orders', { token, headers: { 'user-agent': 'curl/8.0' } });
+    assert.equal((await center()).summary.peopleIn.site, 1);
   } finally {
     await running.stop();
     rmSync(context.folder, { recursive: true, force: true });
@@ -211,6 +260,27 @@ test('a broadcast goes without a title, but not without any words', async () => 
   }
 });
 
+test('a journal made before the app and the site were told apart gets its new column on start', () => {
+  const folder = mkdtempSync(join(tmpdir(), 'df-journal-upgrade-'));
+  const path = join(folder, 'old.db');
+  const old = openDatabase(path, { seed: false });
+  old.exec(`INSERT INTO platform_events (at, level, kind, title) VALUES ('2026-01-01T00:00:00Z', 'info', 'server', 'Старая запись'); ALTER TABLE platform_events DROP COLUMN client`);
+  old.close();
+  const upgraded = openDatabase(path, { seed: false });
+  assert.deepEqual({ ...upgraded.prepare('SELECT title, client FROM platform_events').get() }, { title: 'Старая запись', client: null });
+  upgraded.close();
+  openDatabase(path, { seed: false }).close();
+  rmSync(folder, { recursive: true, force: true });
+});
+
+test('only real work counts as an action, and the app is told from a browser', () => {
+  assert.equal(classifyRequest('POST', '/api/customers').work, true);
+  for (const path of ['/api/bookings/quote-preview', '/api/notifications/read', '/api/notifications/push', '/api/legal/accept', '/api/auth/logout']) assert.equal(classifyRequest('POST', path).work, false, path);
+  assert.equal(clientOf('Mozilla/5.0 (Linux; Android 14) Chrome/130 Mobile'), 'site', 'a phone with a browser is the site');
+  for (const agent of ['DetailFlow/1.1.0 (Android)', 'ru.detailflow.app/1.1.0', 'okhttp/4.12.0']) assert.equal(clientOf(agent), 'app', agent);
+  for (const agent of ['curl/8.0', 'node', '', undefined]) assert.equal(clientOf(agent), null);
+});
+
 test('the catalog names known requests and never counts ids', () => {
   assert.deepEqual(['key', 'group', 'label', 'change'].map((name) => classifyRequest('POST', '/api/orders/ord_123/handover')[name]),
     ['POST /api/orders/:id/handover', 'work', 'Выдача автомобиля', true]);
@@ -239,7 +309,7 @@ test('an event log moves to the database and keeps what it heard before it', () 
   const events = createEventLog();
   events.add({ kind: 'server', title: 'До базы' });
   const db = new DatabaseSync(':memory:');
-  db.exec(`CREATE TABLE tenants (id TEXT, name TEXT); CREATE TABLE platform_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, level TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, meaning TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '', tenant_id TEXT, actor TEXT)`);
+  db.exec(`CREATE TABLE tenants (id TEXT, name TEXT); CREATE TABLE platform_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, level TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, meaning TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '', tenant_id TEXT, actor TEXT, client TEXT)`);
   events.attach(db);
   events.add({ kind: 'server', title: 'В базе' });
   assert.deepEqual(events.since(0).items.map((item) => item.title), ['До базы', 'В базе']);

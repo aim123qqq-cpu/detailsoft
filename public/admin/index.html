@@ -86,6 +86,8 @@
     .request-group[open] summary { margin-bottom: 8px; }
     button.link { min-height: 0; padding: 0; border: 0; background: none; color: var(--accent); font-size: inherit; font-weight: 600; }
     .center-actions { display: flex; gap: 12px; margin-top: 2px; }
+    .funnel { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+    .funnel b { color: var(--ink); } .funnel i { font-style: normal; color: var(--soft); }
     .center-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 10px; }
     .center-filters input[type=search] { flex: 1 1 200px; width: auto; min-width: 180px; }
     .center-filters select { flex: 0 1 220px; width: auto; }
@@ -239,7 +241,8 @@ function periodBar(stats) {
 /** «было 4»: the same length of time just before, to see the direction. */
 const before = (now, was) => period.preset === 'all' ? '' : now === was ? ' · как и раньше' : ` · было ${num(was)}`;
 const PROVIDER_NAMES = { telegram: 'Telegram', max: 'MAX', email: 'email' };
-const STAGE_TONES = { working: 'ok', trying: 'info', setup: 'soft', new: 'soft', silent: 'bad' };
+const STATUS_TONES = { active: 'ok', cooling: 'warn', gone: 'bad', idle: 'soft' };
+const CLIENT_NAMES = { app: 'Приложение', site: 'Сайт', both: 'Оба' };
 const GROUP_HINTS = {
   work: 'Настоящая работа: люди открывают разделы и что-то меняют. Приложение само обновляет открытые экраны, поэтому просмотры идут и без нажатий.',
   signin: 'Экран входа. «Ждёт подтверждения» — это экран опрашивает сервер раз в полторы секунды, пока человек в боте: таких запросов всегда много.',
@@ -268,13 +271,14 @@ function requestsCard(breakdown) {
 }
 
 const CENTER_COLUMNS = [
-  ['name', 'Центр'], ['stage', 'Стадия'], ['activePeople', 'Людей работали'], ['newCustomers', 'Клиентов'], ['bookings', 'Записей'], ['orders', 'Заказов'],
-  ['closed', 'Выдано'], ['periodDocuments', 'Актов'], ['changes', 'Действий'], ['createdAt', 'Создан'], ['lastActivityAt', 'Последняя активность']
+  ['name', 'Центр'], ['status', 'Статус'], ['reachedDepth', 'Дошёл до'], ['usedIn', 'Где работают'], ['activePeople', 'Людей'], ['newCustomers', 'Клиентов'], ['bookings', 'Записей'],
+  ['orders', 'Заказов'], ['closed', 'Выдано'], ['changes', 'Действий'], ['createdAt', 'Создан'], ['lastActionAt', 'Последнее действие']
 ];
-const STAGE_ORDER = { working: 0, trying: 1, setup: 2, new: 3, silent: 4 };
+const STATUS_ORDER = { active: 0, cooling: 1, gone: 2, idle: 3 };
 const CENTER_VIEW_KEY = 'detailflow.admin.centers';
-const centerView = { sort: 'lastActivityAt', descending: true, search: '', stage: '', provider: '', worked: false, stuck: false };
+const centerView = { sort: 'lastActionAt', descending: true, search: '', status: '', provider: '', usedIn: '', stuck: false };
 try { Object.assign(centerView, JSON.parse(localStorage.getItem(CENTER_VIEW_KEY)) ?? {}); } catch {}
+if (!CENTER_COLUMNS.some(([key]) => key === centerView.sort)) centerView.sort = 'lastActionAt';
 const keepCenterView = () => { try { localStorage.setItem(CENTER_VIEW_KEY, JSON.stringify(centerView)); } catch {} };
 const isManual = (c) => !c.signedUpWith;
 
@@ -282,11 +286,11 @@ const isManual = (c) => !c.signedUpWith;
 function visibleCenters(list) {
   const search = centerView.search.trim().toLowerCase();
   const shown = list.filter((c) => (!search || c.name.toLowerCase().includes(search))
-    && (!centerView.stage || (centerView.stage === 'skipped' ? c.skipped : !c.skipped && c.stage === centerView.stage))
-    && (!centerView.provider || (centerView.provider === 'manual' ? isManual(c) : c.signedUpWith === centerView.provider))
-    && (!centerView.worked || c.workedInPeriod)
+    && (!centerView.status || (centerView.status === 'skipped' ? c.skipped : !c.skipped && c.status === centerView.status))
+    && (!centerView.provider || (centerView.provider === 'manual' ? isManual(c) : centerView.provider === 'app' || centerView.provider === 'site' ? c.origin === centerView.provider : c.signedUpWith === centerView.provider))
+    && (!centerView.usedIn || c.usedIn === centerView.usedIn || (c.usedIn === 'both' && centerView.usedIn !== 'both'))
     && (!centerView.stuck || c.customersWithoutBooking > 0));
-  const value = (c) => centerView.sort === 'stage' ? STAGE_ORDER[c.stage] : c[centerView.sort];
+  const value = (c) => centerView.sort === 'status' ? STATUS_ORDER[c.status] : centerView.sort === 'usedIn' && c.usedIn ? CLIENT_NAMES[c.usedIn] : c[centerView.sort];
   const direction = centerView.descending ? -1 : 1;
   return shown.slice().sort((a, b) => {
     if (a.skipped !== b.skipped) return a.skipped ? 1 : -1;
@@ -298,24 +302,34 @@ function visibleCenters(list) {
   });
 }
 
+/** One number per cell: the chosen period. All the time is in the tooltip and under the period «Всё время». */
+const amount = (value, total) => `<span title="За всё время: ${num(total)}">${num(value)}</span>`;
+
+function usedInCell(c) {
+  if (!c.usedIn) return '<span class="muted">—</span>';
+  const part = (client) => `${CLIENT_NAMES[client]}: людей ${num(c.clients[client].people)}, действий ${num(c.clients[client].changes)}`;
+  return `<span title="${['app', 'site'].filter((client) => c.clients[client].people).map(part).join('; ')}">${CLIENT_NAMES[c.usedIn]}</span>`;
+}
+
 function centerRow(c) {
   const fixed = ['tenant_demo', 'tenant_other'].includes(c.id) || c.name === 'Тестовый центр для проверки';
-  const worked = c.lastWorkAt && c.lastWorkAt !== c.lastActivityAt ? `<small>работа: ${when(c.lastWorkAt)}</small>` : '';
+  const looked = c.lastSeenAt && c.lastSeenAt > (c.lastActionAt ?? '') ? `<small>заходил: ${when(c.lastSeenAt)}</small>` : '';
+  const how = [c.origin ? CLIENT_NAMES[c.origin] : '', isManual(c) ? 'вручную' : (PROVIDER_NAMES[c.signedUpWith] ?? c.signedUpWith)].filter(Boolean).join(' · ');
   return `<tr class="${c.skipped ? 'skipped' : ''}" data-testid="center-row"><td>
       <b>${esc(c.name)}</b>
-      <small>услуг: ${num(c.services)}</small>
       <small class="center-actions"><button class="link" data-center-journal="${esc(c.id)}">журнал</button>${fixed ? '' : `<button class="link" data-center-skip="${esc(c.id)}" data-skip="${c.skipped ? 'false' : 'true'}" data-testid="center-skip">${c.skipped ? 'учитывать' : 'не учитывать'}</button>`}</small>
     </td>
-    <td><span class="pill ${c.skipped ? 'soft' : STAGE_TONES[c.stage]}" title="${esc(c.stageMeaning)}">${c.skipped ? 'не считается' : esc(c.stageTitle)}</span></td>
-    <td>${num(c.activePeople)} из ${num(c.members)}</td>
-    <td>${num(c.newCustomers)}<small>всего ${num(c.customers)}</small>${c.customersWithoutBooking ? `<small class="stuck" title="Клиент сохраняется на первом шаге записи. Если запись не довели до конца, он остаётся без записи и заказа.">без записи ${num(c.customersWithoutBooking)}</small>` : ''}</td>
-    <td>${num(c.bookings)}<small>всего ${num(c.allBookings)}</small>${c.cancelled ? `<small>отменено ${num(c.cancelled)}</small>` : ''}</td>
-    <td>${num(c.orders)}<small>всего ${num(c.allOrders)}</small></td>
-    <td>${num(c.closed)}<small>всего ${num(c.allClosed)}</small></td>
-    <td>${num(c.periodDocuments)}<small>всего ${num(c.documents)}</small></td>
+    <td><span class="pill ${c.skipped ? 'soft' : STATUS_TONES[c.status]}" title="${esc(c.statusMeaning)}" data-testid="center-status">${c.skipped ? 'не считается' : esc(c.statusTitle)}</span></td>
+    <td data-testid="center-reached" title="Самый дальний шаг за всё время. Услуг: ${num(c.services)}, клиентов: ${num(c.customers)}, записей: ${num(c.allBookings)}, заказов: ${num(c.allOrders)}, выдано: ${num(c.allClosed)}.">${esc(c.reachedTitle)}</td>
+    <td data-testid="center-used">${usedInCell(c)}</td>
+    <td title="В центре сейчас: ${num(c.members)}">${num(c.activePeople)}</td>
+    <td>${amount(c.newCustomers, c.customers)}${c.customersWithoutBooking ? `<small class="stuck" title="Клиент сохраняется на первом шаге записи. Если запись не довели до конца, он остаётся без записи и заказа.">без записи ${num(c.customersWithoutBooking)}</small>` : ''}</td>
+    <td>${amount(c.bookings, c.allBookings)}${c.cancelled ? `<small>отменено ${num(c.cancelled)}</small>` : ''}</td>
+    <td>${amount(c.orders, c.allOrders)}</td>
+    <td title="За всё время: ${num(c.allClosed)}. Актов за период: ${num(c.periodDocuments)}, всего: ${num(c.documents)}">${num(c.closed)}</td>
     <td>${num(c.changes)}</td>
-    <td data-testid="center-created">${when(c.createdAt)}<small>${isManual(c) ? 'вручную' : `через ${esc(PROVIDER_NAMES[c.signedUpWith] ?? c.signedUpWith)}`}</small></td>
-    <td data-testid="center-active">${when(c.lastActivityAt)}${worked}</td></tr>`;
+    <td data-testid="center-created">${when(c.createdAt)}<small>${esc(how)}</small></td>
+    <td data-testid="center-active">${when(c.lastActionAt)}${looked}</td></tr>`;
 }
 
 function centersTable() {
@@ -327,11 +341,11 @@ function centersTable() {
     return `<th aria-sort="${active ? (centerView.descending ? 'descending' : 'ascending') : 'none'}"><button class="sort" data-sort="${key}" data-testid="sort-${key}">${label}${active ? (centerView.descending ? ' ↓' : ' ↑') : ''}</button></th>`;
   }).join('')}</tr></thead>
     <tbody>${shown.map(centerRow).join('') || `<tr><td colspan="${CENTER_COLUMNS.length}" class="muted">${centersAll.length ? 'Под этот отбор центров нет.' : 'Центров пока нет.'}</td></tr>`}</tbody></table>`;
-  document.getElementById('centers-count').textContent = `Показано ${num(shown.length)} из ${num(centersAll.length)}`;
+  document.getElementById('centers-count').textContent = `Показано: ${num(shown.length)}`;
   box.querySelectorAll('[data-sort]').forEach((button) => button.addEventListener('click', () => {
     const key = button.dataset.sort;
     if (centerView.sort === key) centerView.descending = !centerView.descending;
-    else { centerView.sort = key; centerView.descending = !['name', 'stage'].includes(key); }
+    else { centerView.sort = key; centerView.descending = !['name', 'status', 'usedIn'].includes(key); }
     keepCenterView();
     centersTable();
   }));
@@ -351,9 +365,9 @@ function centerFilters() {
   const option = (value, label, chosen) => `<option value="${value}" ${chosen === value ? 'selected' : ''}>${label}</option>`;
   return `<div class="center-filters form" id="center-filters">
     <input type="search" id="center-search" data-testid="center-search" value="${esc(centerView.search)}" placeholder="Название центра" aria-label="Поиск по названию">
-    <select id="center-stage" data-testid="center-stage" aria-label="Стадия">${[['', 'Все стадии'], ['working', 'Работают'], ['trying', 'Пробуют'], ['setup', 'Настраиваются'], ['new', 'Только созданы'], ['silent', 'Затихли'], ['skipped', 'Не считаются']].map(([value, label]) => option(value, label, centerView.stage)).join('')}</select>
-    <select id="center-provider" data-testid="center-provider" aria-label="Как создан">${[['', 'Любой способ создания'], ['telegram', 'Через Telegram'], ['max', 'Через MAX'], ['email', 'Через email'], ['manual', 'Вручную']].map(([value, label]) => option(value, label, centerView.provider)).join('')}</select>
-    <label class="check"><input type="checkbox" id="center-worked" data-testid="center-worked" ${centerView.worked ? 'checked' : ''}> Работали за период</label>
+    <select id="center-status" data-testid="center-status-filter" aria-label="Статус">${[['', 'Все статусы'], ['active', 'Активные'], ['cooling', 'Притихли'], ['gone', 'Пропали'], ['idle', 'Не начинали'], ['skipped', 'Не считаются']].map(([value, label]) => option(value, label, centerView.status)).join('')}</select>
+    <select id="center-provider" data-testid="center-provider" aria-label="Как создан">${[['', 'Создан где угодно'], ['app', 'Создан в приложении'], ['site', 'Создан на сайте'], ['telegram', 'Через Telegram'], ['max', 'Через MAX'], ['email', 'Через email'], ['manual', 'Вручную']].map(([value, label]) => option(value, label, centerView.provider)).join('')}</select>
+    <select id="center-used" data-testid="center-used-filter" aria-label="Где работают">${[['', 'Работают где угодно'], ['app', 'В приложении'], ['site', 'На сайте'], ['both', 'И там, и там']].map(([value, label]) => option(value, label, centerView.usedIn)).join('')}</select>
     <label class="check"><input type="checkbox" id="center-stuck" data-testid="center-stuck" ${centerView.stuck ? 'checked' : ''}> Есть клиенты без записи</label>
     <span class="muted" id="centers-count"></span>
   </div>`;
@@ -362,9 +376,9 @@ function centerFilters() {
 function bindCenterFilters() {
   const changed = (key, read) => (event) => { centerView[key] = read(event.target); keepCenterView(); centersTable(); };
   document.getElementById('center-search').addEventListener('input', changed('search', (input) => input.value));
-  document.getElementById('center-stage').addEventListener('change', changed('stage', (input) => input.value));
+  document.getElementById('center-status').addEventListener('change', changed('status', (input) => input.value));
   document.getElementById('center-provider').addEventListener('change', changed('provider', (input) => input.value));
-  document.getElementById('center-worked').addEventListener('change', changed('worked', (input) => input.checked));
+  document.getElementById('center-used').addEventListener('change', changed('usedIn', (input) => input.value));
   document.getElementById('center-stuck').addEventListener('change', changed('stuck', (input) => input.checked));
   centersTable();
 }
@@ -372,14 +386,17 @@ function bindCenterFilters() {
 function render(stats) {
   const s = stats.system, u = stats.users, now = stats.summary, was = stats.previous, requests = stats.requestBreakdown;
   const load = s.loadAverage[0] / s.cpuCount, memUsed = 1 - s.memory.freeBytes / s.memory.totalBytes, diskUsed = s.disk ? 1 - s.disk.freeBytes / s.disk.totalBytes : 0;
-  const stageTotals = Object.entries({ working: 'работают', trying: 'пробуют', setup: 'настраиваются', new: 'только созданы', silent: 'затихли' })
-    .filter(([stage]) => stats.centers.stages[stage]).map(([stage, label]) => `<span class="pill ${STAGE_TONES[stage]}">${label}: ${num(stats.centers.stages[stage])}</span>`).join(' ');
+  const statusTotals = Object.entries({ active: 'активны', cooling: 'притихли', gone: 'пропали', idle: 'не начинали' })
+    .filter(([status]) => stats.centers.statuses[status]).map(([status, label]) => `<span class="pill ${STATUS_TONES[status]}">${label}: ${num(stats.centers.statuses[status])}</span>`).join(' ');
+  const funnel = stats.centers.funnel.map((step) => `<span>${esc(step.title)} <b>${num(step.centers)}</b></span>`).join('<i>·</i>');
+  const split = (counts) => ['app', 'site'].filter((client) => counts[client]).map((client) => `${CLIENT_NAMES[client].toLowerCase()} ${num(counts[client])}`).join(', ');
+  const line = (...parts) => parts.filter(Boolean).join(' · ');
   app.innerHTML = `
     <header><h1>DetailFlow · Админка<small>Обновлено ${when(stats.generatedAt)} · версия ${esc(stats.version)}</small></h1>${nav('overview')}</header>
     ${periodBar(stats)}
     <section class="grid kpis">
-      <div class="card kpi"><span>Центров работали</span><strong>${num(stats.centers.workedInPeriod)}</strong><small>из ${num(stats.centers.total)} · новых: ${num(now.newCenters)}</small></div>
-      <div class="card kpi"><span>Людей работали</span><strong>${num(now.activePeople)}</strong><small>из ${num(u.members)}${before(now.activePeople, was.activePeople)}</small></div>
+      <div class="card kpi"><span>Центров работали</span><strong>${num(stats.centers.workedInPeriod)}</strong><small>${line(`новых: ${num(now.newCenters)}`, split(now.newCentersIn))}</small></div>
+      <div class="card kpi"><span>Людей работали</span><strong>${num(now.activePeople)}</strong><small>${line(split(now.peopleIn), before(now.activePeople, was.activePeople).replace(/^ · /, ''))}</small></div>
       <div class="card kpi"><span>Записей</span><strong>${num(now.bookings)}</strong><small>${now.cancelled ? `отменено ${num(now.cancelled)}` : 'без отмен'}${before(now.bookings, was.bookings)}</small></div>
       <div class="card kpi"><span>Заказов</span><strong>${num(now.orders)}</strong><small>новых клиентов: ${num(now.newCustomers)}${before(now.orders, was.orders)}</small></div>
       <div class="card kpi"><span>Выдано автомобилей</span><strong>${num(now.closed)}</strong><small>актов: ${num(now.documents)}${before(now.closed, was.closed)}</small></div>
@@ -400,11 +417,12 @@ function render(stats) {
       </div></div>
     </section>
     ${requestsCard(requests)}
-    <section class="card" data-testid="centers-card"><h2>Центры за период</h2>
-      <p class="request-hint">${stageTotals || '<span class="muted">Центров пока нет.</span>'}</p>
+    <section class="card" data-testid="centers-card"><h2>Центры · ${num(stats.centers.total)}</h2>
+      <p class="request-hint">${statusTotals || '<span class="muted">Центров пока нет.</span>'}</p>
+      ${stats.centers.total ? `<p class="funnel" data-testid="center-funnel">${funnel}</p>` : ''}
       ${centerFilters()}
       <div class="table" id="centers-table"></div></section>
-    <footer>Стадия центра считается по делу: услуги, записи, заказы и выданные автомобили, а не по входам. Клиент сохраняется на первом шаге записи, поэтому «без записи» — это люди, чью запись начали, но не довели до конца или ещё не оформили. «Людей работали» и «Действий» — с момента этого обновления; раньше видны только входы. Не считаются демо-центры, центр для модераторов магазина и те, что вы отметили «не учитывать». Способы входа: ${u.byProvider.map((p) => `${esc(PROVIDER_NAMES[p.provider] ?? p.provider)} — ${num(p.accounts)}`).join(', ') || 'нет'} · кодов доступа: ${num(u.accessCodes)}. Данные клиентов центров здесь не показываются. Обновляется каждые 30 секунд.</footer>`;
+    <footer>Статус зависит только от последнего действия в центре: активен до 7 дней, притих до 30, дальше пропал. Открытое приложение само обновляет экраны, поэтому просмотры не считаются действием. «Дошёл до» — самый дальний шаг за всё время, строка над таблицей показывает, сколько центров хоть раз делали каждый шаг. Числа в таблице — за выбранный период, за всё время — в подсказке при наведении. Приложение или сайт определяются по запросам с момента этого обновления, у созданных раньше центров место создания не записано. Клиент сохраняется на первом шаге записи, поэтому «без записи» — это люди, чью запись начали, но не довели до конца или ещё не оформили. Не считаются демо-центры, центр для модераторов магазина и те, что вы отметили «не учитывать». Способы входа: ${u.byProvider.map((p) => `${esc(PROVIDER_NAMES[p.provider] ?? p.provider)} — ${num(p.accounts)}`).join(', ') || 'нет'} · кодов доступа: ${num(u.accessCodes)}. Данные клиентов центров здесь не показываются. Обновляется каждые 30 секунд.</footer>`;
   centersCache = stats.centers.list.map((center) => ({ id: center.id, name: center.name }));
   centersAll = stats.centers.list;
   bindNav();
@@ -556,18 +574,19 @@ const JOURNAL_FILTERS = {
   problems: ['Только проблемы', { levels: 'warn,error' }],
   server: ['Сервер', { kinds: 'server,http' }]
 };
-const journal = { items: [], last: 0, more: false, filter: 'all', tenant: '', search: '', paused: false, generation: 0 };
+const journal = { items: [], last: 0, more: false, filter: 'all', tenant: '', client: '', search: '', paused: false, generation: 0 };
 function resetJournal() { journal.items = []; journal.last = 0; journal.more = false; journal.generation += 1; }
 
 function journalQuery(extra) {
   const query = new URLSearchParams({ ...JOURNAL_FILTERS[journal.filter][1], ...extra });
   if (journal.tenant) query.set('tenant', journal.tenant);
+  if (journal.client) query.set('client', journal.client);
   if (journal.search) query.set('search', journal.search);
   return `/api/admin/events?${query}`;
 }
 
 function journalRows() {
-  if (!journal.items.length) return `<p class="muted">${journal.search || journal.tenant || journal.filter !== 'all' ? 'Под этот отбор записей нет.' : 'Пока тихо. Записи появятся, как только кто-нибудь начнёт вход, что-то изменит в центре или на сервере что-то случится. Журнал хранится 90 дней.'}</p>`;
+  if (!journal.items.length) return `<p class="muted">${journal.search || journal.tenant || journal.client || journal.filter !== 'all' ? 'Под этот отбор записей нет.' : 'Пока тихо. Записи появятся, как только кто-нибудь начнёт вход, что-то изменит в центре или на сервере что-то случится. Журнал хранится 90 дней.'}</p>`;
   const today = new Date().toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow' });
   return journal.items.slice().reverse().map((item) => {
     const [tone, label] = LEVEL_LABELS[item.level] ?? LEVEL_LABELS.info;
@@ -576,7 +595,7 @@ function journalRows() {
     const time = `${day === today ? '' : `${at.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', timeZone: 'Europe/Moscow' })} `}${at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Europe/Moscow' })}`;
     return `<article class="event ${tone}" data-seq="${item.seq}" data-testid="journal-entry">
       <div class="event-head"><time>${time}</time><span class="pill ${tone}">${label}</span><b>${esc(item.title)}</b></div>
-      ${item.center || item.actor ? `<p class="event-who">${item.center ? `<button class="link" data-event-center="${esc(item.tenantId)}">${esc(item.center)}</button>` : ''}${item.center && item.actor ? ' · ' : ''}${esc(item.actor ?? '')}</p>` : ''}
+      ${item.center || item.actor || item.client ? `<p class="event-who">${[item.center ? `<button class="link" data-event-center="${esc(item.tenantId)}">${esc(item.center)}</button>` : '', esc(item.actor ?? ''), item.client ? `<span data-testid="event-client">${CLIENT_NAMES[item.client] ?? esc(item.client)}</span>` : ''].filter(Boolean).join(' · ')}</p>` : ''}
       ${item.meaning ? `<p class="event-meaning">${esc(item.meaning)}</p>` : ''}
       ${item.detail ? `<details><summary>Технические подробности (${esc(KIND_LABELS_JOURNAL[item.kind] ?? item.kind)})</summary><pre>${esc(item.detail)}</pre></details>` : ''}
     </article>`;
@@ -629,9 +648,10 @@ async function showJournal() {
       </div>
       <div class="journal-bar journal-find form">
         <select id="journal-center" data-testid="journal-center" aria-label="Центр"><option value="">Все центры</option>${centersCache.map((center) => `<option value="${esc(center.id)}" ${journal.tenant === center.id ? 'selected' : ''}>${esc(center.name)}</option>`).join('')}</select>
+        <select id="journal-client" data-testid="journal-client" aria-label="Откуда">${[['', 'Приложение и сайт'], ['app', 'Только приложение'], ['site', 'Только сайт']].map(([value, label]) => `<option value="${value}" ${journal.client === value ? 'selected' : ''}>${label}</option>`).join('')}</select>
         <input id="journal-search" data-testid="journal-search" type="search" value="${esc(journal.search)}" placeholder="Поиск: заказ, акт, код ошибки…" aria-label="Поиск по журналу">
       </div>
-      <p class="muted journal-note">Записывается каждое изменение, вход и сбой; просмотр раздела — раз в 30 минут. Данные клиентов, имена, коды входа и токены сюда не попадают: человек показан ролью и коротким номером. Хранится 90 дней.</p>
+      <p class="muted journal-note">Записывается каждое изменение, вход и сбой; просмотр раздела — раз в 30 минут. Рядом с человеком видно, откуда он работает: приложение или сайт. Данные клиентов, имена, коды входа и токены сюда не попадают: человек показан ролью и коротким номером. Хранится 90 дней.</p>
       <div id="journal-list" class="journal" data-testid="journal-list"></div>
       <button id="journal-more" class="journal-more" data-testid="journal-more" hidden>Показать раньше</button>
     </section>`;
@@ -639,6 +659,7 @@ async function showJournal() {
   const restart = () => { resetJournal(); renderJournal(); loadJournal(); };
   app.querySelectorAll('[name="journal-filter"]').forEach((input) => input.addEventListener('change', () => { journal.filter = input.value; restart(); }));
   document.getElementById('journal-center').addEventListener('change', (event) => { journal.tenant = event.target.value; restart(); });
+  document.getElementById('journal-client').addEventListener('change', (event) => { journal.client = event.target.value; restart(); });
   let typing = 0;
   document.getElementById('journal-search').addEventListener('input', (event) => {
     clearTimeout(typing);

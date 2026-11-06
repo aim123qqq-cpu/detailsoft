@@ -80,7 +80,7 @@ export function actorTag(roles, memberId) {
 }
 
 const TABLE = `CREATE TABLE IF NOT EXISTS platform_events (seq INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, level TEXT NOT NULL,
-  kind TEXT NOT NULL, title TEXT NOT NULL, meaning TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '', tenant_id TEXT, actor TEXT)`;
+  kind TEXT NOT NULL, title TEXT NOT NULL, meaning TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '', tenant_id TEXT, actor TEXT, client TEXT)`;
 
 /**
  * Starts in its own memory (the server's first messages come before the database opens), moves to the
@@ -90,13 +90,13 @@ export function createEventLog({ limit = LIMIT, now = () => new Date() } = {}) {
   let store = new DatabaseSync(':memory:');
   store.exec(TABLE);
   let attached = false;
-  const insert = (target, item) => target.prepare(`INSERT INTO platform_events (at, level, kind, title, meaning, detail, tenant_id, actor)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(item.at, item.level, item.kind, item.title, item.meaning, item.detail, item.tenant_id, item.actor);
+  const insert = (target, item) => target.prepare(`INSERT INTO platform_events (at, level, kind, title, meaning, detail, tenant_id, actor, client)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(item.at, item.level, item.kind, item.title, item.meaning, item.detail, item.tenant_id, item.actor, item.client);
   return {
-    /** level: info | warn | error. `meaning` is the explanation shown under the title. */
-    add({ level = 'info', kind, title, meaning = '', detail = '', tenantId = null, actor = null }) {
+    /** level: info | warn | error. `meaning` is the explanation shown under the title. `client`: app | site. */
+    add({ level = 'info', kind, title, meaning = '', detail = '', tenantId = null, actor = null, client = null }) {
       try {
-        insert(store, { at: now().toISOString(), level, kind, title, meaning, detail: redact(detail), tenant_id: tenantId, actor });
+        insert(store, { at: now().toISOString(), level, kind, title, meaning, detail: redact(detail), tenant_id: tenantId, actor, client });
         if (!attached) store.prepare('DELETE FROM platform_events WHERE seq <= (SELECT MAX(seq) FROM platform_events) - ?').run(limit);
       } catch { /* the journal never breaks the work */ }
     },
@@ -114,13 +114,14 @@ export function createEventLog({ limit = LIMIT, now = () => new Date() } = {}) {
       store.exec(TABLE);
     },
     /** Newest `max` entries that fit, oldest first. `after` asks for what is new, `before` for older pages. */
-    query({ after = 0, before = 0, max = 300, levels = [], kinds = [], tenantId = '', search = '' } = {}) {
+    query({ after = 0, before = 0, max = 300, levels = [], kinds = [], tenantId = '', client = '', search = '' } = {}) {
       const where = ['e.seq > ?']; const params = [after];
       const anyOf = (column, values) => { where.push(`${column} IN (${values.map(() => '?').join(', ')})`); params.push(...values); };
       if (before) { where.push('e.seq < ?'); params.push(before); }
       if (levels.length) anyOf('e.level', levels);
       if (kinds.length) anyOf('e.kind', kinds);
       if (tenantId) { where.push('e.tenant_id = ?'); params.push(tenantId); }
+      if (client) { where.push('e.client = ?'); params.push(client); }
       if (search) {
         where.push("(e.title LIKE ? ESCAPE '!' OR e.meaning LIKE ? ESCAPE '!' OR e.detail LIKE ? ESCAPE '!' OR e.actor LIKE ? ESCAPE '!')");
         const like = `%${String(search).replace(/[!%_]/g, '!$&')}%`;
@@ -128,7 +129,7 @@ export function createEventLog({ limit = LIMIT, now = () => new Date() } = {}) {
       }
       // The center's current name, so a renamed center reads the same through its whole history.
       const center = attached ? '(SELECT name FROM tenants t WHERE t.id = e.tenant_id)' : 'NULL';
-      const rows = store.prepare(`SELECT e.seq, e.at, e.level, e.kind, e.title, e.meaning, e.detail, e.tenant_id AS tenantId, e.actor, ${center} AS center
+      const rows = store.prepare(`SELECT e.seq, e.at, e.level, e.kind, e.title, e.meaning, e.detail, e.tenant_id AS tenantId, e.actor, e.client, ${center} AS center
         FROM platform_events e WHERE ${where.join(' AND ')} ORDER BY e.seq DESC LIMIT ?`).all(...params, Math.min(max + 1, 1001));
       const more = rows.length > max;
       return { items: rows.slice(0, max).reverse().map((row) => ({ ...row })), last: store.prepare('SELECT COALESCE(MAX(seq), 0) AS seq FROM platform_events').get().seq, more };

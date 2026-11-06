@@ -14,6 +14,8 @@ export function openDatabase(databasePath, { seed = false } = {}) {
   }
   loadCarCatalog(db);
   allowEmailSignIn(db);
+  // Migrations run on every start and SQLite has no ADD COLUMN IF NOT EXISTS.
+  if (!db.prepare('PRAGMA table_info(platform_events)').all().some((column) => column.name === 'client')) db.exec('ALTER TABLE platform_events ADD COLUMN client TEXT');
   if (seed) seedDatabase(db);
   return db;
 }
