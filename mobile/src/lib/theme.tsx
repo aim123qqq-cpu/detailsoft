@@ -38,6 +38,11 @@ const light = {
   carTintMid: '#FADDC2',
   carTintLo: '#F1E7C1',
   carSelected: '#FCE1D2',
+  carGlass: '#E3E7EA',
+  carWheel: '#E6E6E3',
+  carTail: '#F6DAD5',
+  carTailLine: '#D4402F',
+  sceneDot: '#DCDCD8',
   scrim: 'rgba(10,10,12,0.45)',
   shadow: '#121212'
 };
@@ -75,6 +80,11 @@ const dark: typeof light = {
   carTintMid: '#47321C',
   carTintLo: '#3F3819',
   carSelected: '#45281A',
+  carGlass: '#141517',
+  carWheel: '#0B0B0C',
+  carTail: '#3D201D',
+  carTailLine: '#F0604A',
+  sceneDot: '#222326',
   scrim: 'rgba(0,0,0,0.6)',
   shadow: '#000000'
 };

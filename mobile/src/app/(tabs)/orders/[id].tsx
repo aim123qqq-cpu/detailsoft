@@ -7,7 +7,7 @@ import { money, orderStatuses, shortDate } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
 import { useResource } from '@/lib/use-resource';
 import { WorkPanel } from '@/features/work-panel';
-import { CarDiagram, SEVERITY, findingMarks } from '@/features/car-diagram';
+import { CarDiagram, SEVERITY, findingMarks, severityColor } from '@/features/car-diagram';
 import { ApprovalPanel } from '@/features/approval-panel';
 import { DOCUMENT_TITLES } from '@/features/document-paper';
 import { orderShareText } from '@/lib/share-text';
@@ -75,7 +75,7 @@ export default function OrderScreen() {
             const number = findLayoutElement(order.intake?.bodyType, finding.zone)?.number;
             return (
               <View key={`${finding.zone}-${index}`} style={styles.finding}>
-                <View style={[styles.badge, { backgroundColor: SEVERITY[finding.severity].badge }]}><Text style={styles.badgeText}>{number ?? '•'}</Text></View>
+                <View style={[styles.badge, { backgroundColor: severityColor(colors, finding.severity) }]}><Text style={styles.badgeText}>{number ?? '•'}</Text></View>
                 <View style={{ flex: 1 }}><Text style={styles.findingTitle}>{finding.zone}</Text><Text style={styles.meta}>{SEVERITY[finding.severity].label} · {finding.note}</Text></View>
               </View>
             );
