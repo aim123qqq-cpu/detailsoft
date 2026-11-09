@@ -68,7 +68,7 @@ function RootNavigator() {
       <Stack.Protected guard={state.phase === 'offline'}>
         <Stack.Screen name="offline" options={{ headerShown: false }}/>
       </Stack.Protected>
-      <Stack.Screen name="server" options={{ title: 'Сервер' }}/>
+      <Stack.Screen name="server" options={{ headerShown: false, title: 'Сервер' }}/>
       <Stack.Screen name="index" options={{ headerShown: false }}/>
     </Stack>
   );

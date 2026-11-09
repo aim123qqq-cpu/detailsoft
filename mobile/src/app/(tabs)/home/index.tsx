@@ -3,12 +3,13 @@ import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AnalyticsOverview, BookingListItem, OrderListItem } from '@df/types';
+import { FirstStepsHome, useFirstSteps } from '@/features/first-steps';
 import { useUnread } from '@/features/notifications';
 import { addDays, channelLabel, dayKey, dayTitle, duration, money, timeOf, vehicleName, weekday } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
 import { cardShadow, makeStyles, radius, space, useTheme } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
-import { Button, Card, Heading, Notice, Screen } from '@/ui';
+import { Button, Card, Heading, Loading, Notice, Screen } from '@/ui';
 import { Icon } from '@/ui/icons';
 import { Plate } from '@/ui/plate';
 import { Text } from '@/ui/text';
@@ -24,8 +25,15 @@ const plural = (count: number, one: string, few: string, many: string) => {
   return lastTwo >= 11 && lastTwo <= 14 ? many : last === 1 ? one : last >= 2 && last <= 4 ? few : many;
 };
 
-/** The day at a glance: what waits for a decision, the next visit, the week. Statistics open from here. */
+/** A new center sees its first steps; then the day at a glance. */
 export default function HomeScreen() {
+  const { ready, setup } = useFirstSteps();
+  if (!ready) return <Loading label="Загружаем…"/>;
+  return setup ? <FirstStepsHome setup={setup}/> : <Day/>;
+}
+
+/** The day at a glance: what waits for a decision, the next visit, the week. Statistics open from here. */
+function Day() {
   const styles = useStyles();
   const { colors } = useTheme();
   const { api } = useSession();

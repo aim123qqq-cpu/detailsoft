@@ -8,7 +8,6 @@ import { useSession, useSignedIn } from '@/lib/session';
 import { useResource } from '@/lib/use-resource';
 import { radius, space, makeStyles, useTheme } from '@/lib/theme';
 import { Body, Button, Chip, Loading, Notice, Pill } from '@/ui';
-import { FirstSteps } from '@/features/first-steps';
 import { useTabBarSpace } from '@/ui/tab-bar';
 import { SyncBanner } from '@/features/sync-banner';
 
@@ -52,7 +51,6 @@ export default function OrdersScreen() {
       ListHeaderComponent={
         <View style={{ gap: space.m, marginBottom: space.s }}>
           <SyncBanner/>
-          <FirstSteps/>
           {error ? <><Notice>{error}</Notice><Button title="Повторить" tone="secondary" onPress={reload}/></> : null}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.s }}>
             {filters.map((item) => <Chip key={item.id} label={item.label} selected={filter === item.id} onPress={() => setFilter(item.id)}/>)}
