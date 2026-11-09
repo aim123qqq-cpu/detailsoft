@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
 import { cardShadow, makeStyles, useTheme } from '@/lib/theme';
-import { Icon } from '@/ui/icons';
+import { Icon, type IconName } from '@/ui/icons';
 import { Text } from '@/ui/text';
 
 /** The mark «Стекло»: a car from the front in one line, its windscreen in the brand orange. Readable down to 22 px. */
@@ -53,7 +53,7 @@ export function FlowPage({ children }: { children: ReactNode }) {
 }
 
 /** A round white button with an icon, for the head of a screen. */
-export function RoundButton({ icon, label, onPress, style }: { icon: 'back' | 'close' | 'bell' | 'more'; label: string; onPress: () => void; style?: StyleProp<ViewStyle> }) {
+export function RoundButton({ icon, label, onPress, style }: { icon: IconName; label: string; onPress: () => void; style?: StyleProp<ViewStyle> }) {
   const styles = useStyles();
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={label} hitSlop={4} onPress={onPress} style={[styles.round, style]}>

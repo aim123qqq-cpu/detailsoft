@@ -7,7 +7,7 @@ export default function OrdersStack() {
   const options = useStackOptions();
   return (
     <Stack screenOptions={options}>
-      <Stack.Screen name="index" options={{ title: 'Заказы' }}/>
+      <Stack.Screen name="index" options={{ title: 'Заказы', headerShown: false }}/>
       <Stack.Screen name="[id]" options={{ title: 'Заказ', headerShown: false }}/>
       <Stack.Screen name="intake/[id]" options={{ title: 'Приёмка', headerShown: false }}/>
       <Stack.Screen name="estimate/[id]" options={{ title: 'Смета', headerShown: false }}/>
