@@ -430,7 +430,7 @@ try {
   back();
 
   await tap('Команда и роли', { timeout: 20_000 });
-  await tap('＋ Сотрудник', { timeout: 20_000 });
+  await tap('Новый сотрудник', { timeout: 20_000 });
   await tap('Например, Мария Орлова', { timeout: 20_000 });
   await type('Petr Ivanov');
   back();
@@ -441,14 +441,14 @@ try {
   await waitFor('Petr Ivanov', { timeout: 20_000 });
   assert.ok((await (await api('/api/tenants/current/team')).json()).items.some((member) => member.displayName === 'Petr Ivanov'));
   const permission6 = (await (await api('/api/tenants/current/roles')).json()).permissions[0];
-  await tap('Роли и права');
-  await tap('＋ Роль', { timeout: 20_000 });
+  await tap('Новая роль', { timeout: 20_000 });
   await tap('Например, Старший мастер', { timeout: 20_000 });
   await type('Senior');
   back();
   await tap(permission6.title);
   await tapNode(await scrollTo('Создать роль'));
-  await waitFor('Senior', { timeout: 20_000 });
+  await sleep(1500); // the team page reloads on return
+  await scrollTo('Senior');
   screenshot(resolve(out, '32-roles.png'));
   const senior = (await (await api('/api/tenants/current/roles')).json()).items.find((role) => role.name === 'Senior');
   assert.deepEqual(senior?.permissions, [permission6.key]);

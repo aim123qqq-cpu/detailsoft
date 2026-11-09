@@ -1,82 +1,93 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Text } from '@/ui/text';
-import { Stack, router, useFocusEffect } from 'expo-router';
-import { Segmented } from '@/features/booking-ui';
+import { router, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSession } from '@/lib/session';
-import { radius, space, makeStyles } from '@/lib/theme';
+import { cardShadow, makeStyles, radius, space, useTheme } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
-import { Body, Button, Loading, Notice, Pill, Screen } from '@/ui';
+import { Button, Heading, Loading, Notice, Screen } from '@/ui';
+import { FlowHeader } from '@/ui/brand';
+import { Icon } from '@/ui/icons';
+import { Text } from '@/ui/text';
 
-const PROVIDERS = { telegram: 'Telegram', max: 'MAX', email: 'Email' } as const;
-const people = (count: number) => count % 10 === 1 && count % 100 !== 11 ? 'сотрудник' : [2, 3, 4].includes(count % 10) && ![12, 13, 14].includes(count % 100) ? 'сотрудника' : 'сотрудников';
+const people = (count: number) => `${count} ${count % 10 === 1 && count % 100 !== 11 ? 'сотрудник' : [2, 3, 4].includes(count % 10) && ![12, 13, 14].includes(count % 100) ? 'сотрудника' : 'сотрудников'}`;
 
-/** The team (who works here, with which roles) and the roles with their permissions. */
+/** The team (who works here, with which roles) and the roles with their permissions, on one page. */
 export default function TeamScreen() {
   const styles = useStyles();
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { api } = useSession();
-  const [tab, setTab] = useState<'members' | 'roles'>('members');
   const { data, error, reload, refresh } = useResource(useCallback(async (signal: AbortSignal) => {
     const [team, roles] = await Promise.all([api.team(signal), api.roles(signal)]);
-    return { members: team.items, roles: roles.items, permissions: roles.permissions };
+    return { members: team.items, roles: roles.items };
   }, [api]));
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
   if (!data && !error) return <Loading label="Загружаем команду…"/>;
   if (!data) return <Screen><Notice>{error}</Notice><Button title="Повторить" tone="secondary" onPress={reload}/></Screen>;
   const roleName = (key: string) => data.roles.find((role) => role.key === key)?.name ?? key;
-  const titleOf = (key: string) => data.permissions.find((permission) => permission.key === key)?.title ?? key;
+  const roles = data.roles.filter((role) => !role.archived).concat(data.roles.filter((role) => role.archived));
+  const owner = data.roles.find((role) => role.locked);
 
   return (
-    <Screen>
-      <Stack.Screen options={{ title: 'Команда и роли', headerRight: () => (
-        <Pressable accessibilityRole="button" hitSlop={10} onPress={() => tab === 'members'
-          ? router.push({ pathname: '/profile/member/[id]', params: { id: 'new' } })
-          : router.push({ pathname: '/profile/role/[key]', params: { key: 'new' } })}>
-          <Text style={styles.headerAction}>{tab === 'members' ? '＋ Сотрудник' : '＋ Роль'}</Text>
+    <Screen contentStyle={{ paddingTop: insets.top + 18, gap: 14 }}>
+      <FlowHeader title="Команда и роли" note={people(data.members.length)}/>
+      <View style={styles.actions}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Новый сотрудник" onPress={() => router.push({ pathname: '/profile/member/[id]', params: { id: 'new' } })} style={[styles.action, styles.actionMain]}>
+          <Icon name="plus" size={16} strokeWidth={2.4} color={colors.pillInk}/><Text style={[styles.actionText, { color: colors.pillInk }]}>Сотрудник</Text>
         </Pressable>
-      ) }}/>
-      <Segmented value={tab} onChange={setTab} options={[{ value: 'members', label: 'Сотрудники' }, { value: 'roles', label: 'Роли и права' }]}/>
-      {tab === 'members' ? <>
-        <Body muted>{data.members.filter((member) => member.status === 'active').length} с доступом · доступы действуют только в этом центре.</Body>
-        {data.members.map((member) => (
+        <Pressable accessibilityRole="button" accessibilityLabel="Новая роль" onPress={() => router.push({ pathname: '/profile/role/[key]', params: { key: 'new' } })} style={styles.action}>
+          <Icon name="plus" size={16} strokeWidth={2.4}/><Text style={styles.actionText}>Роль</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.sectionHead}><Heading>Сотрудники</Heading><Text style={styles.meta}>{data.members.length}</Text></View>
+      <View style={styles.list}>
+        {data.members.map((member, index) => (
           <Pressable key={member.id} accessibilityRole="button" accessibilityLabel={member.displayName} onPress={() => router.push({ pathname: '/profile/member/[id]', params: { id: member.id } })}
-            android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={[styles.row, member.status === 'blocked' && styles.blocked]}>
-            <View style={styles.avatar}><Text style={styles.avatarText}>{member.displayName.split(' ').slice(0, 2).map((part) => part[0]).join('')}</Text></View>
+            style={[styles.row, index > 0 && styles.line]}>
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.name}>{member.displayName}</Text>
-              <Text style={styles.meta}>{member.roles.map(roleName).join(' · ')}</Text>
-              <Text style={styles.meta}>{member.status === 'active' ? 'Доступ активен' : 'Доступ заблокирован'}{member.messengerLinks?.length ? ` · ${member.messengerLinks.map((link) => PROVIDERS[link.provider]).join(', ')}` : ''}</Text>
+              <Text style={[styles.title, member.status === 'blocked' && styles.off]}>{member.displayName}</Text>
+              <Text style={styles.small} numberOfLines={1}>{member.roles.map(roleName).join(' · ')}</Text>
             </View>
-            <Text style={styles.chevron}>›</Text>
+            <Text style={[styles.status, { color: member.status === 'active' ? colors.ok : colors.muted }]}>{member.status === 'active' ? 'активен' : 'заблокирован'}</Text>
+            <Icon name="chevronRight" size={18}/>
           </Pressable>
         ))}
-      </> : <>
-        {data.roles.filter((role) => !role.archived).concat(data.roles.filter((role) => role.archived)).map((role) => (
+      </View>
+
+      <Heading style={{ marginTop: 4 }}>Роли и права</Heading>
+      <View style={styles.list}>
+        {roles.map((role, index) => (
           <Pressable key={role.key} accessibilityRole="button" accessibilityLabel={role.name} disabled={role.locked}
-            onPress={() => router.push({ pathname: '/profile/role/[key]', params: { key: role.key } })}
-            android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={[styles.row, role.archived && styles.blocked]}>
-            <View style={{ flex: 1, gap: 4 }}>
-              <View style={styles.roleHead}><Text style={styles.name}>{role.name}</Text><Pill label={role.archived ? 'архив' : role.locked ? 'полный доступ' : role.system ? 'системная' : 'своя'} tone={role.locked ? 'accent' : 'neutral'}/></View>
-              <Text style={styles.meta}>{role.locked ? 'Все права и управление командой. Не меняется.' : role.permissions.map(titleOf).join(' · ')}</Text>
-              <Text style={styles.meta}>{role.memberCount ? `${role.memberCount} ${people(role.memberCount)}` : 'Ни у кого нет'}</Text>
+            onPress={() => router.push({ pathname: '/profile/role/[key]', params: { key: role.key } })} style={[styles.row, index > 0 && styles.line]}>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={[styles.title, role.archived && styles.off]}>{role.name}</Text>
+              <Text style={styles.small}>{[role.archived ? 'архив' : role.system ? 'системная' : 'своя', role.locked ? 'полный доступ' : role.memberCount ? people(role.memberCount) : 'ни у кого нет'].join(' · ')}</Text>
             </View>
-            {!role.locked ? <Text style={styles.chevron}>›</Text> : null}
+            {!role.locked ? <Icon name="chevronRight" size={18}/> : null}
           </Pressable>
         ))}
-      </>}
+      </View>
+      {owner ? <Text style={styles.hint}>{owner.name}: все права и управление командой. Не меняется.</Text> : null}
     </Screen>
   );
 }
 
-const useStyles = makeStyles((colors) => StyleSheet.create({
-  headerAction: { color: colors.primary, fontSize: 16, fontWeight: '800' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: space.m, backgroundColor: colors.surface, borderRadius: radius.l, padding: space.l, overflow: 'hidden' },
-  blocked: { opacity: 0.55 },
-  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceRaised, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: colors.text, fontSize: 15, fontWeight: '800' },
-  name: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  meta: { color: colors.muted, fontSize: 13, lineHeight: 18 },
-  chevron: { color: colors.muted, fontSize: 24 },
-  roleHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.s }
+const useStyles = makeStyles((colors, scheme) => StyleSheet.create({
+  actions: { flexDirection: 'row', gap: 8 },
+  action: { height: 44, paddingHorizontal: 16, borderRadius: 22, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 6, ...cardShadow(scheme) },
+  actionMain: { backgroundColor: colors.pill },
+  actionText: { fontSize: 14, fontWeight: '700' },
+  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4 },
+  meta: { color: colors.muted, fontSize: 13 },
+  list: { borderRadius: radius.l, backgroundColor: colors.surface, paddingHorizontal: space.l, paddingVertical: 4, ...cardShadow(scheme) },
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.m, minHeight: 60, paddingVertical: 8 },
+  line: { borderTopWidth: 1, borderTopColor: colors.line },
+  title: { fontSize: 15, fontWeight: '600' },
+  off: { color: colors.muted },
+  small: { color: colors.muted, fontSize: 12 },
+  status: { fontSize: 12, fontWeight: '600' },
+  hint: { color: colors.muted, fontSize: 12, lineHeight: 17, paddingHorizontal: 4 }
 }));
