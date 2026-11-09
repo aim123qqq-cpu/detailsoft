@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { carLayout, normalizeBodyType } from '@df/shared/carLayouts';
+import { CarDiagram } from '@/features/car-diagram';
 import { useBookingDraft } from '@/lib/booking-draft';
 import { addDays, channelLabel, dayKey, duration, longDay, money, timeOf, vehicleName } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
@@ -55,9 +57,12 @@ export default function DoneScreen() {
         <Text style={styles.meta}>{longDay(day)} · до {timeOf(end, timeZone)}</Text>
       </View>
       <View style={styles.dark}>
-        <Plate plate={vehicle.plate}/>
-        <Text style={styles.darkTitle} numberOfLines={1}>{vehicleName(vehicle)}</Text>
-        <Text style={styles.darkNote} numberOfLines={1}>{customer.name} · {customer.phoneDisplay}</Text>
+        <View style={styles.mini}><CarDiagram layout={carLayout(normalizeBodyType(vehicle.bodyType))} marks={new Map()} width={40}/></View>
+        <View style={{ flex: 1, gap: 6 }}>
+          <Plate plate={vehicle.plate}/>
+          <Text style={styles.darkTitle} numberOfLines={1}>{vehicleName(vehicle)}</Text>
+          <Text style={styles.darkNote} numberOfLines={1}>{customer.name} · {customer.phoneDisplay}</Text>
+        </View>
       </View>
       <Card style={{ gap: 6 }}>
         {services ? <Row label="Услуги" value={services}/> : null}
@@ -92,8 +97,9 @@ const useStyles = makeStyles((colors) => StyleSheet.create({
   kicker: { color: colors.okText, fontSize: 14, fontWeight: '700' },
   h1: { fontSize: 40, lineHeight: 44, fontWeight: '500', letterSpacing: -1.4 },
   meta: { color: colors.muted, fontSize: 14 },
-  dark: { borderRadius: radius.l, backgroundColor: colors.darkCard, padding: space.l, gap: 6 },
-  darkTitle: { color: colors.darkCardInk, fontSize: 18, fontWeight: '600', marginTop: 4 },
+  dark: { borderRadius: radius.l, backgroundColor: colors.darkCard, padding: space.l, gap: space.l, flexDirection: 'row', alignItems: 'center' },
+  mini: { width: 64, paddingVertical: 8, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center' },
+  darkTitle: { color: colors.darkCardInk, fontSize: 18, fontWeight: '600' },
   darkNote: { color: colors.darkCardInk, fontSize: 13, opacity: 0.7 },
   divider: { height: 1, backgroundColor: colors.line, marginVertical: 4 },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: space.m },
