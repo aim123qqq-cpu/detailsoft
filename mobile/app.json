@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "detailflow",
     "userInterfaceStyle": "automatic",
-    "backgroundColor": "#0b1016",
+    "backgroundColor": "#F3F3F1",
     "ios": {
       "bundleIdentifier": "ru.detailflow.app",
       "supportsTablet": true
@@ -16,7 +16,7 @@
       "package": "ru.detailflow.app",
       "versionCode": 11,
       "adaptiveIcon": {
-        "backgroundColor": "#0b1016",
+        "backgroundColor": "#121212",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
@@ -34,9 +34,13 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0b1016",
+          "backgroundColor": "#F3F3F1",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 96
+          "imageWidth": 96,
+          "dark": {
+            "backgroundColor": "#0E0F10",
+            "image": "./assets/images/splash-icon-dark.png"
+          }
         }
       ],
       "expo-secure-store",

@@ -9,7 +9,8 @@ import { LegalChecks, type LegalState } from '@/features/legal-checks';
 import { useSession } from '@/lib/session';
 import { cardShadow, makeStyles, radius, space, useTheme } from '@/lib/theme';
 import { Button, Field, Notice } from '@/ui';
-import { FlowHeader, FlowPage, MarkTile, TextLink } from '@/ui/brand';
+import { LaunchMark, Reveal, useLaunch } from '@/features/launch-intro';
+import { FlowHeader, FlowPage, TextLink } from '@/ui/brand';
 import { Icon } from '@/ui/icons';
 import { Text } from '@/ui/text';
 
@@ -36,6 +37,7 @@ function Countdown({ expiresAt }: { expiresAt: string }) {
 
 export default function LoginScreen() {
   const styles = useStyles();
+  const launch = useLaunch();
   const { colors } = useTheme();
   const { api, server, signIn } = useSession();
   // "signup": a person without a center creates one and becomes its owner.
@@ -309,14 +311,19 @@ export default function LoginScreen() {
   return (
     <FlowPage>
       <View style={styles.hero}>
-        <MarkTile/>
-        {/* A long press on the name points the app at another server: for tests and a center's own machine. */}
-        <Pressable onLongPress={() => router.push('/server')} delayLongPress={1500} accessible={false} testID="login-title">
-          <Text style={styles.brand} accessibilityRole="header">DetailFlow</Text>
-        </Pressable>
-        <Text style={styles.tagline}>{signup ? 'Создание детейлинг-центра' : 'Рабочее место детейлинг-центра'}</Text>
+        <LaunchMark progress={launch}/>
+        <Reveal progress={launch} delay={50}>
+          {/* A long press on the name points the app at another server: for tests and a center's own machine. */}
+          <Pressable onLongPress={() => router.push('/server')} delayLongPress={1500} accessible={false} testID="login-title">
+            <Text style={styles.brand} accessibilityRole="header">DetailFlow</Text>
+          </Pressable>
+        </Reveal>
+        <Reveal progress={launch} delay={130}>
+          <Text style={styles.tagline}>{signup ? 'Создание детейлинг-центра' : 'Рабочее место детейлинг-центра'}</Text>
+        </Reveal>
       </View>
       <View style={styles.fill}/>
+      <Reveal progress={launch} delay={250} style={styles.ways}>
       <Text style={styles.choose}>{signup ? `Подтвердите аккаунт через ${emailEnabled ? 'мессенджер или почту' : 'мессенджер'}, затем назовите центр` : 'Выберите удобный способ входа'}</Text>
       {error ? <Notice>{error}</Notice> : null}
       <View style={[styles.ways, providers === null && styles.waysLoading]}>
@@ -327,6 +334,8 @@ export default function LoginScreen() {
         ))}
         {emailEnabled ? <Button title="Продолжить по почте" tone={emailOnly ? 'primary' : 'raised'} style={styles.wayButton} onPress={() => { setError(''); setWay('email'); }} testID="login-email-open"/> : null}
       </View>
+      </Reveal>
+      <Reveal progress={launch} delay={380} style={styles.ways}>
       {!signup ? <View style={styles.links}>
         <TextLink title="Войти по коду доступа" onPress={() => { setError(''); setWay('code'); }} testID="access-code-open"/>
         {demo ? <TextLink title="Демо-режим" tone="muted" onPress={() => signIn('demo-session-token')} testID="login-demo"/> : null}
@@ -338,6 +347,7 @@ export default function LoginScreen() {
         </Pressable>
       </View>
       {legalLine}
+      </Reveal>
     </FlowPage>
   );
 }
