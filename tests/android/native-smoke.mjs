@@ -57,7 +57,9 @@ const step = (name) => console.log(`· ${name}`);
 const SIGN_IN = 'Выберите удобный способ входа';
 const loginTitle = () => find('DetailFlow').find((node) => node.text === 'DetailFlow');
 // The orders list: its first filter reads «Все 9».
-const ORDERS = /^Все d+$/;
+const ORDERS = /^Все \d+$/;
+// A button by its own text: the floating bar has a «Новая запись» of its own (its label, not its text).
+const tapText = async (text, options) => { await waitFor(text, options); const node = find(text).find((item) => item.text === text); if (!node) throw new Error(`No text on screen: ${text}`); await tapNode(node); };
 const openOrders = async () => { await tap('Заказы'); await waitFor(ORDERS, { timeout: 20_000 }); };
 
 async function newOrder(vehicleId, hour) {
@@ -113,6 +115,7 @@ try {
   adb('shell', 'input', 'keyevent', 'KEYCODE_MOVE_END', ...Array(30).fill('KEYCODE_DEL'));
   await type(`10.0.2.2:${PORT}`);
   screenshot(resolve(out, '01-server.png'));
+  back(); // the keyboard covers the button
   await tap('Подключиться');
 
   step('sign-in offers the messenger, an access code and the demo');
@@ -221,7 +224,7 @@ try {
 
   step('stage 4: a booking for a known customer by phone');
   const bookingsOf = async (customerId) => (await (await api('/api/bookings?view=upcoming&limit=50')).json()).items.filter((item) => item.customer.id === customerId);
-  await tap('Новая');
+  await tap('Новая запись');
   await tap('+7 999 000-00-00');
   await type('79131234567');
   await waitFor('Алексей Морозов', { timeout: 20_000 });
@@ -241,7 +244,7 @@ try {
   screenshot(resolve(out, '16-booked.png'));
   const [booked] = (await bookingsOf('cust_alexey')).filter((item) => item.startAt.endsWith('T16:00:00+03:00'));
   assert.ok(booked, 'the booking is on the server at 16:00');
-  await tap('Новая запись');
+  await tapText('Новая запись');
 
   step('stage 4: a new customer with a car from the lists, then intake right away');
   await tap('+7 999 000-00-00');
@@ -274,7 +277,7 @@ try {
   await tapNode(await scrollTo('Записать на 18:00'));
   await waitFor('Запись подтверждена', { timeout: 20_000 });
   await tapNode(await scrollTo('Клиент на месте — начать приёмку'));
-  await waitFor('Тип кузова', { timeout: 20_000 });
+  await waitFor(/^Кузов · /, { timeout: 20_000 });
   await sleep(600);
   screenshot(resolve(out, '17-intake-from-booking.png'));
   const newCustomer = (await (await api('/api/customers?phone=79990001122')).json()).items[0];
@@ -285,7 +288,8 @@ try {
   assert.equal(intakeOrders.length, 1, 'the booking has its order');
   assert.equal(intakeOrders[0].status, 'INTAKE');
   back();
-  await waitFor(ORDERS, { timeout: 20_000 });
+  await sleep(1000);
+  await openOrders();
 
   step('stage 4: the schedule, moving and cancelling a booking, the customer card');
   await tap('Записи');
@@ -293,7 +297,7 @@ try {
   await tap('Перенести');
   await waitFor('Новое время');
   await tapNode(await scrollTo('17:00'));
-  await tapNode(await scrollTo('Перенести запись'));
+  await tapNode(await scrollTo(/^Перенести на /));
   await waitFor('Отменить запись', { timeout: 20_000 });
   assert.ok((await (await api(`/api/bookings/${booked.id}`)).json()).startAt.endsWith('T17:00:00+03:00'), 'moved to 17:00');
   screenshot(resolve(out, '18-booking.png'));
@@ -303,7 +307,7 @@ try {
   await waitFor('Отменена', { timeout: 20_000 });
   assert.equal((await (await api(`/api/bookings/${booked.id}`)).json()).status, 'CANCELLED');
   for (let swipe = 0; swipe < 3; swipe += 1) adb('shell', 'input', 'swipe', '540', '900', '540', '1900', '300'); // back to the top
-  await tap('Карточка клиента');
+  await tap('Алексей Морозов');
   await waitFor('Автомобили', { timeout: 20_000 });
   screenshot(resolve(out, '19-customer.png'));
   back();
@@ -320,14 +324,14 @@ try {
   await tapNode(await scrollTo(/А123АА 55, Смета$/));
   await tapNode(await scrollTo('Составить смету'));
   await waitFor('Бережная мойка', { timeout: 20_000 });
-  await tapNode(await scrollTo('Например, удаление битума'));
+  await tapNode(await scrollTo('Услуга из каталога или своя работа'));
   await type('Bitum removal');
   back();
-  await tapNode(await scrollTo(/^0$/));
+  await tapNode(await scrollTo(/^Добавить свою работу: /));
+  await tapNode(await scrollTo('Сумма: Bitum removal'));
   await type('500');
   back();
-  await tapNode(await scrollTo('Добавить'));
-  await waitFor('добавлено вручную');
+  await waitFor('Bitum removal');
   screenshot(resolve(out, '21-estimate.png'));
   await tapNode(await scrollTo('Выпустить смету'));
   await tapNode(await scrollTo('Клиент согласовал', { swipes: 10 }));
@@ -336,7 +340,7 @@ try {
   assert.equal(state5.status, 'APPROVED');
   assert.equal(state5.estimateVersions[0].totalAmountMinor, 190000, 'wash 1 400 ₽ + own line 500 ₽');
 
-  await tapNode(await scrollTo('Оформить и подписать', { swipes: 12 }));
+  await tapNode(await scrollTo('Оформить', { swipes: 12 }));
   await waitFor('Акт приёмки автомобиля', { timeout: 20_000 });
   const pad = await scrollTo('Поле для подписи клиента пальцем', { swipes: 12 });
   const { x1, x2, y1, y2 } = pad.bounds;
@@ -344,7 +348,7 @@ try {
   await scrollTo('Подпись поставлена');
   screenshot(resolve(out, '22-signature.png'));
   await tapNode(await scrollTo('Подписать и сохранить'));
-  await waitFor(/^Акт приёмки № /, { timeout: 20_000 }); // the issued act, with its number
+  await waitFor(/^Акт № /, { timeout: 20_000 }); // the issued act, with its number
   await scrollTo('Сотрудник центра');
   screenshot(resolve(out, '23-intake-act.png')); // the signature on the act
   state5 = await (await api(`/api/orders/${order5}`)).json();
@@ -371,8 +375,8 @@ try {
   await change5('/work/complete', 'POST', {});
   assert.equal((await (await api(`/api/orders/${order5}`)).json()).status, 'READY');
 
-  back(); // to the list and into the order again: it is ready now
-  await tapNode(await scrollTo(/А123АА 55, Готов к выдаче$/));
+  back(); // to the list: the order is ready now, its card has the handover button
+  await sleep(1500);
   await tapNode(await scrollTo('Выдать автомобиль', { swipes: 12 }));
   await tap('Снять результат', { timeout: 20_000 });
   await shoot();
@@ -381,6 +385,8 @@ try {
   await tap('Комплектность автомобиля проверена');
   screenshot(resolve(out, '25-handover.png'));
   await tapNode(await scrollTo('Выдать автомобиль и закрыть заказ'));
+  await waitFor(ORDERS, { timeout: 20_000 });
+  await tapNode(await scrollTo(/А123АА 55, Закрыт$/, { swipes: 14 }));
   const shareButton = await scrollTo('Поделиться заказ-нарядом', { swipes: 14 }); // shown once the order is closed
   assert.equal((await (await api(`/api/orders/${order5}`)).json()).status, 'CLOSED');
   screenshot(resolve(out, '27-closed.png'));
@@ -393,7 +399,8 @@ try {
   await waitFor(ORDERS);
 
   step('stage 6: statistics, a new service, the schedule, a new member and a new role');
-  await tap('Статистика');
+  await tap('Главная');
+  await tapNode(await scrollTo('Вся статистика', { swipes: 10 }));
   await waitFor('Согласовано по сметам', { timeout: 20_000 });
   await tap('7 дней');
   await waitFor('Активность по дням', { timeout: 20_000 });
@@ -485,7 +492,7 @@ try {
   await waitFor(/^1 из 2$/, { timeout: 20_000 });
   screenshot(resolve(out, '33-offline-work.png'));
   back();
-  await tap('Новая');
+  await tap('Новая запись');
   await tap('+7 999 000-00-00', { timeout: 20_000 });
   await type('79131234567');
   await waitFor('Алексей Морозов', { timeout: 30_000 });
@@ -516,7 +523,7 @@ try {
     assert.ok(Date.now() - started7 < 60_000, 'the queue reaches the server within a minute');
     await sleep(2000);
   }
-  await tap('Новая запись');
+  await tapText('Новая запись');
   await tap('Профиль');
 
   step('profile: demo sign-out returns to sign-in');
@@ -525,7 +532,7 @@ try {
   screenshot(resolve(out, '05-profile.png'));
   await tapNode(await scrollTo('Выйти из демо-режима'));
   // (checked by the server and the web test: a demo session has no account to delete)
-  await waitFor('Войти в центр');
+  await waitFor(SIGN_IN, { timeout: 20_000 });
 
   step('an employee signs in with an access code and deletes the account');
   const created = await (await api('/api/tenants/current/team', { method: 'POST', body: JSON.stringify({ displayName: 'Мария Орлова', roles: ['intake'] }) })).json();
@@ -545,7 +552,7 @@ try {
   await tap(/^Принимаю Пользовательское соглашение$/);
   await tap(/^Даю согласие на обработку персональных данных$/);
   await tap('Продолжить');
-  await waitFor(ORDERS, { timeout: 20_000 });
+  await waitFor('Главная', { timeout: 20_000 });
   await tap('Профиль');
   await waitFor('Мария Орлова');
   // The feed and what to get: an employee has no reminders yet, the switches are there.
@@ -566,7 +573,7 @@ try {
   await waitFor(/^Удалить навсегда$/i);
   screenshot(resolve(out, '06-delete-confirm.png'));
   await tap(/^Удалить навсегда$/i);
-  await waitFor('Войти в центр');
+  await waitFor(SIGN_IN, { timeout: 20_000 });
   const after = await fetch(`http://127.0.0.1:${SERVER_PORT}/api/session`, { headers: { authorization: `Bearer ${created.accessToken}` } });
   assert.equal(after.status, 401, 'the access code no longer works');
   screenshot(resolve(out, '07-after-delete.png'));
@@ -578,7 +585,7 @@ try {
   await tapNode(await scrollTo('name@mail.ru'));
   await type('owner@example.test');
   back(); // hide the keyboard
-  await tapNode(await scrollTo('Продолжить с почтой'));
+  await tapNode(await scrollTo('Получить код на почту'));
   await waitFor('Код из письма', { timeout: 20_000 });
   const letter = mailer.letters.at(-1);
   assert.equal(letter.to, 'owner@example.test');
@@ -596,12 +603,12 @@ try {
   await tapNode(await scrollTo(/^Принимаю Пользовательское соглашение$/));
   await tap(/^Даю согласие на обработку персональных данных$/);
   await tapNode(await scrollTo('Создать центр'));
-  await waitFor('Первые шаги', { timeout: 20_000 });
+  await waitFor(/^Центр создан./, { timeout: 20_000 });
   await tap('Профиль');
   await scrollTo('Вы вошли по email');
   screenshot(resolve(out, '34b-email-owner.png'));
   await tapNode(await scrollTo(/^Выйти$/));
-  await waitFor('Войти в центр');
+  await waitFor(SIGN_IN, { timeout: 20_000 });
 
   step('a new owner creates a center from the sign-in screen through Telegram');
   await tap('Создать центр');
@@ -625,9 +632,8 @@ try {
   await tapNode(await scrollTo(/^Принимаю Пользовательское соглашение$/));
   await tap(/^Даю согласие на обработку персональных данных$/);
   await tapNode(await scrollTo('Создать центр'));
-  await waitFor(ORDERS, { timeout: 20_000 });
   // The new center is empty: the owner is told what to do first, and a booking without services says where they go.
-  await waitFor('Первые шаги', { timeout: 20_000 });
+  await waitFor(/^Центр создан./, { timeout: 20_000 });
   screenshot(resolve(out, '35-first-steps.png'));
   await tap('Добавьте услуги');
   await waitFor('Новая услуга', { timeout: 20_000 });

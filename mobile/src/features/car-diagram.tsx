@@ -87,10 +87,14 @@ export function CarDiagram({ layout, marks, selected, onSelect, width = 290, pal
       accessibilityLabel="Схема автомобиля, вид сверху">
       <Defs><ClipPath id={`${id}clip`}><Path d={layout.outline}/></ClipPath></Defs>
       {outside.map(part)}
-      <Path d={layout.outline} fill={paper ? tone.shell : colors.carPanel}/>
+      <Path d={layout.outline} fill={paper ? tone.shell : colors.carPanel} pointerEvents="none"/>
       <G clipPath={`url(#${id}clip)`}>{panels.map(part)}</G>
-      <Path d={layout.details} fill="none" stroke={paper ? tone.details : colors.carDraw} strokeOpacity={paper ? 1 : 0.6} strokeWidth={0.7} strokeLinecap="round" clipPath={`url(#${id}clip)`}/>
-      <Path d={layout.outline} fill="none" stroke={paper ? tone.outline : colors.carDraw} strokeWidth={paper ? 1.1 : 1.3}/>
+      <Path d={layout.details} fill="none" stroke={paper ? tone.details : colors.carDraw} strokeOpacity={paper ? 1 : 0.6} strokeWidth={0.7} strokeLinecap="round" clipPath={`url(#${id}clip)`} pointerEvents="none"/>
+      <Path d={layout.outline} fill="none" stroke={paper ? tone.outline : colors.carDraw} strokeWidth={paper ? 1.1 : 1.3} pointerEvents="none"/>
+      {/* Touch targets over each part's middle: on Android a tap does not reach paths inside the clipped group. */}
+      {onSelect && !paper ? drawn.filter((element) => element.label).map((element) => (
+        <Circle key={`hit-${element.id}`} cx={element.label!.x} cy={element.label!.y} r={13} fill={colors.ink} fillOpacity={0.001} onPress={press(element)}/>
+      )) : null}
       {drawn.map((element) => {
         const mark = marks.get(element.name);
         const isSelected = selected === element.id;
