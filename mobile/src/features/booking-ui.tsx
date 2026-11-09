@@ -1,14 +1,16 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import { router } from 'expo-router';
 import type { BookingAvailability, BookingListItem } from '@df/types';
 import type { Api } from '@/lib/api';
 import type { DraftVehicle } from '@/lib/booking-draft';
 import { addDays, bookingStatuses, dayOfMonth, duration, money, monthShort, timeOf, vehicleName, weekday } from '@/lib/format';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles } from '@/lib/theme';
 import { Body, Pill } from '@/ui';
 
 /** Two to four options side by side (list or day, phone or plate). */
 export function Segmented<T extends string>({ value, options, onChange }: { value: T; options: { value: T; label: string }[]; onChange: (value: T) => void }) {
+  const styles = useStyles();
   return (
     <View style={styles.segmented} accessibilityRole="tablist">
       {options.map((option) => (
@@ -25,6 +27,7 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
 export function DateStrip({ from, days, value, onChange, today, counts }: {
   from: string; days: number; value: string; onChange: (key: string) => void; today: string; counts?: Record<string, number>;
 }) {
+  const styles = useStyles();
   const keys = Array.from({ length: days }, (_, index) => addDays(from, index));
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip} style={styles.bleed}>
@@ -45,6 +48,7 @@ export function DateStrip({ from, days, value, onChange, today, counts }: {
 
 /** The center's free start times for a day; taken ones are shown greyed out. */
 export function SlotGrid({ availability, value, onChange }: { availability: BookingAvailability | null; value: string; onChange: (startAt: string) => void }) {
+  const styles = useStyles();
   if (!availability) return <Body muted>Проверяем график…</Body>;
   if (availability.closed) return <Body muted>В этот день центр не работает.</Body>;
   if (!availability.slots.some((slot) => slot.available)) return <Body muted>Свободного времени на этот день нет.</Body>;
@@ -65,12 +69,13 @@ export function SlotGrid({ availability, value, onChange }: { availability: Book
 
 /** A booking in a list; opens its details. */
 export function BookingRow({ item, timeZone }: { item: BookingListItem; timeZone: string }) {
+  const styles = useStyles();
   const status = bookingStatuses[item.status];
   const end = new Date(Date.parse(item.startAt) + item.estimatedDurationMinutes * 60_000).toISOString();
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`${timeOf(item.startAt, timeZone)}, ${item.customer.name}, ${item.vehicle.plate}`}
       onPress={() => router.push({ pathname: '/bookings/[id]', params: { id: item.id, item: JSON.stringify(item) } })}
-      android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.row}>
+      android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={styles.row}>
       <View style={styles.time}>
         <Text style={styles.timeStart}>{timeOf(item.startAt, timeZone)}</Text>
         <Text style={styles.timeEnd}>{timeOf(end, timeZone)}</Text>
@@ -90,9 +95,10 @@ export function BookingRow({ item, timeZone }: { item: BookingListItem; timeZone
 
 /** A car to book: plate, model, colour and price class. */
 export function VehicleRow({ vehicle, onPress, disabled }: { vehicle: DraftVehicle; onPress: () => void; disabled?: boolean }) {
+  const styles = useStyles();
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`${vehicle.plate}, ${vehicleName(vehicle)}`} disabled={disabled} onPress={onPress}
-      android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={[styles.vehicle, disabled && { opacity: 0.5 }]}>
+      android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={[styles.vehicle, disabled && { opacity: 0.5 }]}>
       <View style={{ flex: 1 }}>
         <Text style={styles.plate}>{vehicle.plate}</Text>
         <Text style={styles.vehicleName}>{vehicleName(vehicle)}</Text>
@@ -110,7 +116,7 @@ export async function startIntake(api: Api, booking: { id: string; vehicle: { pl
   return order;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   bleed: { marginHorizontal: -space.l, flexGrow: 0 },
   segmented: { flexDirection: 'row', backgroundColor: colors.surface, borderRadius: radius.m, padding: 4, gap: 4 },
   segment: { flex: 1, minHeight: 40, borderRadius: radius.s, alignItems: 'center', justifyContent: 'center' },
@@ -128,11 +134,11 @@ const styles = StyleSheet.create({
   slotSelected: { backgroundColor: colors.primary },
   slotTaken: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.line },
   slotText: { color: colors.text, fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  slotTakenText: { color: colors.soft, textDecorationLine: 'line-through' },
+  slotTakenText: { color: colors.faint, textDecorationLine: 'line-through' },
   row: { flexDirection: 'row', gap: space.m, backgroundColor: colors.surface, borderRadius: radius.l, padding: space.l, overflow: 'hidden' },
   time: { width: 52, alignItems: 'flex-start' },
   timeStart: { color: colors.text, fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  timeEnd: { color: colors.soft, fontSize: 13, fontVariant: ['tabular-nums'] },
+  timeEnd: { color: colors.faint, fontSize: 13, fontVariant: ['tabular-nums'] },
   rowBody: { flex: 1, gap: 2 },
   name: { color: colors.text, fontSize: 17, fontWeight: '700' },
   meta: { color: colors.muted, fontSize: 14 },
@@ -142,4 +148,4 @@ const styles = StyleSheet.create({
   plate: { color: colors.primary, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
   vehicleName: { color: colors.text, fontSize: 16, fontWeight: '700' },
   cta: { color: colors.primary, fontSize: 15, fontWeight: '800' }
-});
+}));

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,7 +8,7 @@ import type { BookingQuote, QuoteSelection, ServiceOffering } from '@df/types';
 import { useBookingDraft } from '@/lib/booking-draft';
 import { duration, money, vehicleName } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles, useTheme } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Card, Label, Loading, Notice, Screen } from '@/ui';
 
@@ -15,6 +16,8 @@ const keyOf = (selections: QuoteSelection[]) => selections.map((item) => `${item
 
 /** Step 2: services and packages of the center for this car's class, with the preliminary price. */
 export default function ServicesScreen() {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const { api } = useSession();
   const canEditCatalog = useSignedIn().capabilities.manageCatalog;
   const { draft, update } = useBookingDraft();
@@ -68,7 +71,7 @@ export default function ServicesScreen() {
               const line = current?.lines.find((entry) => entry.type === item.type && entry.id === item.id);
               return (
                 <Pressable key={`${item.type}-${item.id}`} accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={item.name}
-                  onPress={() => toggle(item)} android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={[styles.offer, on && styles.offerOn]}>
+                  onPress={() => toggle(item)} android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={[styles.offer, on && styles.offerOn]}>
                   <View style={[styles.check, on && styles.checkOn]}>{on ? <Text style={styles.checkMark}>✓</Text> : null}</View>
                   <View style={styles.offerBody}>
                     <Text style={styles.offerName}>{item.name}{item.type === 'package' ? ' · комплекс' : ''}</Text>
@@ -100,12 +103,12 @@ export default function ServicesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.ground },
   plate: { color: colors.primary, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
   vehicle: { color: colors.text, fontSize: 18, fontWeight: '700' },
   meta: { color: colors.muted, fontSize: 14 },
-  soft: { color: colors.soft, fontSize: 13 },
+  soft: { color: colors.faint, fontSize: 13 },
   category: { gap: space.s },
   offer: { flexDirection: 'row', gap: space.m, backgroundColor: colors.surface, borderRadius: radius.l, padding: space.l, borderWidth: 1, borderColor: 'transparent', overflow: 'hidden' },
   offerOn: { borderColor: colors.primary },
@@ -116,9 +119,9 @@ const styles = StyleSheet.create({
   offerName: { color: colors.text, fontSize: 16, fontWeight: '700' },
   price: { alignItems: 'flex-end', gap: 2, maxWidth: 110 },
   priceText: { color: colors.text, fontSize: 15, fontWeight: '800', textAlign: 'right' },
-  struck: { color: colors.soft, textDecorationLine: 'line-through' },
+  struck: { color: colors.faint, textDecorationLine: 'line-through' },
   dock: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: space.m, paddingHorizontal: space.l, paddingTop: space.m,
     backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   total: { color: colors.text, fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
   next: { minWidth: 150 }
-});
+}));

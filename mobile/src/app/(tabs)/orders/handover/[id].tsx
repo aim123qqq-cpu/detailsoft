@@ -1,12 +1,13 @@
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import type { PhotoAsset, WorkOrder } from '@df/types';
 import { pickPhoto } from '@/lib/photo';
 import { useSession, useSignedIn } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Field, Label, Loading, Notice, Screen } from '@/ui';
 
@@ -21,6 +22,7 @@ export default function HandoverScreen() {
 }
 
 function HandoverForm({ order, title }: { order: WorkOrder; title?: string }) {
+  const styles = useStyles();
   const { api } = useSession();
   const session = useSignedIn();
   const [photos, setPhotos] = useState<PhotoAsset[]>(order.photos);
@@ -93,6 +95,7 @@ function HandoverForm({ order, title }: { order: WorkOrder; title?: string }) {
 }
 
 function Check({ label, checked, onToggle }: { label: string; checked: boolean; onToggle?: () => void }) {
+  const styles = useStyles();
   return (
     <Pressable accessibilityRole="checkbox" accessibilityState={{ checked, disabled: !onToggle }} disabled={!onToggle} onPress={onToggle} style={styles.check}>
       <View style={[styles.box, checked && styles.boxOn]}>{checked ? <Text style={styles.mark}>✓</Text> : null}</View>
@@ -101,12 +104,12 @@ function Check({ label, checked, onToggle }: { label: string; checked: boolean; 
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   photos: { flexDirection: 'row', gap: space.m },
   photoBox: { flex: 1, gap: 6 },
   photo: { width: '100%', aspectRatio: 1, borderRadius: radius.m, backgroundColor: colors.surface },
   empty: { alignItems: 'center', justifyContent: 'center', padding: space.m },
-  emptyText: { color: colors.soft, fontSize: 14, textAlign: 'center' },
+  emptyText: { color: colors.faint, fontSize: 14, textAlign: 'center' },
   add: { borderWidth: 1, borderStyle: 'dashed', borderColor: colors.primary },
   addText: { color: colors.primary, fontSize: 15, fontWeight: '800', textAlign: 'center' },
   caption: { color: colors.muted, fontSize: 13, fontWeight: '700', textAlign: 'center' },
@@ -116,4 +119,4 @@ const styles = StyleSheet.create({
   mark: { color: colors.okInk, fontSize: 14, fontWeight: '900' },
   checkText: { color: colors.text, fontSize: 16, flex: 1 },
   note: { minHeight: 80, paddingTop: 14, textAlignVertical: 'top' }
-});
+}));

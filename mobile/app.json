@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "detailflow",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "backgroundColor": "#0b1016",
     "ios": {
       "bundleIdentifier": "ru.detailflow.app",
@@ -51,7 +51,55 @@
       "./plugins/with-release-signing.js",
       "./plugins/with-cleartext-traffic.js",
       "expo-sharing",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-font",
+        {
+          "android": {
+            "fonts": [
+              {
+                "fontFamily": "Manrope",
+                "fontDefinitions": [
+                  {
+                    "path": "./assets/fonts/Manrope_300Light.ttf",
+                    "weight": 300
+                  },
+                  {
+                    "path": "./assets/fonts/Manrope_400Regular.ttf",
+                    "weight": 400
+                  },
+                  {
+                    "path": "./assets/fonts/Manrope_500Medium.ttf",
+                    "weight": 500
+                  },
+                  {
+                    "path": "./assets/fonts/Manrope_600SemiBold.ttf",
+                    "weight": 600
+                  },
+                  {
+                    "path": "./assets/fonts/Manrope_700Bold.ttf",
+                    "weight": 700
+                  },
+                  {
+                    "path": "./assets/fonts/Manrope_800ExtraBold.ttf",
+                    "weight": 800
+                  }
+                ]
+              }
+            ]
+          },
+          "ios": {
+            "fonts": [
+              "./assets/fonts/Manrope_300Light.ttf",
+              "./assets/fonts/Manrope_400Regular.ttf",
+              "./assets/fonts/Manrope_500Medium.ttf",
+              "./assets/fonts/Manrope_600SemiBold.ttf",
+              "./assets/fonts/Manrope_700Bold.ttf",
+              "./assets/fonts/Manrope_800ExtraBold.ttf"
+            ]
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

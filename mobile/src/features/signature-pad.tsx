@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
+import { Pressable, StyleSheet, View, type GestureResponderEvent } from 'react-native';
+import { Text } from '@/ui/text';
 import Svg, { Path, Rect } from 'react-native-svg';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles } from '@/lib/theme';
 
 const HEIGHT = 180;
 
@@ -10,6 +11,7 @@ const HEIGHT = 180;
  * server keeps with the act). `onDrawing` lets the screen stop scrolling while the finger is down.
  */
 export function SignaturePad({ onChange, onDrawing }: { onChange: (dataUrl: string | null) => void; onDrawing?: (drawing: boolean) => void }) {
+  const styles = useStyles();
   const svg = useRef<Svg>(null);
   const [paths, setPaths] = useState<string[]>([]);
   const [live, setLive] = useState('');
@@ -61,10 +63,10 @@ export function SignaturePad({ onChange, onDrawing }: { onChange: (dataUrl: stri
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   pad: { height: HEIGHT, borderRadius: radius.m, overflow: 'hidden', backgroundColor: '#ffffff', justifyContent: 'center' },
   hint: { position: 'absolute', alignSelf: 'center', color: '#9aa3aa', fontSize: 16 },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   state: { color: colors.muted, fontSize: 14 },
   clear: { color: colors.primary, fontSize: 15, fontWeight: '800' }
-});
+}));

@@ -1,11 +1,12 @@
 import { useCallback, useState } from 'react';
-import { Alert, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, Share, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import * as Haptics from 'expo-haptics';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import type { AuthProvider, CenterRole, Permission, TeamMember } from '@df/types';
 import { PickList } from '@/features/pick-list';
 import { useSession } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Card, Field, Label, Loading, Notice, Screen } from '@/ui';
 
@@ -36,6 +37,7 @@ function roleOptions(roles: CenterRole[], permissions: Permission[], keep: strin
 }
 
 function NewMember({ roles, permissions }: { roles: CenterRole[]; permissions: Permission[] }) {
+  const styles = useStyles();
   const { api } = useSession();
   const [name, setName] = useState('');
   const [picked, setPicked] = useState<string[]>(['intake']);
@@ -77,6 +79,7 @@ function NewMember({ roles, permissions }: { roles: CenterRole[]; permissions: P
 }
 
 function EditMember({ member, roles, permissions, providers, emailSignIn, onChanged }: { member: TeamMember; roles: CenterRole[]; permissions: Permission[]; providers: AuthProvider[]; emailSignIn: boolean; onChanged: () => void }) {
+  const styles = useStyles();
   const { api } = useSession();
   const [picked, setPicked] = useState(member.roles);
   const [invite, setInvite] = useState<Invite | null>(null);
@@ -148,11 +151,11 @@ function EditMember({ member, roles, permissions, providers, emailSignIn, onChan
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   token: { color: colors.primary, fontSize: 18, fontWeight: '800', fontFamily: 'monospace', paddingVertical: space.s },
   link: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.m },
   linkText: { color: colors.text, fontSize: 15, flexShrink: 1 },
   unlink: { minHeight: 40 },
   invite: { gap: space.s, backgroundColor: colors.surfaceRaised, borderRadius: radius.m, padding: space.m },
   code: { color: colors.primary, fontSize: 20, fontWeight: '800', letterSpacing: 2 }
-});
+}));

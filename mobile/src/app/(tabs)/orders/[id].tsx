@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
-import { RefreshControl, Share, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { RefreshControl, Share, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Text } from '@/ui/text';
 import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { carLayout, findLayoutElement } from '@df/shared/carLayouts';
 import { money, orderStatuses, shortDate } from '@/lib/format';
@@ -11,13 +12,15 @@ import { ApprovalPanel } from '@/features/approval-panel';
 import { DOCUMENT_TITLES } from '@/features/document-paper';
 import { orderShareText } from '@/lib/share-text';
 import type { OrderDocumentType } from '@df/types';
-import { colors, space } from '@/lib/theme';
+import { space, makeStyles, useTheme } from '@/lib/theme';
 import { Body, Button, Card, Label, Loading, Notice, Pill, Screen } from '@/ui';
 
 const approvalMethod = { in_person: 'лично', phone: 'по телефону', messenger: 'в мессенджере' } as const;
 
 /** An order: the master's work panel while it is in work, then intake, estimate, handover and documents. */
 export default function OrderScreen() {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const { id, title, subtitle, bodyType } = useLocalSearchParams<{ id: string; title?: string; subtitle?: string; bodyType?: string }>();
   const { api } = useSession();
   const session = useSignedIn();
@@ -128,7 +131,7 @@ export default function OrderScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   diagram: { alignItems: 'center', paddingVertical: space.s },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.m },
   meta: { color: colors.muted, fontSize: 14, lineHeight: 20 },
@@ -143,4 +146,4 @@ const styles = StyleSheet.create({
   total: { color: colors.text, fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
   operation: { color: colors.muted, fontSize: 16, paddingVertical: 2 },
   operationDone: { color: colors.text }
-});
+}));

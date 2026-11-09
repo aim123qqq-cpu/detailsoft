@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react';
-import { StyleSheet, Switch, Text, View } from 'react-native';
+import { StyleSheet, Switch, View } from 'react-native';
+import { Text } from '@/ui/text';
 import type { ReminderSettings } from '@df/types';
 import { useSession } from '@/lib/session';
-import { colors, space } from '@/lib/theme';
+import { space, makeStyles, useTheme } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Chip, Field, Label, Notice } from '@/ui';
 
@@ -14,6 +15,8 @@ const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** What the center's people are reminded of: before each booking, the plan of the day, tomorrow's bookings. */
 export function RemindersForm() {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const { api } = useSession();
   const loaded = useResource(useCallback((signal: AbortSignal) => api.reminderSettings(signal), [api]));
   const [edited, setEdited] = useState<ReminderSettings | null>(null);
@@ -60,9 +63,9 @@ export function RemindersForm() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
   toggle: { flexDirection: 'row', alignItems: 'center', gap: space.m },
   title: { color: colors.text, fontSize: 16, fontWeight: '700' },
   note: { color: colors.muted, fontSize: 14 }
-});
+}));

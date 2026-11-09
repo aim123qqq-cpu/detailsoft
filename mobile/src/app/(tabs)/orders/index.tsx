@@ -1,24 +1,29 @@
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import { router, useFocusEffect } from 'expo-router';
 import type { OrderListItem } from '@df/types';
 import { money, orderStatuses, shortDate, vehicleName } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
 import { useResource } from '@/lib/use-resource';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles, useTheme } from '@/lib/theme';
 import { Body, Button, Chip, Loading, Notice, Pill } from '@/ui';
 import { FirstSteps } from '@/features/first-steps';
+import { useTabBarSpace } from '@/ui/tab-bar';
 import { SyncBanner } from '@/features/sync-banner';
 
 type Filter = 'mine' | 'all' | 'active' | 'ready' | 'closed';
 
 export default function OrdersScreen() {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const { api } = useSession();
   const session = useSignedIn();
   const isExecutor = session.capabilities.acceptAssignments;
   // An order executor without front-desk rights starts on their own queue, as in the web app.
   const [filter, setFilter] = useState<Filter>(isExecutor && !session.capabilities.manageBookings ? 'mine' : 'all');
 
+  const barSpace = useTabBarSpace();
   const { data, error, reload, refresh, refreshing } = useResource(useCallback((signal: AbortSignal) => api.listOrders(signal), [api]));
   const items = data?.items ?? null;
   // Each time the tab comes into view (back from an order, intake, a booking turned into an order): a fresh list.
@@ -38,7 +43,7 @@ export default function OrdersScreen() {
   return (
     <FlatList
       style={styles.list}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, barSpace ? { paddingBottom: barSpace + space.l } : null]}
       contentInsetAdjustmentBehavior="automatic"
       data={visible}
       keyExtractor={(item) => item.id}
@@ -62,14 +67,15 @@ export default function OrdersScreen() {
 }
 
 function OrderRow({ item, mine }: { item: OrderListItem; mine: boolean }) {
+  const styles = useStyles();
   const status = orderStatuses[item.status];
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`${vehicleName(item.vehicle)}, ${item.vehicle.plate}, ${status.label}`}
       onPress={() => router.push({ pathname: '/orders/[id]', params: { id: item.id, title: item.vehicle.plate, bodyType: item.vehicle.bodyType ?? '', subtitle: `${vehicleName(item.vehicle)} · ${item.customer.name}` } })}
-      android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.row} testID={`order-${item.id}`}>
+      android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={styles.row} testID={`order-${item.id}`}>
       <View style={styles.rowTop}>
         <Text style={styles.plate}>{item.vehicle.plate}</Text>
-        <Pill label={status.label} tone={status.group === 'ready' ? 'ok' : status.group === 'closed' ? 'neutral' : 'accent'}/>
+        <Pill label={status.label} tone={status.group === 'ready' || item.status === 'IN_PROGRESS' || item.status === 'QC' ? 'work' : status.group === 'closed' ? 'past' : 'wait'}/>
       </View>
       <Text style={styles.vehicle}>{vehicleName(item.vehicle)}</Text>
       <Text style={styles.meta}>{item.customer.name} · {shortDate(item.createdAt)}</Text>
@@ -81,7 +87,7 @@ function OrderRow({ item, mine }: { item: OrderListItem; mine: boolean }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   list: { flex: 1, backgroundColor: colors.ground },
   content: { padding: space.l, paddingBottom: space.xxl },
   row: { backgroundColor: colors.surface, borderRadius: radius.l, padding: space.l, gap: 4, overflow: 'hidden' },
@@ -91,4 +97,4 @@ const styles = StyleSheet.create({
   meta: { color: colors.muted, fontSize: 14 },
   rowBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 },
   total: { color: colors.text, fontSize: 16, fontWeight: '800', fontVariant: ['tabular-nums'] }
-});
+}));

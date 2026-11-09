@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Text } from '@/ui/text';
 import { Image } from 'expo-image';
 import { BODY_TYPES, carLayout, normalizeBodyType } from '@df/shared/carLayouts';
 import { contractorLine } from '@df/shared/orderDocuments';

@@ -1,9 +1,10 @@
 import { useCallback, useState } from 'react';
-import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import type { AnalyticsOverview } from '@df/types';
 import { addDays, dayKey, dayOfMonth, longDay, money, orderStatuses } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles, useTheme } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Chip, Label, Loading, Notice, Screen } from '@/ui';
 import { ComingSoon } from '@/ui/coming-soon';
@@ -19,6 +20,8 @@ export default function AnalyticsScreen() {
 }
 
 function Overview() {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const { api } = useSession();
   const session = useSignedIn();
   const today = dayKey(new Date(), session.tenant.timezone);
@@ -37,6 +40,7 @@ function Overview() {
 }
 
 function Content({ data }: { data: AnalyticsOverview }) {
+  const styles = useStyles();
   const orders = data.orders;
   return (
     <>
@@ -63,11 +67,14 @@ function Content({ data }: { data: AnalyticsOverview }) {
 }
 
 function Tile({ label, value, note }: { label: string; value: string; note: string }) {
+  const styles = useStyles();
   return <View style={styles.tile}><Text style={styles.tileLabel}>{label}</Text><Text style={styles.tileValue}>{value}</Text><Text style={styles.note}>{note}</Text></View>;
 }
 
 /** Bookings and orders per day, side by side; tapping a day reads out its numbers. */
 function Activity({ daily }: { daily: AnalyticsOverview['daily'] }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const [picked, setPicked] = useState<string | null>(null);
   const max = Math.max(1, ...daily.map((day) => Math.max(day.bookings, day.orders)));
   const shown = daily.find((day) => day.date === picked) ?? daily.at(-1);
@@ -101,11 +108,13 @@ function Activity({ daily }: { daily: AnalyticsOverview['daily'] }) {
 }
 
 function Legend({ color, label }: { color: string; label: string }) {
+  const styles = useStyles();
   return <View style={styles.legendItem}><View style={[styles.swatch, { backgroundColor: color }]}/><Text style={styles.note}>{label}</Text></View>;
 }
 
 /** Orders by status: one series, so one colour; the numbers are written out. */
 function Statuses({ items, total }: { items: AnalyticsOverview['orderStatuses']; total: number }) {
+  const styles = useStyles();
   const max = Math.max(1, ...items.map((item) => item.count));
   return (
     <View style={styles.card}>
@@ -122,10 +131,11 @@ function Statuses({ items, total }: { items: AnalyticsOverview['orderStatuses'];
 }
 
 function Meter({ share, color }: { share: number; color: string }) {
+  const styles = useStyles();
   return <View style={styles.track}><View style={[styles.fill, { width: `${Math.max(share > 0 ? 2 : 0, share * 100)}%`, backgroundColor: color }]}/></View>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   periods: { flexDirection: 'row', gap: space.s },
   tiles: { flexDirection: 'row', gap: space.s },
   tile: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.m, padding: space.m, gap: 2 },
@@ -144,9 +154,9 @@ const styles = StyleSheet.create({
   chart: { flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
   day: { flex: 1, alignItems: 'center', gap: 4 },
   bars: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, borderRadius: 4, paddingHorizontal: 1 },
-  barsActive: { backgroundColor: 'rgba(255,255,255,.06)' },
+  barsActive: { backgroundColor: 'rgba(127,127,127,.12)' },
   bar: { width: 6, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
-  dayLabel: { color: colors.soft, fontSize: 11, fontVariant: ['tabular-nums'] },
+  dayLabel: { color: colors.faint, fontSize: 11, fontVariant: ['tabular-nums'] },
   dayLabelActive: { color: colors.text, fontWeight: '800' },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   count: { color: colors.text, fontSize: 15, fontWeight: '800' },
@@ -155,4 +165,4 @@ const styles = StyleSheet.create({
   statusCount: { color: colors.text, fontSize: 14, fontWeight: '800', width: 28, textAlign: 'right', fontVariant: ['tabular-nums'] },
   track: { height: 8, borderRadius: 4, backgroundColor: colors.surfaceRaised, overflow: 'hidden' },
   fill: { height: 8, borderRadius: 4 }
-});
+}));

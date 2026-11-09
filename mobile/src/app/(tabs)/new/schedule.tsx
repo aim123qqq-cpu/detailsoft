@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import * as Haptics from 'expo-haptics';
 import { randomUUID } from 'expo-crypto';
 import { router } from 'expo-router';
@@ -7,12 +8,13 @@ import { DateStrip, SlotGrid } from '@/features/booking-ui';
 import { useBookingDraft } from '@/lib/booking-draft';
 import { addDays, dayKey, duration, money, timeOf, vehicleName } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
-import { colors, space } from '@/lib/theme';
+import { space, makeStyles } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Card, Label, Notice, Screen } from '@/ui';
 
 /** Step 3: a day and a free start time, then the booking is made. */
 export default function ScheduleScreen() {
+  const styles = useStyles();
   const { api } = useSession();
   const session = useSignedIn();
   const timeZone = session.tenant.timezone;
@@ -69,7 +71,7 @@ export default function ScheduleScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   main: { color: colors.text, fontSize: 17, fontWeight: '800' },
   meta: { color: colors.muted, fontSize: 14 },
   line: { flexDirection: 'row', justifyContent: 'space-between', gap: space.m, paddingVertical: 3 },
@@ -77,4 +79,4 @@ const styles = StyleSheet.create({
   amount: { color: colors.text, fontSize: 16, fontVariant: ['tabular-nums'] },
   total: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, marginTop: 4, paddingTop: space.s },
   totalAmount: { color: colors.text, fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] }
-});
+}));

@@ -1,12 +1,13 @@
 import { Stack } from 'expo-router';
-import { colors } from '@/lib/theme';
+import { useStackOptions } from '@/ui/stack';
 
 export const unstable_settings = { initialRouteName: 'index' };
 
 /** The profile, and the center's management for those who may: catalog, team and roles, schedule. */
 export default function ProfileStack() {
+  const options = useStackOptions();
   return (
-    <Stack screenOptions={{ headerStyle: { backgroundColor: colors.ground }, headerTintColor: colors.text, headerShadowVisible: false, contentStyle: { backgroundColor: colors.ground } }}>
+    <Stack screenOptions={options}>
       <Stack.Screen name="index" options={{ title: 'Профиль' }}/>
       <Stack.Screen name="catalog" options={{ title: 'Каталог услуг' }}/>
       <Stack.Screen name="service/[id]" options={{ title: 'Услуга' }}/>

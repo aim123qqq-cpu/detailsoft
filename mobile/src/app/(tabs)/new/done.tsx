@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import { router } from 'expo-router';
 import { useBookingDraft } from '@/lib/booking-draft';
 import { channelLabel, dayKey, dayTitle, duration, money, timeOf, vehicleName } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
-import { colors, space } from '@/lib/theme';
+import { space, makeStyles } from '@/lib/theme';
 import { Body, Button, Card, Notice, Screen } from '@/ui';
 
 /** The booking is made: its time and what next (intake now, another booking, the schedule). */
 export default function DoneScreen() {
+  const styles = useStyles();
   const { api } = useSession();
   const session = useSignedIn();
   const timeZone = session.tenant.timezone;
@@ -58,10 +60,11 @@ export default function DoneScreen() {
 }
 
 function Row({ label, value }: { label: string; value: string }) {
+  const styles = useStyles();
   return <View style={styles.row}><Text style={styles.label}>{label}</Text><Text style={styles.value}>{value}</Text></View>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   hero: { alignItems: 'center', gap: space.s, paddingVertical: space.l },
   mark: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.ok, alignItems: 'center', justifyContent: 'center' },
   markText: { color: colors.okInk, fontSize: 32, fontWeight: '900' },
@@ -70,4 +73,4 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: space.m, paddingVertical: 4 },
   label: { color: colors.muted, fontSize: 15 },
   value: { color: colors.text, fontSize: 15, fontWeight: '700', flexShrink: 1, textAlign: 'right' }
-});
+}));

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '@/ui/text';
 import { carMakes, carModels } from '@df/shared/carCatalog';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles, useTheme } from '@/lib/theme';
 import { Label } from '@/ui';
 
 /** A list to choose from with a search on top, over the whole screen. */
@@ -9,6 +10,8 @@ function ChoiceSheet({ title, items, query, setQuery, onChoose, onClose, onNotLi
   title: string; items: string[]; query: string; setQuery: (value: string) => void;
   onChoose: (value: string) => void; onClose: () => void; onNotListed: () => void;
 }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   return (
     <Modal animationType="slide" onRequestClose={onClose}>
       <View style={styles.sheet}>
@@ -16,17 +19,18 @@ function ChoiceSheet({ title, items, query, setQuery, onChoose, onClose, onNotLi
           <Text style={styles.headTitle}>{title}</Text>
           <Pressable accessibilityRole="button" hitSlop={12} onPress={onClose}><Text style={styles.action}>Закрыть</Text></Pressable>
         </View>
-        <TextInput value={query} onChangeText={setQuery} autoCorrect={false} placeholder="Поиск" placeholderTextColor={colors.soft} style={styles.search}/>
+        <TextInput value={query} onChangeText={setQuery} autoCorrect={false} placeholder="Поиск" placeholderTextColor={colors.faint} style={styles.search}/>
         <FlatList data={items} keyExtractor={(item) => item} keyboardShouldPersistTaps="handled"
           ListEmptyComponent={<Text style={styles.empty}>В справочнике такого нет</Text>}
           ListFooterComponent={<Pressable accessibilityRole="button" onPress={onNotListed} style={styles.row}><Text style={styles.action}>Нет в списке — ввести вручную</Text></Pressable>}
-          renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => onChoose(item)} android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.row}><Text style={styles.rowText}>{item}</Text></Pressable>}/>
+          renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => onChoose(item)} android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={styles.row}><Text style={styles.rowText}>{item}</Text></Pressable>}/>
       </View>
     </Modal>
   );
 }
 
 function Select({ label, value, disabled, onPress }: { label: string; value: string; disabled?: boolean; onPress: () => void }) {
+  const styles = useStyles();
   return (
     <View style={styles.half}>
       <Label>{label}</Label>
@@ -44,6 +48,7 @@ export function CarPicker({ make, model, onChange, onNotListed }: {
   onChange: (make: string, model: string) => void;
   onNotListed: (make: string, model: string) => void;
 }) {
+  const styles = useStyles();
   const [open, setOpen] = useState<'make' | 'model' | null>(null);
   const [query, setQuery] = useState('');
   const show = (sheet: 'make' | 'model') => { setQuery(''); setOpen(sheet); };
@@ -62,7 +67,7 @@ export function CarPicker({ make, model, onChange, onNotListed }: {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   pair: { flexDirection: 'row', gap: space.m },
   half: { flex: 1 },
   select: { justifyContent: 'center', minHeight: 52, paddingHorizontal: space.m, borderRadius: radius.m, backgroundColor: colors.surface },
@@ -77,4 +82,4 @@ const styles = StyleSheet.create({
   row: { minHeight: 50, justifyContent: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   rowText: { color: colors.text, fontSize: 16 },
   empty: { color: colors.muted, fontSize: 15, paddingVertical: space.m }
-});
+}));

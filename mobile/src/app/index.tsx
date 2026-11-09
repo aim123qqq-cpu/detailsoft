@@ -6,5 +6,5 @@ export default function Index() {
   const { state } = useSession();
   if (state.phase === 'signed-out') return <Redirect href="/login"/>;
   if (state.phase === 'offline') return <Redirect href="/offline"/>;
-  return <Redirect href="/orders"/>;
+  return <Redirect href="/home"/>;
 }

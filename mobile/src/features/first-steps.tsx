@@ -1,8 +1,9 @@
 import { useCallback } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useSession, useSignedIn } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { cardShadow, radius, space, makeStyles } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 
 /**
@@ -10,6 +11,7 @@ import { useResource } from '@/lib/use-resource';
  * Done steps are ticked; once all are done the card is gone. Offline it simply does not show.
  */
 export function FirstSteps() {
+  const styles = useStyles();
   const { api } = useSession();
   const session = useSignedIn();
   const allowed = session.capabilities.manageSettings;
@@ -33,7 +35,7 @@ export function FirstSteps() {
       <Text style={styles.lead}>Часы работы — в «Профиль → График центра».</Text>
       {steps.map((step, index) => (
         <Pressable key={step.title} accessibilityRole="button" accessibilityState={{ checked: step.done }} onPress={() => router.push(step.href)}
-          android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.step}>
+          android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={styles.step}>
           <View style={[styles.mark, step.done && styles.markDone]}><Text style={[styles.markText, step.done && styles.markTextDone]}>{step.done ? '✓' : index + 1}</Text></View>
           <View style={styles.copy}>
             <Text style={[styles.stepTitle, step.done && styles.stepTitleDone]}>{step.title}</Text>
@@ -46,13 +48,13 @@ export function FirstSteps() {
   );
 }
 
-const styles = StyleSheet.create({
-  card: { backgroundColor: colors.surface, borderRadius: radius.l, padding: space.l, gap: space.s, borderWidth: 1, borderColor: 'rgba(255,121,57,.35)' },
+const useStyles = makeStyles((colors, scheme) => StyleSheet.create({
+  card: { backgroundColor: colors.surface, borderRadius: radius.l, padding: space.l, gap: space.s, ...cardShadow(scheme) },
   title: { color: colors.text, fontSize: 20, fontWeight: '800' },
   lead: { color: colors.muted, fontSize: 14, marginBottom: space.xs },
   step: { flexDirection: 'row', alignItems: 'center', gap: space.m, paddingVertical: space.s, minHeight: 48 },
-  mark: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,121,57,.15)' },
-  markDone: { backgroundColor: 'rgba(54,201,150,.18)' },
+  mark: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.tilePeach },
+  markDone: { backgroundColor: colors.tileSage },
   markText: { color: colors.primary, fontSize: 15, fontWeight: '800' },
   markTextDone: { color: colors.ok },
   copy: { flex: 1, gap: 2 },
@@ -60,4 +62,4 @@ const styles = StyleSheet.create({
   stepTitleDone: { color: colors.muted, textDecorationLine: 'line-through' },
   stepText: { color: colors.muted, fontSize: 14 },
   chevron: { color: colors.muted, fontSize: 24 }
-});
+}));

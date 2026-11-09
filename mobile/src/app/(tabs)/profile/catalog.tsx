@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import { Stack, router, useFocusEffect } from 'expo-router';
 import type { ManagedCatalogItem } from '@df/types';
 import { duration, money } from '@/lib/format';
 import { useSession } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Card, Chip, Field, Label, Loading, Notice, Pill, Screen } from '@/ui';
 
@@ -19,6 +20,7 @@ function priceFor(item: ManagedCatalogItem, tenantClass: string) {
 
 /** Services and packages by section, with prices for a vehicle class. Simple services are edited here. */
 export default function CatalogScreen() {
+  const styles = useStyles();
   const { api } = useSession();
   const { data, error, reload, refresh } = useResource(useCallback((signal: AbortSignal) => api.catalog(signal), [api]));
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
@@ -65,7 +67,7 @@ export default function CatalogScreen() {
               return (
                 <Pressable key={`${item.type}-${item.id}`} accessibilityRole="button" accessibilityLabel={item.name} disabled={!item.simple}
                   onPress={() => router.push({ pathname: '/profile/service/[id]', params: { id: item.id } })}
-                  android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={[styles.item, !item.active && styles.inactive]}>
+                  android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={[styles.item, !item.active && styles.inactive]}>
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text style={styles.itemName}>{item.name}</Text>
                     <Text style={styles.meta}>{item.type === 'package' ? `комплекс · операций: ${item.operations.length}` : item.simple ? 'услуга' : `составная · операций: ${item.operations.length}`}{price ? ` · ${duration(price.durationMinutes)}` : ''}</Text>
@@ -93,7 +95,7 @@ export default function CatalogScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   headerAction: { color: colors.primary, fontSize: 16, fontWeight: '800' },
   bleed: { marginHorizontal: -space.l },
   chips: { gap: space.s, paddingHorizontal: space.l },
@@ -105,4 +107,4 @@ const styles = StyleSheet.create({
   inactive: { opacity: 0.6 },
   itemName: { color: colors.text, fontSize: 16, fontWeight: '700' },
   price: { color: colors.text, fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] }
-});
+}));

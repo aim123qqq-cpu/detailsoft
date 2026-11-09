@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { Stack, router, useLocalSearchParams, useNavigation, usePreventRemove } from 'expo-router';
@@ -7,7 +8,7 @@ import { normalizeBodyType, type BodyType } from '@df/shared/carLayouts';
 import type { IntakeFinding, PhotoAsset, WorkOrder } from '@df/types';
 import { pickPhoto } from '@/lib/photo';
 import { useSession } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Inspection } from '@/features/inspection';
 import { Body, Button, Card, Field, Label, Loading, Notice, Screen } from '@/ui';
@@ -27,6 +28,7 @@ export default function IntakeScreen() {
 }
 
 function IntakeForm({ order, vehicleBodyType, title }: { order: WorkOrder; vehicleBodyType?: string; title?: string }) {
+  const styles = useStyles();
   const { api } = useSession();
   const navigation = useNavigation();
   const intake = order.intake;
@@ -130,7 +132,7 @@ function IntakeForm({ order, vehicleBodyType, title }: { order: WorkOrder; vehic
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   titleRow: { flexDirection: 'row', justifyContent: 'space-between' },
   count: { color: colors.muted, fontSize: 13, fontWeight: '700' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
@@ -142,4 +144,4 @@ const styles = StyleSheet.create({
   library: { minHeight: 52, justifyContent: 'center', paddingHorizontal: space.m },
   libraryText: { color: colors.primary, fontSize: 16, fontWeight: '800' },
   summary: { minHeight: 96, paddingTop: 14, textAlignVertical: 'top' }
-});
+}));

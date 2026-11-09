@@ -1,6 +1,6 @@
 import * as WebBrowser from 'expo-web-browser';
 import { useSession } from '@/lib/session';
-import { colors } from '@/lib/theme';
+import { useTheme } from '@/lib/theme';
 import { Body, Button, Card, Screen, Title } from './index';
 
 /**
@@ -8,6 +8,7 @@ import { Body, Button, Card, Screen, Title } from './index';
  * With `noAccess` it is a section the role does not include (the tabs are the same for everyone).
  */
 export function ComingSoon({ title, text, noAccess }: { title: string; text: string; noAccess?: boolean }) {
+  const { colors } = useTheme();
   const { server } = useSession();
   return (
     <Screen>

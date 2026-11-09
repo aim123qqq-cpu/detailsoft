@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import { confirmFailedDuplicate, discardFailed, flush, linkFailedToExisting, retryFailed, syncState, useSyncState } from '@df/offline/sync';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles } from '@/lib/theme';
 
 const plural = (count: number, one: string, few: string, many: string) => {
   const last = count % 10; const lastTwo = count % 100;
@@ -20,6 +21,7 @@ export function useSyncLoop() {
 
 /** Connection and offline-queue status at the top of a screen, as in the web app. */
 export function SyncBanner() {
+  const styles = useStyles();
   const { reachable, syncing, pending, failed } = useSyncState();
   const [busy, setBusy] = useState(false);
   const act = async (action: () => Promise<unknown>) => { setBusy(true); try { await action(); } finally { setBusy(false); } };
@@ -65,6 +67,7 @@ export function SyncBanner() {
 }
 
 function Action({ label, disabled, onPress }: { label: string; disabled: boolean; onPress: () => void }) {
+  const styles = useStyles();
   return (
     <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.action, disabled && { opacity: 0.5 }]}>
       <Text style={styles.actionText}>{label}</Text>
@@ -72,14 +75,14 @@ function Action({ label, disabled, onPress }: { label: string; disabled: boolean
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   banner: { borderRadius: radius.m, padding: space.m, gap: 4 },
-  offline: { backgroundColor: 'rgba(242,193,78,.14)' },
-  failed: { backgroundColor: 'rgba(217,71,64,.16)' },
-  pending: { backgroundColor: 'rgba(255,121,57,.12)', flexDirection: 'row', gap: space.s, alignItems: 'center' },
+  offline: { backgroundColor: colors.tilePeach },
+  failed: { backgroundColor: colors.carTintHi },
+  pending: { backgroundColor: colors.tileSky, flexDirection: 'row', gap: space.s, alignItems: 'center' },
   title: { color: colors.text, fontSize: 15, fontWeight: '800' },
   text: { color: colors.muted, fontSize: 14, lineHeight: 20, flexShrink: 1 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s, marginTop: 4 },
   action: { minHeight: 40, paddingHorizontal: space.m, borderRadius: radius.s, backgroundColor: colors.surfaceRaised, justifyContent: 'center' },
   actionText: { color: colors.text, fontSize: 14, fontWeight: '700' }
-});
+}));

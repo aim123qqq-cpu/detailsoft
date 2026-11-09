@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import { router } from 'expo-router';
 import Constants from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
@@ -7,8 +8,9 @@ import type { SessionContext } from '@df/types';
 import { wipeOfflineData } from '@df/offline/store';
 import { useUnread } from '@/features/notifications';
 import { useSession, useSignedIn } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles, useTheme } from '@/lib/theme';
 import { Body, Button, Card, Label, Notice, Screen, Title } from '@/ui';
+import { Segmented } from '@/features/booking-ui';
 
 const capabilityLabels: [keyof SessionContext['capabilities'], string][] = [
   ['manageCustomers', 'Клиенты и автомобили'], ['manageBookings', 'Записи'], ['manageIntake', 'Приёмка'],
@@ -23,9 +25,11 @@ function signedInWith(actor: SessionContext['actor']) {
   return actor.authProvider === 'max' ? 'Вы вошли через MAX' : actor.authProvider === 'telegram' ? 'Вы вошли через Telegram'
     : actor.authProvider === 'email' ? 'Вы вошли по email' : 'Вы вошли через мессенджер';
 }
-const badges = { telegram: { mark: '✈', color: '#229ed9' }, max: { mark: 'M', color: '#5b4cf0' }, email: { mark: '@', color: '#e8622a' }, other: { mark: '#', color: colors.surfaceRaised } };
+const badges = { telegram: { mark: '✈', color: '#229ed9' }, max: { mark: 'M', color: '#5b4cf0' }, email: { mark: '@', color: '#e8622a' }, other: { mark: '#', color: '#6E7073' } };
 
 export default function ProfileScreen() {
+  const styles = useStyles();
+  const { colors, preference, setPreference } = useTheme();
   const { api, server, signOut } = useSession();
   const session = useSignedIn();
   const { unread } = useUnread();
@@ -70,7 +74,7 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {session.actor.memberId ? <Pressable accessibilityRole="button" onPress={() => router.push('/profile/notifications')} android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.link} testID="notifications-entry">
+      {session.actor.memberId ? <Pressable accessibilityRole="button" onPress={() => router.push('/profile/notifications')} android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={styles.link} testID="notifications-entry">
         <View style={{ flex: 1 }}><Text style={styles.linkLabel}>Уведомления</Text><Text style={styles.linkNote}>{unread ? `Новых: ${unread}` : 'Напоминания, план дня, новости'}</Text></View>
         <Text style={styles.chevron}>›</Text>
       </Pressable> : null}
@@ -78,7 +82,7 @@ export default function ProfileScreen() {
       {management.length ? <View style={styles.group}>
         <Label>Управление центром</Label>
         {management.map((item) => (
-          <Pressable key={item.href} accessibilityRole="button" onPress={() => router.push(item.href)} android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.link}>
+          <Pressable key={item.href} accessibilityRole="button" onPress={() => router.push(item.href)} android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={styles.link}>
             <View style={{ flex: 1 }}><Text style={styles.linkLabel}>{item.title}</Text><Text style={styles.linkNote}>{item.note}</Text></View>
             <Text style={styles.chevron}>›</Text>
           </Pressable>
@@ -96,6 +100,11 @@ export default function ProfileScreen() {
         {granted.map(([key, label]) => <Text key={key} style={styles.capability}>✓  {label}</Text>)}
       </Card>
 
+      <Card>
+        <Label>Тема</Label>
+        <Segmented value={preference} onChange={setPreference} options={[{ value: 'system', label: 'Как в системе' }, { value: 'light', label: 'Светлая' }, { value: 'dark', label: 'Тёмная' }]}/>
+      </Card>
+
       <Card style={styles.account}>
         <View style={styles.accountHead}>
           <View style={[styles.badge, { backgroundColor: badge.color }]}><Text style={styles.badgeText}>{badge.mark}</Text></View>
@@ -110,12 +119,12 @@ export default function ProfileScreen() {
       </Card>
 
       <Pressable accessibilityRole="link" onPress={() => WebBrowser.openBrowserAsync(`${server}/privacy/`, { toolbarColor: colors.ground, controlsColor: colors.primary })}
-        android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.link}>
+        android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={styles.link}>
         <Text style={styles.linkLabel}>Политика обработки данных</Text><Text style={styles.linkValue}>Открыть</Text>
       </Pressable>
       {[['Пользовательское соглашение', '/terms/'], ['Согласие на обработку данных', '/consent/'], ['Лицензии', '/licenses/']].map(([label, path]) => (
         <Pressable key={path} accessibilityRole="link" onPress={() => WebBrowser.openBrowserAsync(`${server}${path}`, { toolbarColor: colors.ground, controlsColor: colors.primary })}
-          android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.link}>
+          android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={styles.link}>
           <Text style={styles.linkLabel}>{label}</Text><Text style={styles.linkValue}>Открыть</Text>
         </Pressable>
       ))}
@@ -125,7 +134,7 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   hero: { flexDirection: 'row', alignItems: 'center', gap: space.l, paddingVertical: space.s },
   avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: colors.primaryInk, fontSize: 24, fontWeight: '800' },
@@ -142,5 +151,5 @@ const styles = StyleSheet.create({
   badge: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   badgeText: { color: '#fff', fontSize: 20, fontWeight: '900' },
   accountTitle: { color: colors.text, fontSize: 17, fontWeight: '800' },
-  version: { color: colors.soft, fontSize: 12, textAlign: 'center', marginTop: space.l }
-});
+  version: { color: colors.faint, fontSize: 12, textAlign: 'center', marginTop: space.l }
+}));

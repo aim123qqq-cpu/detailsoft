@@ -55,12 +55,12 @@ export const CHANNELS = [
 ] as const;
 export const channelLabel = (code: string) => CHANNELS.find((item) => item.code === code)?.label ?? code;
 
-export const bookingStatuses: Record<string, { label: string; tone: 'neutral' | 'accent' | 'ok' | 'warn' }> = {
-  DRAFT: { label: 'Черновик', tone: 'neutral' },
-  CONFIRMED: { label: 'Подтверждена', tone: 'accent' },
-  ARRIVED: { label: 'Клиент приехал', tone: 'ok' },
-  CANCELLED: { label: 'Отменена', tone: 'neutral' },
-  NO_SHOW: { label: 'Не приехал', tone: 'warn' }
+export const bookingStatuses: Record<string, { label: string; tone: 'wait' | 'work' | 'past' }> = {
+  DRAFT: { label: 'Черновик', tone: 'past' },
+  CONFIRMED: { label: 'Подтверждена', tone: 'wait' },
+  ARRIVED: { label: 'Клиент приехал', tone: 'work' },
+  CANCELLED: { label: 'Отменена', tone: 'past' },
+  NO_SHOW: { label: 'Не приехал', tone: 'past' }
 };
 
 // Dates of bookings are shown in the center's time zone (the phone may be set to another one).

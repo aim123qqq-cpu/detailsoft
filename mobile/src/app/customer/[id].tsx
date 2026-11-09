@@ -1,16 +1,19 @@
 import { useCallback, useState } from 'react';
-import { Alert, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { VehicleRow } from '@/features/booking-ui';
 import { useBookingDraft } from '@/lib/booking-draft';
 import { bookingStatuses, dayKey, dayTitle, money, orderStatuses, shortDate, timeOf, vehicleName, visits } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles, useTheme } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Card, Label, Loading, Notice, Pill, Screen } from '@/ui';
 
 /** A customer: contacts, cars (each can be booked), bookings and orders. Editing stays in the web version. */
 export default function CustomerScreen() {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { api } = useSession();
   const session = useSignedIn();
@@ -106,10 +109,11 @@ export default function CustomerScreen() {
 }
 
 function Stat({ label, value }: { label: string; value: number }) {
+  const styles = useStyles();
   return <View style={styles.stat}><Text style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></View>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   name: { color: colors.text, fontSize: 24, fontWeight: '800' },
   phone: { color: colors.primary, fontSize: 17, fontWeight: '700' },
   meta: { color: colors.muted, fontSize: 14 },
@@ -121,4 +125,4 @@ const styles = StyleSheet.create({
   item: { backgroundColor: colors.surface, borderRadius: radius.m, padding: space.m, gap: 2 },
   itemHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   itemTitle: { color: colors.text, fontSize: 16, fontWeight: '700' }
-});
+}));

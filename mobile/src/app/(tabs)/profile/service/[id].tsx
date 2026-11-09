@@ -1,11 +1,12 @@
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Text, TextInput } from '@/ui/text';
 import * as Haptics from 'expo-haptics';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import type { ManagedCatalog, ManagedCatalogItem } from '@df/types';
 import { DurationWheel, durationText } from '@/features/duration-wheel';
 import { useSession } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles, useTheme } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Card, Chip, Field, Label, Loading, Notice, Screen } from '@/ui';
 
@@ -27,6 +28,8 @@ export default function ServiceScreen() {
 }
 
 function ServiceForm({ item, catalog }: { item: ManagedCatalogItem | null; catalog: ManagedCatalog }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const { api } = useSession();
   const classes = catalog.vehicleClasses.filter((value) => value !== '*');
   // Seeded services may have class prices only: the first class then serves as the base.
@@ -105,7 +108,7 @@ function ServiceForm({ item, catalog }: { item: ManagedCatalogItem | null; catal
           <View key={row.tenantClass} style={styles.classBlock}>
             <View style={styles.classRow}>
               <Text style={styles.className}>{row.tenantClass}</Text>
-              <TextInput value={row.amount} placeholder={amount || '₽'} placeholderTextColor={colors.soft} keyboardType="number-pad" accessibilityLabel={`${row.tenantClass}: цена`}
+              <TextInput value={row.amount} placeholder={amount || '₽'} placeholderTextColor={colors.faint} keyboardType="number-pad" accessibilityLabel={`${row.tenantClass}: цена`}
                 onChangeText={(value) => setRows(rows.map((entry, at) => at === index ? { ...entry, amount: digits(value) } : entry))} style={styles.small}/>
               <Text style={styles.unit}>₽</Text>
               <Pressable accessibilityRole="button" accessibilityLabel={`${row.tenantClass}: время`} accessibilityState={{ expanded: openWheel === row.tenantClass }} onPress={() => setOpenWheel(openWheel === row.tenantClass ? '' : row.tenantClass)} style={styles.timeButton}>
@@ -129,6 +132,8 @@ function ServiceForm({ item, catalog }: { item: ManagedCatalogItem | null; catal
 }
 
 function Toggle({ title, note, value, onChange }: { title: string; note: string; value: boolean; onChange: (value: boolean) => void }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   return (
     <View style={styles.toggle}>
       <View style={{ flex: 1 }}><Text style={styles.toggleTitle}>{title}</Text><Text style={styles.unit}>{note}</Text></View>
@@ -137,7 +142,7 @@ function Toggle({ title, note, value, onChange }: { title: string; note: string;
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
   multiline: { minHeight: 80, paddingTop: 14, textAlignVertical: 'top' },
   classBlock: { gap: space.s },
@@ -149,4 +154,4 @@ const styles = StyleSheet.create({
   unit: { color: colors.muted, fontSize: 13 },
   toggle: { flexDirection: 'row', alignItems: 'center', gap: space.m, backgroundColor: colors.surface, borderRadius: radius.m, padding: space.m },
   toggleTitle: { color: colors.text, fontSize: 16, fontWeight: '700' }
-});
+}));

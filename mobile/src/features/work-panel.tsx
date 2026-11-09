@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import * as Haptics from 'expo-haptics';
 import type { WorkOrder } from '@df/types';
 import { money } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Card, Chip, Field, Label, Notice } from '@/ui';
 
@@ -15,6 +16,7 @@ const PAUSE_REASONS = ['Ждём сушки', 'Нет материала', 'Пе
  * pause with a reason, and completion. Every answer from the server replaces the order on screen.
  */
 export function WorkPanel({ order, onChanged }: { order: WorkOrder; onChanged: (order: WorkOrder) => void }) {
+  const styles = useStyles();
   const { api } = useSession();
   const session = useSignedIn();
   const [busy, setBusy] = useState<string | null>(null);
@@ -72,7 +74,7 @@ export function WorkPanel({ order, onChanged }: { order: WorkOrder; onChanged: (
         const isDone = operation.status === 'DONE';
         return (
           <Pressable key={operation.id} disabled={!editable || busy !== null} accessibilityRole="checkbox" accessibilityState={{ checked: isDone, disabled: !editable }}
-            android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={[styles.operation, isDone && styles.operationDone]} testID={`operation-${operation.id}`}
+            android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={[styles.operation, isDone && styles.operationDone]} testID={`operation-${operation.id}`}
             onPress={async () => {
               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               await act(`op-${operation.id}`, () => api.updateOperation(order.id, operation.id, isDone ? 'PENDING' : 'DONE'));
@@ -117,6 +119,7 @@ export function WorkPanel({ order, onChanged }: { order: WorkOrder; onChanged: (
 }
 
 function AssignMaster({ order, busy, act, error }: { order: WorkOrder; busy: string | null; act: (key: string, action: () => Promise<WorkOrder>) => Promise<boolean>; error: string }) {
+  const styles = useStyles();
   const { api } = useSession();
   const { data, error: loadError } = useResource(useCallback((signal: AbortSignal) => api.listMasters(signal), [api]));
   const masters = data?.items ?? null;
@@ -128,7 +131,7 @@ function AssignMaster({ order, busy, act, error }: { order: WorkOrder; busy: str
       {masters?.length === 0 ? <Body muted>В команде нет мастеров. Добавьте сотрудника с ролью «Мастер» в веб-версии: Профиль → Команда.</Body> : null}
       {masters?.map((master) => (
         <Pressable key={master.id} accessibilityRole="button" disabled={busy !== null} onPress={() => act(`assign-${master.id}`, () => api.assignMaster(order.id, master.id))}
-          android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={styles.master} testID={`assign-${master.id}`}>
+          android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={styles.master} testID={`assign-${master.id}`}>
           <Text style={styles.masterName}>{master.displayName}</Text>
           <Text style={styles.operationMeta}>{busy === `assign-${master.id}` ? 'Назначаем…' : `в работе: ${master.activeOrders}`}</Text>
         </Pressable>
@@ -137,14 +140,14 @@ function AssignMaster({ order, busy, act, error }: { order: WorkOrder; busy: str
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   count: { color: colors.text, fontSize: 16, fontWeight: '800', fontVariant: ['tabular-nums'] },
   track: { height: 6, borderRadius: 3, backgroundColor: colors.surfaceRaised, overflow: 'hidden' },
   fill: { height: 6, borderRadius: 3, backgroundColor: colors.primary },
   operation: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: space.m, paddingHorizontal: space.m, borderRadius: radius.m, backgroundColor: colors.surfaceRaised, overflow: 'hidden' },
-  operationDone: { backgroundColor: 'rgba(54,201,150,.1)' },
-  box: { width: 28, height: 28, borderRadius: 8, borderWidth: 2, borderColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
+  operationDone: { backgroundColor: colors.tileSage },
+  box: { width: 28, height: 28, borderRadius: 8, borderWidth: 2, borderColor: colors.faint, alignItems: 'center', justifyContent: 'center' },
   boxDone: { backgroundColor: colors.ok, borderColor: colors.ok },
   tick: { color: colors.okInk, fontSize: 16, fontWeight: '900' },
   operationName: { color: colors.text, fontSize: 16, fontWeight: '700' },
@@ -153,4 +156,4 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: space.s },
   master: { minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.l, borderRadius: radius.m, backgroundColor: colors.surfaceRaised, overflow: 'hidden' },
   masterName: { color: colors.text, fontSize: 16, fontWeight: '700' }
-});
+}));

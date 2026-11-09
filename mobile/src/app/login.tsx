@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Image, Linking, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
+import { ActivityIndicator, AppState, Image, Linking, Pressable, StyleSheet, View, type TextInputProps } from 'react-native';
+import { Text, TextInput } from '@/ui/text';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { LEGAL_VERSION, legalLinks } from '@df/legal';
@@ -7,7 +8,7 @@ import type { AuthProvider, LoginMembership, LoginRequest, LoginStatus } from '@
 import { ApiError, createApi } from '@/lib/api';
 import { LegalChecks, type LegalState } from '@/features/legal-checks';
 import { useSession } from '@/lib/session';
-import { colors } from '@/lib/theme';
+import { makeStyles, useTheme } from '@/lib/theme';
 import { Notice, Screen } from '@/ui';
 
 const closedText: Partial<Record<LoginStatus['status'], string>> = {
@@ -22,6 +23,7 @@ const telegramFirst = (items: AuthProvider[]) => [...items].sort((left, right) =
 
 /** A wide action of these screens: the main one is filled, the others outlined. */
 function Action({ title, mark = '→', tone = 'primary', busy, disabled, onPress, testID }: { title: string; mark?: string; tone?: 'primary' | 'secondary'; busy?: boolean; disabled?: boolean; onPress: () => void; testID?: string }) {
+  const styles = useStyles();
   const primary = tone === 'primary';
   return (
     <Pressable accessibilityRole="button" accessibilityState={{ disabled: Boolean(disabled || busy), busy: Boolean(busy) }} disabled={disabled || busy} onPress={onPress} testID={testID}
@@ -34,10 +36,13 @@ function Action({ title, mark = '→', tone = 'primary', busy, disabled, onPress
 }
 
 function TextAction({ title, onPress, testID }: { title: string; onPress: () => void; testID?: string }) {
+  const styles = useStyles();
   return <Pressable accessibilityRole="button" hitSlop={6} onPress={onPress} testID={testID} style={styles.textAction}><Text style={styles.textActionText}>{title}</Text></Pressable>;
 }
 
 function AuthField({ label, error, ...props }: TextInputProps & { label: string; error?: string }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   return (
     <View>
       <Text style={styles.fieldLabel}>{label}</Text>
@@ -59,6 +64,8 @@ function Countdown({ expiresAt }: { expiresAt: string }) {
 }
 
 export default function LoginScreen() {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const { api, server, signIn } = useSession();
   // "signup": a person without a center creates one and becomes its owner.
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -325,7 +332,7 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   screen: { flexGrow: 1, gap: 0, backgroundColor: '#0b0e10', paddingHorizontal: 28, paddingTop: 52, paddingBottom: 24 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   logo: { width: 28, height: 28 },
@@ -376,4 +383,4 @@ const styles = StyleSheet.create({
   footNote: { color: '#80898b', fontSize: 13, lineHeight: 19, marginTop: 10 },
   legal: { color: '#80898b', fontSize: 12, lineHeight: 18, marginTop: 18 },
   legalLink: { color: '#80898b', textDecorationLine: 'underline' }
-});
+}));

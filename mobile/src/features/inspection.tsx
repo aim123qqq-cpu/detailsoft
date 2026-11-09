@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Text } from '@/ui/text';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BODY_TYPES, QUICK_NOTES, carLayout, type BodyType, type LayoutElement } from '@df/shared/carLayouts';
 import type { IntakeFinding, PhotoAsset } from '@df/types';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles, useTheme } from '@/lib/theme';
 import { Body, Button, Card, Chip, Field, Label, Notice } from '@/ui';
 import { CarDiagram, SEVERITY, findingMarks } from './car-diagram';
 
@@ -28,6 +29,7 @@ export function Inspection({ bodyType, onBodyType, findings, onFindings, photos,
   photoError: string;
   onPhoto: (zone: string) => void;
 }) {
+  const styles = useStyles();
   const { width } = useWindowDimensions();
   const layout = useMemo(() => carLayout(bodyType), [bodyType]);
   const ordered = useMemo(() => [...layout.elements].sort((a, b) => a.number - b.number), [layout]);
@@ -109,6 +111,8 @@ function ElementSheet({ element, onClose, onAdd, photos, photoBusy, photoError, 
   photoError: string;
   onPhoto: (zone: string) => void;
 }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [note, setNote] = useState('');
   const [severity, setSeverity] = useState<IntakeFinding['severity']>('MEDIUM');
@@ -149,7 +153,7 @@ function ElementSheet({ element, onClose, onAdd, photos, photoBusy, photoError, 
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   bleed: { marginHorizontal: -space.l },
   chips: { gap: space.s, paddingHorizontal: space.l },
   stage: { alignItems: 'center', paddingVertical: space.xl },
@@ -186,4 +190,4 @@ const styles = StyleSheet.create({
   photoRow: { flexDirection: 'row', alignItems: 'center', gap: space.s },
   photoButton: { minWidth: 112, backgroundColor: colors.surface },
   thumb: { width: 52, height: 52, borderRadius: radius.s }
-});
+}));

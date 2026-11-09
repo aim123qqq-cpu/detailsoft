@@ -1,11 +1,12 @@
 import { useCallback, useState } from 'react';
-import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import { Stack, router, useFocusEffect } from 'expo-router';
 import type { BookingListItem } from '@df/types';
 import { BookingRow, DateStrip, Segmented } from '@/features/booking-ui';
 import { addDays, dayKey, dayTitle, duration } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
-import { colors, space } from '@/lib/theme';
+import { space, makeStyles, useTheme } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Label, Loading, Notice, Screen } from '@/ui';
 import { ComingSoon } from '@/ui/coming-soon';
@@ -20,6 +21,8 @@ export default function BookingsScreen() {
 }
 
 function Schedule() {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const { api } = useSession();
   const session = useSignedIn();
   const timeZone = session.tenant.timezone;
@@ -109,7 +112,7 @@ function Schedule() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   headerAction: { color: colors.primary, fontSize: 16, fontWeight: '800' },
   group: { gap: space.s },
   dayTitle: { color: colors.text, fontSize: 18, fontWeight: '800', marginTop: space.s, textTransform: 'capitalize' },
@@ -118,4 +121,4 @@ const styles = StyleSheet.create({
   weekTitle: { color: colors.text, fontSize: 17, fontWeight: '800', textTransform: 'capitalize' },
   arrow: { color: colors.primary, fontSize: 30, lineHeight: 32, paddingHorizontal: space.m },
   emptyDay: { textAlign: 'center', marginTop: space.l }
-});
+}));

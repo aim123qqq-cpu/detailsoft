@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '@/ui/text';
 import { router } from 'expo-router';
 import type { Customer, Vehicle } from '@df/types';
 import { Segmented, VehicleRow } from '@/features/booking-ui';
 import { type DraftCustomer, type DraftVehicle, useBookingDraft } from '@/lib/booking-draft';
 import { CHANNELS, formatPhoneInput, visits } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
-import { colors, space } from '@/lib/theme';
+import { space, makeStyles, useTheme } from '@/lib/theme';
 import { Body, Button, Card, Chip, Field, Label, Notice, Pill, Screen } from '@/ui';
 import { ComingSoon } from '@/ui/coming-soon';
 
@@ -22,6 +23,8 @@ export default function NewBookingScreen() {
 
 /** Step 1: the channel, then the customer by phone (or the car by plate), then one of their cars. */
 function Search() {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const { api } = useSession();
   const { draft, update, reset } = useBookingDraft();
   const [mode, setMode] = useState<'phone' | 'plate'>('phone');
@@ -129,11 +132,11 @@ function Search() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   bleed: { marginHorizontal: -space.l },
   chips: { gap: space.s, paddingHorizontal: space.l },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.m },
   name: { color: colors.text, fontSize: 19, fontWeight: '800', flexShrink: 1 },
   open: { color: colors.muted, fontSize: 24 },
   meta: { color: colors.muted, fontSize: 14 }
-});
+}));

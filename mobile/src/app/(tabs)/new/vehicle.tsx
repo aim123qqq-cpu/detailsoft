@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import { router } from 'expo-router';
 import { carVariants } from '@df/shared/carCatalog';
 import { BODY_TYPES } from '@df/shared/carLayouts';
@@ -8,7 +9,7 @@ import { Segmented } from '@/features/booking-ui';
 import { CarPicker } from '@/features/car-picker';
 import { useBookingDraft } from '@/lib/booking-draft';
 import { useSession } from '@/lib/session';
-import { colors, space } from '@/lib/theme';
+import { space, makeStyles } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Card, Chip, Field, Label, Notice, Screen } from '@/ui';
 
@@ -16,6 +17,7 @@ const bodyLabel = (code: string) => BODY_TYPES.find((item) => item.code === code
 
 /** Step 1b: a new car for the customer, from the model catalog or typed in by hand. */
 export default function NewVehicleScreen() {
+  const styles = useStyles();
   const { api } = useSession();
   const { draft, update } = useBookingDraft();
   const [entry, setEntry] = useState<'catalog' | 'manual'>('catalog');
@@ -109,7 +111,7 @@ export default function NewVehicleScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   owner: { color: colors.text, fontSize: 18, fontWeight: '800' },
   meta: { color: colors.muted, fontSize: 14 },
   pair: { flexDirection: 'row', gap: space.m },
@@ -117,4 +119,4 @@ const styles = StyleSheet.create({
   bleed: { marginHorizontal: -space.l },
   chips: { gap: space.s, paddingHorizontal: space.l },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s }
-});
+}));

@@ -10,7 +10,7 @@ import { documentHtml } from '@/features/document-html';
 import { DOCUMENT_TITLES, DocumentPaper } from '@/features/document-paper';
 import { SignaturePad } from '@/features/signature-pad';
 import { useSession } from '@/lib/session';
-import { colors, space } from '@/lib/theme';
+import { space, makeStyles } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Field, Label, Loading, Notice, Screen } from '@/ui';
 
@@ -23,6 +23,7 @@ export default function DocumentScreen() {
 }
 
 function Signer({ orderId, type, defaultSigner }: { orderId: string; type: OrderDocumentType; defaultSigner: string }) {
+  const styles = useStyles();
   const { api } = useSession();
   const preview = useResource(useCallback((signal: AbortSignal) => api.previewDocument(orderId, type, signal), [api, orderId, type]));
   const [signerName, setSignerName] = useState(defaultSigner);
@@ -99,7 +100,7 @@ function Viewer({ orderId, documentId }: { orderId: string; documentId: string }
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.ground },
   content: { padding: space.l, paddingBottom: space.xxl, gap: space.m }
-});
+}));

@@ -1,17 +1,19 @@
 import { useCallback, useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import * as Haptics from 'expo-haptics';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import type { BookingListItem } from '@df/types';
 import { DateStrip, SlotGrid, startIntake } from '@/features/booking-ui';
 import { bookingStatuses, channelLabel, dayKey, dayTitle, duration, money, timeOf, vehicleName } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Card, Label, Notice, Pill, Screen } from '@/ui';
 
 /** One booking: who and what, then arrival (intake), moving, cancelling or a no-show. */
 export default function BookingScreen() {
+  const styles = useStyles();
   const params = useLocalSearchParams<{ id: string; item: string }>();
   const { api } = useSession();
   const session = useSignedIn();
@@ -119,10 +121,11 @@ export default function BookingScreen() {
 }
 
 function Fact({ label, value }: { label: string; value: string }) {
+  const styles = useStyles();
   return <View style={styles.fact}><Text style={styles.factLabel}>{label}</Text><Text style={styles.factValue}>{value}</Text></View>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   name: { color: colors.text, fontSize: 22, fontWeight: '800', marginTop: space.s },
   phone: { color: colors.primary, fontSize: 17, fontWeight: '700' },
@@ -139,4 +142,4 @@ const styles = StyleSheet.create({
   excluded: { color: colors.muted },
   lineAmount: { color: colors.text, fontSize: 16, fontVariant: ['tabular-nums'] },
   actions: { gap: space.s }
-});
+}));

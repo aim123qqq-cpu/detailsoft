@@ -1,11 +1,12 @@
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text, TextInput } from '@/ui/text';
 import * as Haptics from 'expo-haptics';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import type { Booking, EstimateLineInput, WorkOrder } from '@df/types';
 import { money } from '@/lib/format';
 import { useSession } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles, useTheme } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Card, Field, Label, Loading, Notice, Screen } from '@/ui';
 
@@ -60,6 +61,8 @@ function initialLines(order: WorkOrder, booking: Booking | null): Line[] {
 }
 
 function EstimateForm({ order, booking, title }: { order: WorkOrder; booking: Booking | null; title?: string }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const { api } = useSession();
   const [lines, setLines] = useState<Line[]>(() => initialLines(order, booking));
   const [customName, setCustomName] = useState('');
@@ -109,7 +112,7 @@ function EstimateForm({ order, booking, title }: { order: WorkOrder; booking: Bo
             </View>
             <View style={styles.amountBox}>
               <TextInput value={line.amount} onChangeText={(value) => patch(line.key, { amount: value.replace(/[^\d]/g, '') })} keyboardType="number-pad"
-                placeholder="0" placeholderTextColor={colors.soft} editable={line.included} accessibilityLabel={`Сумма: ${line.name}`}
+                placeholder="0" placeholderTextColor={colors.faint} editable={line.included} accessibilityLabel={`Сумма: ${line.name}`}
                 style={styles.amountInput} selectionColor={colors.primary}/>
               <Text style={styles.rub}>₽</Text>
             </View>
@@ -133,7 +136,7 @@ function EstimateForm({ order, booking, title }: { order: WorkOrder; booking: Bo
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   list: { gap: space.s },
   line: { flexDirection: 'row', alignItems: 'center', gap: space.m, backgroundColor: colors.surface, borderRadius: radius.l, padding: space.m },
   off: { opacity: 0.55 },
@@ -142,11 +145,11 @@ const styles = StyleSheet.create({
   checkMark: { color: colors.primaryInk, fontSize: 14, fontWeight: '900' },
   lineBody: { flex: 1, gap: 2 },
   lineName: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  origin: { color: colors.soft, fontSize: 13 },
+  origin: { color: colors.faint, fontSize: 13 },
   amountBox: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surfaceRaised, borderRadius: radius.s, paddingHorizontal: space.s },
   amountInput: { minWidth: 72, minHeight: 44, color: colors.text, fontSize: 16, fontWeight: '700', textAlign: 'right', fontVariant: ['tabular-nums'] },
   rub: { color: colors.muted, fontSize: 15 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   totalLabel: { color: colors.muted, fontSize: 15, fontWeight: '700' },
   total: { color: colors.text, fontSize: 24, fontWeight: '800', fontVariant: ['tabular-nums'] }
-});
+}));

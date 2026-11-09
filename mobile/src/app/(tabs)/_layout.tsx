@@ -1,46 +1,47 @@
-import { NativeTabs } from 'expo-router/native-tabs';
+import { View } from 'react-native';
+import { usePathname } from 'expo-router';
+import { TabList, TabSlot, TabTrigger, Tabs } from 'expo-router/ui';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LegalGate } from '@/features/legal-checks';
 import { NotificationsProvider, useUnread } from '@/features/notifications';
 import { useSignedIn } from '@/lib/session';
-import { colors } from '@/lib/theme';
+import { useTheme } from '@/lib/theme';
+import { TabBar, TabBarSpace, tabBarHeight } from '@/ui/tab-bar';
 
-// The same five places for every role, as in the web app (an unavailable section says so).
-export const unstable_settings = { initialRouteName: 'orders' };
+// The same places for every role (an unavailable section says so). Statistics opens from the home screen.
+export const unstable_settings = { initialRouteName: 'home' };
+
+// The floating navigation shows on the sections' own screens; a card or a step-by-step flow has its own bottom actions.
+const WITH_BAR = new Set(['/', '/home', '/bookings', '/orders', '/profile', '/profile/team', '/analytics']);
 
 export default function TabsLayout() {
   const session = useSignedIn();
   // A person who has not accepted this edition of the agreement and the consent sees them before any data.
   if (session.actor.legalAccepted === false) return <LegalGate centerName={session.tenant.name}/>;
-  return <NotificationsProvider><Tabs/></NotificationsProvider>;
+  return <NotificationsProvider><SectionTabs/></NotificationsProvider>;
 }
 
-function Tabs() {
-  // Unread notifications show on the profile tab, where the feed is.
+function SectionTabs() {
+  // Unread notifications show on the profile, where the feed is.
   const { unread } = useUnread();
+  const { colors } = useTheme();
+  const pathname = usePathname();
+  const insets = useSafeAreaInsets();
+  const withBar = WITH_BAR.has(pathname);
   return (
-    <NativeTabs backgroundColor={colors.ground} tintColor={colors.primary} iconColor={{ default: colors.muted, selected: colors.primary }}
-      labelStyle={{ default: { color: colors.muted }, selected: { color: colors.primary } }} indicatorColor="rgba(255,121,57,.16)" labelVisibilityMode="labeled">
-      <NativeTabs.Trigger name="analytics">
-        <NativeTabs.Trigger.Icon sf="chart.bar" md="bar_chart"/>
-        <NativeTabs.Trigger.Label>Статистика</NativeTabs.Trigger.Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="bookings">
-        <NativeTabs.Trigger.Icon sf="calendar" md="calendar_month"/>
-        <NativeTabs.Trigger.Label>Записи</NativeTabs.Trigger.Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="new">
-        <NativeTabs.Trigger.Icon sf="plus.circle.fill" md="add_circle"/>
-        <NativeTabs.Trigger.Label>Новая</NativeTabs.Trigger.Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="orders">
-        <NativeTabs.Trigger.Icon sf="doc.text" md="assignment"/>
-        <NativeTabs.Trigger.Label>Заказы</NativeTabs.Trigger.Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="profile">
-        <NativeTabs.Trigger.Icon sf="person.crop.circle" md="account_circle"/>
-        <NativeTabs.Trigger.Label>Профиль</NativeTabs.Trigger.Label>
-        {unread > 0 ? <NativeTabs.Trigger.Badge>{unread > 9 ? '9+' : String(unread)}</NativeTabs.Trigger.Badge> : null}
-      </NativeTabs.Trigger>
-    </NativeTabs>
+    <Tabs style={{ flex: 1, backgroundColor: colors.ground }}>
+      <TabBarSpace value={withBar ? tabBarHeight(insets.bottom) : 0}>
+        <View style={{ flex: 1 }}><TabSlot/></View>
+      </TabBarSpace>
+      {withBar ? <TabBar badges={{ profile: unread }}/> : null}
+      <TabList style={{ display: 'none' }}>
+        <TabTrigger name="home" href="/home"/>
+        <TabTrigger name="bookings" href="/bookings"/>
+        <TabTrigger name="new" href="/new"/>
+        <TabTrigger name="orders" href="/orders"/>
+        <TabTrigger name="profile" href="/profile"/>
+        <TabTrigger name="analytics" href="/analytics"/>
+      </TabList>
+    </Tabs>
   );
 }

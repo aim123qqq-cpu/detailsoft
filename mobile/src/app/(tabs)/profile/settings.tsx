@@ -1,12 +1,13 @@
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import * as Haptics from 'expo-haptics';
 import { Stack } from 'expo-router';
 import type { CenterSettings } from '@df/types';
 import { RemindersForm } from '@/features/reminders-form';
 import { RequisitesForm } from '@/features/requisites-form';
 import { useSession } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Chip, Label, Loading, Notice, Screen } from '@/ui';
 
@@ -25,6 +26,7 @@ export default function SettingsScreen() {
 }
 
 function SettingsForm({ settings }: { settings: CenterSettings }) {
+  const styles = useStyles();
   const { api } = useSession();
   const [days, setDays] = useState(settings.workingDays);
   const [open, setOpen] = useState(toMinutes(settings.openTime));
@@ -93,6 +95,7 @@ function SettingsForm({ settings }: { settings: CenterSettings }) {
 }
 
 function Stepper({ label, value, onMinus, onPlus }: { label?: string; value: string; onMinus: () => void; onPlus: () => void }) {
+  const styles = useStyles();
   return (
     <View style={styles.stepperBox}>
       {label ? <Text style={styles.note}>{label}</Text> : null}
@@ -105,14 +108,14 @@ function Stepper({ label, value, onMinus, onPlus }: { label?: string; value: str
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   days: { flexDirection: 'row', gap: 6 },
   day: { flex: 1, minHeight: 48, borderRadius: radius.m, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
   dayOn: { backgroundColor: colors.primary },
   dayText: { color: colors.muted, fontSize: 15, fontWeight: '800' },
   dayTextOn: { color: colors.primaryInk },
   hours: { flexDirection: 'row', gap: space.m },
-  zone: { color: colors.soft, fontSize: 13 },
+  zone: { color: colors.faint, fontSize: 13 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
   capacity: { flexDirection: 'row', alignItems: 'center', gap: space.m, backgroundColor: colors.surface, borderRadius: radius.l, padding: space.l },
   title: { color: colors.text, fontSize: 16, fontWeight: '700' },
@@ -122,4 +125,4 @@ const styles = StyleSheet.create({
   stepButton: { width: 44, height: 44, borderRadius: radius.s, backgroundColor: colors.surfaceRaised, alignItems: 'center', justifyContent: 'center' },
   stepSign: { color: colors.text, fontSize: 22, fontWeight: '700' },
   stepValue: { color: colors.text, fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'], paddingHorizontal: space.s }
-});
+}));

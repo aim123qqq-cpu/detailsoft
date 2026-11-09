@@ -1,20 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Text } from '@/ui/text';
 import { router } from 'expo-router';
 import type { AppNotification, NotificationPrefs } from '@df/types';
 import { useUnread } from '@/features/notifications';
 import { useSession } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles, useTheme, type Palette } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
 import { Body, Button, Card, Chip, Field, Label, Loading, Notice, Screen } from '@/ui';
 
 // Stored as SQLite UTC time without a zone.
 const parseTime = (value: string) => new Date(value.includes('T') ? value : `${value.replace(' ', 'T')}Z`);
 const when = (value: string) => parseTime(value).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const dot: Record<AppNotification['kind'], string> = { booking_reminder: colors.primary, day_plan: colors.ok, broadcast: '#6aa8ff' };
+const dotOf = (colors: Palette): Record<AppNotification['kind'], string> => ({ booking_reminder: colors.accent, day_plan: colors.ok, broadcast: '#3987E5' });
 
 /** The member's feed: reminders, the plan of the day, messages from DetailFlow; and what they want to get. */
 export default function NotificationsScreen() {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const { api } = useSession();
   const { markedRead } = useUnread();
   const feed = useResource(useCallback((signal: AbortSignal) => api.notifications(signal), [api]));
@@ -43,8 +46,8 @@ export default function NotificationsScreen() {
       {feed.data && !feed.data.items.length ? <Body muted>Уведомлений пока нет. Здесь появятся напоминания о записях, план дня и новости DetailFlow.</Body> : null}
       {feed.data?.items.map((item) => (
         <Pressable key={item.id} accessibilityRole="button" disabled={!item.link?.startsWith('/bookings')} onPress={() => router.navigate('/bookings')}
-          android_ripple={{ color: 'rgba(255,255,255,.06)' }} style={[styles.item, !item.read && styles.unread]} testID="notification">
-          <View style={[styles.dot, { backgroundColor: dot[item.kind] }]}/>
+          android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={[styles.item, !item.read && styles.unread]} testID="notification">
+          <View style={[styles.dot, { backgroundColor: dotOf(colors)[item.kind] }]}/>
           <View style={styles.copy}>
             <Text style={styles.title}>{item.title}</Text>
             {item.body ? <Text style={styles.body}>{item.body}</Text> : null}
@@ -76,6 +79,7 @@ export default function NotificationsScreen() {
 
 /** A survey from DetailFlow answered right in the feed: one choice, a rating, a comment — once. */
 function SurveyAnswer({ item, onAnswered }: { item: AppNotification; onAnswered: () => void }) {
+  const styles = useStyles();
   const { api } = useSession();
   const [option, setOption] = useState<number | null>(null);
   const [rating, setRating] = useState<number | null>(null);
@@ -103,16 +107,16 @@ function SurveyAnswer({ item, onAnswered }: { item: AppNotification; onAnswered:
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   survey: { gap: space.s, marginTop: space.s },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
   done: { color: colors.ok, fontSize: 14, fontWeight: '700', marginTop: space.xs },
   item: { flexDirection: 'row', gap: space.m, padding: space.m, borderRadius: radius.l, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
-  unread: { borderColor: 'rgba(255,121,57,.45)', backgroundColor: 'rgba(255,121,57,.06)' },
+  unread: { borderColor: colors.accent, backgroundColor: colors.tilePeach },
   dot: { width: 10, height: 10, borderRadius: 5, marginTop: 6 },
   copy: { flex: 1, gap: 2 },
   title: { color: colors.text, fontSize: 16, fontWeight: '700' },
   body: { color: colors.text, fontSize: 15, lineHeight: 21, opacity: 0.85 },
   time: { color: colors.muted, fontSize: 13 },
   toggle: { flexDirection: 'row', alignItems: 'center', gap: space.m, paddingVertical: space.xs }
-});
+}));

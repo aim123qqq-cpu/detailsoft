@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import * as WebBrowser from 'expo-web-browser';
 import { LEGAL_VERSION, legalLinks } from '@df/legal';
 import { useSession } from '@/lib/session';
-import { colors, radius, space } from '@/lib/theme';
+import { radius, space, makeStyles, useTheme } from '@/lib/theme';
 import { Body, Button, Notice, Screen, Title } from '@/ui';
 
 export type LegalState = { terms: boolean; consent: boolean };
@@ -13,6 +14,8 @@ export type LegalState = { terms: boolean; consent: boolean };
  * since 1 September 2025 the consent is a document of its own (152-FZ art. 9). Nothing is pre-ticked.
  */
 export function LegalChecks({ value, onChange }: { value: LegalState; onChange: (next: LegalState) => void }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
   const { server } = useSession();
   const open = (path: string) => WebBrowser.openBrowserAsync(`${server}${path}`, { toolbarColor: colors.ground, controlsColor: colors.primary });
   const row = (key: keyof LegalState, before: string, link: string, path: string, testID: string) => (
@@ -56,7 +59,7 @@ export function LegalGate({ centerName }: { centerName: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((colors) => StyleSheet.create({
   checks: { gap: space.m },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: space.m },
   box: { width: 26, height: 26, borderRadius: radius.s, borderWidth: 2, borderColor: colors.muted, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
@@ -65,4 +68,4 @@ const styles = StyleSheet.create({
   text: { flex: 1, color: colors.text, fontSize: 15, lineHeight: 22 },
   link: { color: colors.primary, textDecorationLine: 'underline' },
   note: { color: colors.muted, fontSize: 13, lineHeight: 19 }
-});
+}));

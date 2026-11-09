@@ -1,12 +1,13 @@
 import { Stack } from 'expo-router';
-import { colors } from '@/lib/theme';
+import { useStackOptions } from '@/ui/stack';
 
 export const unstable_settings = { initialRouteName: 'index' };
 
 /** New booking, step by step: client and vehicle, services, time, done. */
 export default function NewStack() {
+  const options = useStackOptions();
   return (
-    <Stack screenOptions={{ headerStyle: { backgroundColor: colors.ground }, headerTintColor: colors.text, headerShadowVisible: false, contentStyle: { backgroundColor: colors.ground } }}>
+    <Stack screenOptions={options}>
       <Stack.Screen name="index" options={{ title: 'Новая запись' }}/>
       <Stack.Screen name="vehicle" options={{ title: 'Новый автомобиль' }}/>
       <Stack.Screen name="services" options={{ title: 'Услуги' }}/>
