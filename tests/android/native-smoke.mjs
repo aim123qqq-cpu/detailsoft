@@ -534,7 +534,7 @@ try {
   await tap('Профиль');
   await waitFor('Мария Орлова');
   // The feed and what to get: an employee has no reminders yet, the switches are there.
-  await tap('Уведомления');
+  await tap(/^Уведомления/);
   await waitFor('Что присылать мне', { timeout: 20_000 });
   // The survey from DetailFlow is answered right in the feed, once.
   await waitFor(/Удобно ли записывать клиентов/, { timeout: 20_000 });
