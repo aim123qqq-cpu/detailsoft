@@ -111,6 +111,10 @@ test('overview returns tenant-scoped operational metrics without treating estima
     { status: 'APPROVED', count: 1 },
     { status: 'CLOSED', count: 1 }
   ]);
+  assert.deepEqual(overview.topServices, [
+    { name: 'Бережная мойка', count: 1, amountMinor: 140000 },
+    { name: 'Защита кузова', count: 1, amountMinor: 90000 }
+  ]);
   assert.ok(overview.daily.some((day) => day.date === '2026-11-05' && day.bookings === 1));
   assert.ok(overview.daily.some((day) => day.date === '2026-11-30' && day.bookings === 1));
   assert.equal('revenueAmountMinor' in overview.orders, false);
@@ -120,6 +124,7 @@ test('overview returns tenant-scoped operational metrics without treating estima
   const foreign = await foreignResponse.json();
   assert.equal(foreign.orders.total, 0);
   assert.equal(foreign.bookings.total, 0);
+  assert.deepEqual(foreign.topServices, []);
 });
 
 test('overview requires a manager role and a valid period of no more than 90 days', async () => {

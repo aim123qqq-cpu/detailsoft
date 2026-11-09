@@ -28,6 +28,21 @@ export const analyticsMethods = {
             AND a.estimate_version_id = e.id AND a.decision = 'APPROVED'
         )`).get(tenantId, from, to);
 
+    // What the center sells most: lines of approved estimates, by name.
+    const topServices = this.db.prepare(`SELECT l.name name, COUNT(*) count, COALESCE(SUM(l.amount_minor), 0) amount
+      FROM orders o
+      JOIN order_workflows w ON w.order_id = o.id AND w.tenant_id = o.tenant_id
+      JOIN estimate_versions e ON e.id = w.current_estimate_version_id AND e.tenant_id = o.tenant_id
+      JOIN estimate_lines l ON l.estimate_version_id = e.id
+      WHERE o.tenant_id = ? AND date(o.created_at) BETWEEN ? AND ?
+        AND EXISTS (
+          SELECT 1 FROM estimate_approvals a
+          WHERE a.order_id = o.id AND a.tenant_id = o.tenant_id
+            AND a.estimate_version_id = e.id AND a.decision = 'APPROVED'
+        )
+      GROUP BY l.name ORDER BY count DESC, amount DESC, l.name LIMIT 5`).all(tenantId, from, to)
+      .map((row) => ({ name: row.name, count: Number(row.count), amountMinor: Number(row.amount) }));
+
     const operationRows = this.db.prepare(`SELECT op.status, COUNT(*) count
       FROM order_work_operations op
       JOIN orders o ON o.id = op.order_id AND o.tenant_id = op.tenant_id
@@ -83,6 +98,7 @@ export const analyticsMethods = {
         completionPercent: operationsTotal ? Math.round(operationsDone / operationsTotal * 100) : 0
       },
       orderStatuses,
+      topServices,
       daily
     };
   }

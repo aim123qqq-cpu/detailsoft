@@ -529,6 +529,8 @@ export type AnalyticsOverview = {
   };
   operations: { total: number; done: number; blocked: number; completionPercent: number };
   orderStatuses: Array<{ status: WorkOrder['status']; count: number }>;
+  /** Most sold lines of approved estimates, at most five. */
+  topServices: Array<{ name: string; count: number; amountMinor: number }>;
   daily: Array<{ date: string; bookings: number; orders: number; closed: number }>;
 };
 
