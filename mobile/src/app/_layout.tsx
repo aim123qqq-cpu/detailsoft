@@ -60,7 +60,7 @@ function RootNavigator() {
     }}>
       <Stack.Protected guard={state.phase === 'signed-in'}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }}/>
-        <Stack.Screen name="customer/[id]" options={{ title: 'Клиент' }}/>
+        <Stack.Screen name="customer/[id]" options={{ title: 'Клиент', headerShown: false }}/>
       </Stack.Protected>
       <Stack.Protected guard={state.phase === 'signed-out'}>
         <Stack.Screen name="login" options={{ headerShown: false }}/>
