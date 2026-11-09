@@ -53,6 +53,12 @@ const network = {
 await network.up();
 const api = (path, init = {}) => fetch(`http://127.0.0.1:${SERVER_PORT}${path}`, { ...init, headers: { authorization: 'Bearer demo-session-token', 'content-type': 'application/json', ...init.headers } });
 const step = (name) => console.log(`· ${name}`);
+// The sign-in screen of the redesign: its title is the name under the mark (the mark itself is labelled the same).
+const SIGN_IN = 'Выберите удобный способ входа';
+const loginTitle = () => find('DetailFlow').find((node) => node.text === 'DetailFlow');
+// The orders list: its first filter reads «Все 9».
+const ORDERS = /^Все d+$/;
+const openOrders = async () => { await tap('Заказы'); await waitFor(ORDERS, { timeout: 20_000 }); };
 
 async function newOrder(vehicleId, hour) {
   const booking = await (await api('/api/bookings', { method: 'POST', headers: { 'idempotency-key': `native-smoke-${vehicleId}-${Date.now()}` }, body: JSON.stringify({
@@ -91,10 +97,12 @@ try {
 
   step('first launch opens sign-in on the public server; the test points it at its own');
   await launch('ru.detailflow.app', { clear: true });
-  await waitFor('Войти в центр', { timeout: 45_000 });
+  await waitFor(SIGN_IN, { timeout: 45_000 });
   // The ways in are asked from the public server; wait for them, and the title must stay where it was.
   for (let wait = 0; wait < 40 && find('Загружаем способы входа…').length; wait += 1) await sleep(500);
-  const title = await waitFor('Войти в центр');
+  await waitFor(SIGN_IN);
+  await sleep(2500); // the launch animation settles
+  const title = loginTitle();
   const ways = find(/^Продолжить с /);
   if (ways.length > 1) assert.match(ways[0].text || ways[0].desc, /^Продолжить с Telegram/, 'Telegram is the main way in');
   assert.ok(!find('Адрес сервера').length && !find(/Сменить/).length, 'no server choice for people');
@@ -111,7 +119,7 @@ try {
   // Just after a cold boot the emulator's network may not be up yet: try again, as a person would.
   // The demo button is only on the test server: it shows that the app now talks to it.
   for (let attempt = 0; ; attempt += 1) {
-    const node = await waitFor(/^Демо-режим$|^По этому адресу сервер DetailFlow не отвечает/, { timeout: 30_000 });
+    const node = await waitFor(/^Демо-режим$|^Сервер не отвечает$/, { timeout: 30_000 });
     if (node.text === 'Демо-режим' || attempt === 2) break;
     await sleep(3000);
     if (find('Подключиться').length) await tap('Подключиться');
@@ -120,51 +128,57 @@ try {
   screenshot(resolve(out, '02-login.png'));
   await tap('Демо-режим');
 
-  step('orders open on the tabs');
-  await waitFor(/^Все$/, { timeout: 20_000 });
+  step('the home screen opens, the floating bar leads to the sections');
+  await waitFor('Главная', { timeout: 20_000 });
+  for (const label of ['Главная', 'Записи', 'Заказы', 'Профиль', 'Новая запись']) assert.ok(find(label).length, `tab ${label}`);
+  await openOrders();
   await sleep(800);
   screenshot(resolve(out, '03-orders.png'));
-  for (const label of ['Статистика', 'Записи', 'Новая', 'Заказы', 'Профиль']) assert.ok(find(label).length, `tab ${label}`);
 
   const orders = (await (await api('/api/orders?limit=50')).json()).items;
   if (orders.length) {
     step('an order opens in its own screen');
-    await tap(orders[0].vehicle.plate);
+    await tap(new RegExp(`${orders[0].vehicle.plate}, `));
     await waitFor(/^Приёмка$/);
     await sleep(500);
     screenshot(resolve(out, '04-order.png'));
     back();
-    await waitFor(/^Все$/);
+    await waitFor(ORDERS);
   }
 
   step('stage 3: intake on the diagram, findings, photos from the camera');
   await tap(/Приёмка$/);
-  await tap('Провести приёмку');
+  await tap('Провести');
+  await tap(/^Кузов · /, { timeout: 20_000 }); // the head opens the body types
   await waitFor('Тип кузова');
   await tap('Кроссовер');
   await sleep(600);
   const [diagram] = find('Схема автомобиля, вид сверху');
-  const scale = (diagram.bounds.x2 - diagram.bounds.x1) / 200;
+  const scale = (diagram.bounds.x2 - diagram.bounds.x1) / carLayout('suv').width;
   const hood = carLayout('suv').elements.find((element) => element.id === 'hood');
   await tapAt(diagram.bounds.x1 + hood.label.x * scale, diagram.bounds.y1 + hood.label.y * scale);
-  await waitFor('Капот');
+  await waitFor(/. Капот$/);
   await tap('Скол ЛКП');
-  await tap('Сильное');
-  await tap('Фото');
+  await tap('Серьёзное');
+  await tap('Снять фото повреждения');
   await shoot();
   await waitFor('Фото: Капот', { timeout: 30_000 });
   screenshot(resolve(out, '11-element.png'));
-  await tap('Добавить замечание');
-  await tapNode(await scrollTo('Передние сиденья'));
+  await tap('Добавить отметку');
+  await tap('Готово');
+  await tap('Дальше: салон');
+  await tapNode(await scrollTo(/. Передние сиденья/));
   await tap('Пятно');
-  await tap('Добавить замечание');
+  await tap('Добавить отметку');
+  await tap('Готово');
+  await tapNode(await scrollTo('Дальше: итог'));
   await tapNode(await scrollTo('Снять общий вид'));
   await shoot();
   await waitFor('2 из 19', { timeout: 30_000 });
   screenshot(resolve(out, '12-intake.png'));
-  await tapNode(await scrollTo('Сохранить приёмку'));
-  await waitFor(/^Смета$/, { timeout: 20_000 });
-  await scrollTo('Изменить приёмку');
+  await tapNode(await scrollTo('Завершить приёмку'));
+  await waitFor('Составить смету', { timeout: 20_000 });
+  await scrollTo('Изменить');
   await sleep(800);
   screenshot(resolve(out, '13-intake-saved.png'));
   const inspected = await (await api(`/api/orders/${intakeOrder.id}`)).json();
@@ -175,25 +189,25 @@ try {
   assert.deepEqual(inspected.photos.map((photo) => photo.zone).sort(), ['Капот', 'Общий вид']);
   assert.ok(inspected.photos.every((photo) => photo.dataUrl.startsWith('data:image/jpeg;base64,')));
   back();
-  await waitFor(/^Все$/);
+  await waitFor(ORDERS);
 
   step('stage 2: assign a master, start, tick, pause, resume, complete');
   await tap(/Согласован$/);
-  await waitFor('Назначить мастера');
+  await waitFor('Назначьте мастера');
   screenshot(resolve(out, '08-assign.png'));
   await tap(/^в работе: \d+$/);
   await tap('Начать работу');
   await tap('Бережная мойка');
-  await waitFor(/^1\/2$/);
+  await waitFor(/^1 из 2$/);
   await tap('Пауза');
   await tap('Ждём сушки');
   await tap('Поставить паузу');
-  await waitFor(/^Пауза: Ждём сушки/);
+  await waitFor(/^Причина паузы: Ждём сушки/);
   screenshot(resolve(out, '09-paused.png'));
   await tap('Продолжить работу');
-  await waitFor(/^Пауза$/); // resumed: the rows are enabled again
+  await waitFor(/^В работе$/); // resumed
   await tap('Защита кузова');
-  await waitFor(/^2\/2$/);
+  await waitFor(/^2 из 2$/);
   screenshot(resolve(out, '10-checklist-done.png'));
   await tap('Завершить');
   await waitFor('Завершить работы?');
@@ -203,7 +217,7 @@ try {
   assert.equal(finished.status, 'READY', 'the order goes to handover');
   assert.equal(finished.work.operations.every((operation) => operation.status === 'DONE'), true);
   back();
-  await waitFor(/^Все$/);
+  await waitFor(ORDERS);
 
   step('stage 4: a booking for a known customer by phone');
   const bookingsOf = async (customerId) => (await (await api('/api/bookings?view=upcoming&limit=50')).json()).items.filter((item) => item.customer.id === customerId);
@@ -271,7 +285,7 @@ try {
   assert.equal(intakeOrders.length, 1, 'the booking has its order');
   assert.equal(intakeOrders[0].status, 'INTAKE');
   back();
-  await waitFor(/^Все$/, { timeout: 20_000 });
+  await waitFor(ORDERS, { timeout: 20_000 });
 
   step('stage 4: the schedule, moving and cancelling a booking, the customer card');
   await tap('Записи');
@@ -298,7 +312,7 @@ try {
   await sleep(1200);
   screenshot(resolve(out, '20-day.png'));
   await tap('Заказы');
-  await waitFor(/^Все$/);
+  await waitFor(ORDERS);
 
   step('stage 5: estimate, approval, the signed intake act, handover and the handover act');
   const order5 = intakeOrder.id;
@@ -376,7 +390,7 @@ try {
   back();
   await sleep(800);
   back();
-  await waitFor(/^Все$/);
+  await waitFor(ORDERS);
 
   step('stage 6: statistics, a new service, the schedule, a new member and a new role');
   await tap('Статистика');
@@ -468,7 +482,7 @@ try {
   await tapNode(await scrollTo('Начать работу'));
   await waitFor('Нет связи с сервером', { timeout: 30_000 });
   await tapNode(await scrollTo('Бережная мойка'));
-  await waitFor(/^1\/2$/, { timeout: 20_000 });
+  await waitFor(/^1 из 2$/, { timeout: 20_000 });
   screenshot(resolve(out, '33-offline-work.png'));
   back();
   await tap('Новая');
@@ -531,7 +545,7 @@ try {
   await tap(/^Принимаю Пользовательское соглашение$/);
   await tap(/^Даю согласие на обработку персональных данных$/);
   await tap('Продолжить');
-  await waitFor(/^Все$/, { timeout: 20_000 });
+  await waitFor(ORDERS, { timeout: 20_000 });
   await tap('Профиль');
   await waitFor('Мария Орлова');
   // The feed and what to get: an employee has no reminders yet, the switches are there.
@@ -611,7 +625,7 @@ try {
   await tapNode(await scrollTo(/^Принимаю Пользовательское соглашение$/));
   await tap(/^Даю согласие на обработку персональных данных$/);
   await tapNode(await scrollTo('Создать центр'));
-  await waitFor(/^Все$/, { timeout: 20_000 });
+  await waitFor(ORDERS, { timeout: 20_000 });
   // The new center is empty: the owner is told what to do first, and a booking without services says where they go.
   await waitFor('Первые шаги', { timeout: 20_000 });
   screenshot(resolve(out, '35-first-steps.png'));
