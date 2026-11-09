@@ -1,21 +1,27 @@
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import type { EstimateVersion, WorkOrder } from '@df/types';
 import { useSession, useSignedIn } from '@/lib/session';
-import { space } from '@/lib/theme';
-import { Body, Button, Card, Chip, Field, Label, Notice } from '@/ui';
+import { makeStyles, space } from '@/lib/theme';
+import { Button, Field, Notice } from '@/ui';
+import { ButtonPair } from '@/ui/sheet';
+import { Text } from '@/ui/text';
+import { Segmented } from './booking-ui';
 
 const METHODS = [{ value: 'in_person', label: 'Лично' }, { value: 'phone', label: 'По телефону' }, { value: 'messenger', label: 'В мессенджере' }] as const;
 
 /** The customer's decision on the current estimate version: how it was agreed and who recorded it. */
 export function ApprovalPanel({ order, estimate, onChanged }: { order: WorkOrder; estimate: EstimateVersion; onChanged: (order: WorkOrder) => void }) {
+  const styles = useStyles();
   const { api } = useSession();
   const session = useSignedIn();
   const [method, setMethod] = useState<(typeof METHODS)[number]['value']>('in_person');
   const [responsible, setResponsible] = useState(session.actor.displayName);
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<'APPROVED' | 'REJECTED' | null>(null);
   const [error, setError] = useState('');
+  const ready = responsible.trim().length >= 2;
 
   const decide = async (decision: 'APPROVED' | 'REJECTED') => {
     setBusy(decision); setError('');
@@ -27,16 +33,24 @@ export function ApprovalPanel({ order, estimate, onChanged }: { order: WorkOrder
   };
 
   return (
-    <Card>
-      <Label>Решение клиента по смете v{estimate.version}</Label>
-      <Body muted>Согласуется только актуальная версия. После отказа можно выпустить новую.</Body>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.s }}>
-        {METHODS.map((item) => <Chip key={item.value} label={item.label} selected={method === item.value} onPress={() => setMethod(item.value)}/>)}
-      </View>
-      <Field label="Ответственный" value={responsible} onChangeText={setResponsible}/>
+    <View style={{ gap: space.m }}>
+      <Segmented value={method} onChange={setMethod} options={[...METHODS]}/>
+      {editing || !ready
+        ? <Field label="Кто записывает решение" required value={responsible} onChangeText={setResponsible}/>
+        : <Pressable accessibilityRole="button" onPress={() => setEditing(true)} hitSlop={6}>
+            <Text style={styles.note}>Записывает: {responsible} · <Text style={styles.link}>изменить</Text></Text>
+          </Pressable>}
       {error ? <Notice>{error}</Notice> : null}
-      <Button title="Клиент согласовал" busy={busy === 'APPROVED'} disabled={busy !== null || responsible.trim().length < 2} onPress={() => void decide('APPROVED')}/>
-      <Button title="Клиент отказался" tone="dangerQuiet" busy={busy === 'REJECTED'} disabled={busy !== null || responsible.trim().length < 2} onPress={() => void decide('REJECTED')}/>
-    </Card>
+      <ButtonPair>
+        <Button title="Отказался" tone="secondary" style={{ flex: 1 }} busy={busy === 'REJECTED'} disabled={busy !== null || !ready} onPress={() => void decide('REJECTED')}/>
+        <Button title="Клиент согласовал" style={{ flex: 1.5 }} busy={busy === 'APPROVED'} disabled={busy !== null || !ready} onPress={() => void decide('APPROVED')}/>
+      </ButtonPair>
+      <Text style={styles.note}>Согласуется только актуальная версия. После отказа можно выпустить новую.</Text>
+    </View>
   );
 }
+
+const useStyles = makeStyles((colors) => StyleSheet.create({
+  note: { color: colors.muted, fontSize: 12, lineHeight: 17 },
+  link: { color: colors.ink, fontWeight: '700' }
+}));

@@ -8,9 +8,9 @@ export default function OrdersStack() {
   return (
     <Stack screenOptions={options}>
       <Stack.Screen name="index" options={{ title: 'Заказы' }}/>
-      <Stack.Screen name="[id]" options={{ title: 'Заказ' }}/>
+      <Stack.Screen name="[id]" options={{ title: 'Заказ', headerShown: false }}/>
       <Stack.Screen name="intake/[id]" options={{ title: 'Приёмка', headerShown: false }}/>
-      <Stack.Screen name="estimate/[id]" options={{ title: 'Смета' }}/>
+      <Stack.Screen name="estimate/[id]" options={{ title: 'Смета', headerShown: false }}/>
       <Stack.Screen name="handover/[id]" options={{ title: 'Выдача' }}/>
       <Stack.Screen name="document/[id]" options={{ title: 'Документ' }}/>
     </Stack>
