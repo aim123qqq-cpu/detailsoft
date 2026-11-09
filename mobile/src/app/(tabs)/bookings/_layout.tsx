@@ -7,8 +7,8 @@ export default function BookingsStack() {
   const options = useStackOptions();
   return (
     <Stack screenOptions={options}>
-      <Stack.Screen name="index" options={{ title: 'Записи' }}/>
-      <Stack.Screen name="[id]" options={{ title: 'Запись' }}/>
+      <Stack.Screen name="index" options={{ title: 'Записи', headerShown: false }}/>
+      <Stack.Screen name="[id]" options={{ title: 'Запись', headerShown: false }}/>
     </Stack>
   );
 }

@@ -55,16 +55,18 @@ type ButtonProps = Omit<PressableProps, 'children' | 'style'> & {
   tone?: ButtonTone;
   busy?: boolean;
   style?: StyleProp<ViewStyle>;
+  /** The text colour, for a button on a dark card that looks the same in both themes. */
+  ink?: string;
 };
 
 /**
  * A pill button. primary: black (one per screen or card); secondary: soft, beside it; brand: orange,
  * only «Новая запись»; raised: white with a shadow on the ground; quiet: a text action; dangerQuiet: red text.
  */
-export function Button({ title, tone = 'primary', busy, disabled, style, ...props }: ButtonProps) {
+export function Button({ title, tone = 'primary', busy, disabled, style, ink: inkColor, ...props }: ButtonProps) {
   const styles = useStyles();
   const { colors } = useTheme();
-  const ink = { primary: colors.pillInk, secondary: colors.ink, brand: colors.accentInk, raised: colors.ink, danger: '#FFFFFF', quiet: colors.ink, dangerQuiet: colors.sevHiText }[tone];
+  const ink = inkColor ?? { primary: colors.pillInk, secondary: colors.ink, brand: colors.accentInk, raised: colors.ink, danger: '#FFFFFF', quiet: colors.ink, dangerQuiet: colors.sevHiText }[tone];
   return (
     <Pressable accessibilityRole="button" accessibilityState={{ disabled: Boolean(disabled || busy), busy: Boolean(busy) }} disabled={disabled || busy}
       android_ripple={{ color: tone === 'primary' ? 'rgba(127,127,127,.25)' : 'rgba(127,127,127,.14)' }}
@@ -132,7 +134,7 @@ const useStyles = makeStyles((colors, scheme) => StyleSheet.create({
   required: { color: colors.accent, fontSize: 12, fontWeight: '700' },
   card: { backgroundColor: colors.surface, borderRadius: radius.l, padding: space.l, gap: space.m, ...cardShadow(scheme) },
   darkCard: { backgroundColor: colors.darkCard, borderWidth: 0, boxShadow: undefined },
-  button: { minHeight: 52, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, overflow: 'hidden' },
+  button: { minHeight: 52, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, overflow: 'hidden' },
   primary: { backgroundColor: colors.pill },
   secondary: { backgroundColor: colors.soft },
   brand: { backgroundColor: colors.accent },
@@ -142,7 +144,7 @@ const useStyles = makeStyles((colors, scheme) => StyleSheet.create({
   dangerQuiet: { backgroundColor: 'transparent', minHeight: 44 },
   disabled: { opacity: 0.35 },
   pressed: { opacity: 0.85 },
-  buttonText: { fontSize: 15, lineHeight: 20, fontWeight: '700' },
+  buttonText: { fontSize: 15, lineHeight: 20, fontWeight: '700', textAlign: 'center' },
   field: { gap: 0 },
   input: { minHeight: 52, borderRadius: radius.m, backgroundColor: colors.surface, fontSize: 16, paddingHorizontal: space.l, borderWidth: 1, borderColor: colors.line },
   inputError: { borderColor: colors.sevHi },
