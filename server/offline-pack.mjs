@@ -47,7 +47,10 @@ export function buildBookingPack(repository, tenantId, { includeCustomers }) {
         phoneNormalized: customer.phone_normalized,
         visitCount: customer.visits,
         archived: false,
+        // The same history as a search on the server, so the phone shows it offline too.
+        history: repository.customerHistory(tenantId, customer.id),
         vehicles: repository.listCustomerVehicles(tenantId, customer.id, false)
+          .map((vehicle) => ({ ...vehicle, orderCount: repository.vehicleOrderCount(tenantId, customer.id, vehicle.id) }))
       }));
     for (const vehicle of customers.flatMap((customer) => customer.vehicles)) {
       vehicleClasses[vehicle.id] = repository.getVehiclePricingContext(tenantId, vehicle.id)?.tenant_class ?? '*';

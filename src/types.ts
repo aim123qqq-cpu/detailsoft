@@ -19,7 +19,9 @@ export type Customer = {
   phoneDisplay: string;
   visitCount: number;
   archived?: boolean;
-  vehicles: Vehicle[];
+  /** In search results: the last visit, the usual service, the average check (absent offline). */
+  history?: { lastVisitAt: string | null; usualService: string | null; averageCheckMinor: number | null };
+  vehicles: Array<Vehicle & { orderCount?: number }>;
 };
 
 export type CustomerMatch = { id: string; name: string; phoneDisplay: string; archived: boolean };
@@ -352,7 +354,7 @@ export type BookingListItem = {
   pendingSync?: boolean;
   /** Names of the booking's services as of its current composition (absent on a booking made offline). */
   services?: string[];
-  customer: Pick<Customer, 'id' | 'name' | 'phoneDisplay'>;
+  customer: Pick<Customer, 'id' | 'name' | 'phoneDisplay'> & { visitCount?: number };
   vehicle: Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color' | 'bodyType'>;
 };
 

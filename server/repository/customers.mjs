@@ -18,8 +18,34 @@ export const customersMethods = {
       phoneDisplay: customer.phone_display,
       visitCount: customer.visits,
       archived: customer.archived_at !== null,
-      vehicles: this.listCustomerVehicles(tenantId, customer.id, false)
+      history: this.customerHistory(tenantId, customer.id),
+      vehicles: this.listCustomerVehicles(tenantId, customer.id, false).map((vehicle) => ({ ...vehicle, orderCount: this.vehicleOrderCount(tenantId, customer.id, vehicle.id) }))
     }));
+  },
+
+  /**
+   * What the administrator wants to know while booking: when the customer was last here, what they
+   * usually book, and how much a visit usually comes to (the average approved estimate of closed orders).
+   */
+  customerHistory(tenantId, customerId) {
+    const row = this.db.prepare(`SELECT
+        (SELECT MAX(created_at) FROM orders WHERE tenant_id = ?1 AND customer_id = ?2) last_visit_at,
+        (SELECT ROUND(AVG(e.total_amount_minor)) FROM orders o
+          JOIN order_workflows w ON w.order_id = o.id AND w.tenant_id = o.tenant_id
+          JOIN estimate_versions e ON e.id = w.current_estimate_version_id AND e.tenant_id = o.tenant_id
+          WHERE o.tenant_id = ?1 AND o.customer_id = ?2 AND o.status = 'CLOSED') average_check,
+        (SELECT l.name FROM booking_quote_lines l JOIN bookings b ON b.id = l.booking_id
+          WHERE b.tenant_id = ?1 AND b.customer_id = ?2 AND b.status <> 'CANCELLED'
+          GROUP BY l.name ORDER BY COUNT(*) DESC, MAX(b.start_at) DESC LIMIT 1) usual_service`).get(tenantId, customerId);
+    return {
+      lastVisitAt: apiTimestamp(row.last_visit_at),
+      usualService: row.usual_service ?? null,
+      averageCheckMinor: row.average_check === null ? null : Number(row.average_check)
+    };
+  },
+
+  vehicleOrderCount(tenantId, customerId, vehicleId) {
+    return this.db.prepare('SELECT COUNT(*) count FROM orders WHERE tenant_id = ? AND customer_id = ? AND vehicle_id = ?').get(tenantId, customerId, vehicleId).count;
   },
 
   createCustomer(tenantId, input) {

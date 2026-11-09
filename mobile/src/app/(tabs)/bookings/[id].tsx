@@ -5,7 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BookingListItem } from '@df/types';
 import { BookingStatus, DateStrip, SlotGrid, startIntake } from '@/features/booking-ui';
-import { addDays, bodyName, channelLabel, dayKey, dayOfMonth, duration, longDay, money, monthShort, timeOf, vehicleName, weekday } from '@/lib/format';
+import { addDays, bodyName, channelLabel, dayKey, dayOfMonth, duration, longDay, money, monthShort, timeOf, vehicleName, visits, weekday } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
 import { cardShadow, makeStyles, radius, space, useTheme } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
@@ -79,7 +79,7 @@ export default function BookingScreen() {
           <Pressable accessibilityRole={session.capabilities.manageCustomers ? 'button' : undefined} disabled={!session.capabilities.manageCustomers} style={{ flex: 1, gap: 2 }}
             onPress={() => router.push({ pathname: '/customer/[id]', params: { id: item.customer.id } })}>
             <Text style={styles.name} numberOfLines={1}>{item.customer.name}</Text>
-            <Text style={styles.meta}>{item.customer.phoneDisplay}</Text>
+            <Text style={styles.meta}>{[item.customer.phoneDisplay, item.customer.visitCount !== undefined ? visits(item.customer.visitCount) : null].filter(Boolean).join(' · ')}</Text>
           </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel={`Позвонить ${item.customer.phoneDisplay}`} style={styles.call}
             onPress={() => Linking.openURL(`tel:${item.customer.phoneDisplay.replace(/[^\d+]/g, '')}`)}>

@@ -79,6 +79,35 @@ test('search shows the same visit count as the profile: closed orders, not a sto
   assert.equal(found.items[0].visitCount, 0);
 });
 
+test('search tells when the customer was here, what they usually book, the average check and the orders of each car', async () => {
+  const before = (await (await api('/api/customers?phone=9131234567')).json()).items.find((item) => item.id === 'cust_alexey');
+  assert.equal(before.history.lastVisitAt, (await profileOf('cust_alexey')).stats.lastVisitAt);
+  assert.deepEqual(Object.fromEntries(before.vehicles.map((vehicle) => [vehicle.id, vehicle.orderCount])), { veh_mazda: 1, veh_camry: 0 });
+  assert.ok(before.history.averageCheckMinor === null || Number.isInteger(before.history.averageCheckMinor));
+  // Two washes and one cancelled polish: the usual service is the wash.
+  const book = async (key, time, id, status) => {
+    const booking = await (await api('/api/bookings', { method: 'POST', headers: { 'idempotency-key': key }, body: {
+      customerId: 'cust_alexey', vehicleId: 'veh_camry', channel: 'call', startAt: `2026-12-21T${time}:00+03:00`, selections: [{ type: 'service', id }]
+    } })).json();
+    if (status) await api(`/api/bookings/${booking.id}`, { method: 'PATCH', body: { status } });
+    return booking;
+  };
+  const wash = await book('h1', '10:00', 'service_wash');
+  await book('h2', '12:00', 'service_wash');
+  await book('h3', '14:00', 'service_polish', 'CANCELLED');
+  await book('h4', '15:00', 'service_polish', 'CANCELLED');
+  await book('h5', '16:00', 'service_polish', 'CANCELLED');
+  const after = (await (await api('/api/customers?phone=9131234567')).json()).items.find((item) => item.id === 'cust_alexey');
+  assert.equal(after.history.usualService, wash.lines[0].name);
+  // The booking lists say how many visits the customer has had.
+  const listed = (await (await api('/api/bookings?from=2026-12-21&to=2026-12-21')).json()).items.find((item) => item.id === wash.id);
+  assert.equal(listed.customer.visitCount, 1);
+  const created = await createCustomer('Глеб Новиков', '+7 999 555-60-02');
+  const fresh = (await (await api('/api/customers?phone=5556002')).json()).items[0];
+  assert.deepEqual(fresh.history, { lastVisitAt: null, usualService: null, averageCheckMinor: null });
+  assert.equal(created.vehicles.length, 0);
+});
+
 test('customer profile and mutations are tenant scoped and restricted to customer managers', async () => {
   assert.equal((await api('/api/customers/cust_alexey/profile', { token: 'other-session-token' })).status, 404);
   assert.equal((await api('/api/customers/cust_other/profile')).status, 404);

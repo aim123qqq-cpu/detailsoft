@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Customer, Vehicle } from '@df/types';
 import { Segmented } from '@/features/booking-ui';
 import { type DraftCustomer, type DraftVehicle, useBookingDraft } from '@/lib/booking-draft';
-import { CHANNELS, bodyName, formatPhoneInput, vehicleName, visits } from '@/lib/format';
+import { CHANNELS, bodyName, formatPhoneInput, money, vehicleName, visits } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
 import { cardShadow, makeStyles, radius, space, useTheme } from '@/lib/theme';
 import { Body, Button, Card, Chip, Field, Notice, Pill, Screen } from '@/ui';
@@ -116,7 +116,8 @@ function Search() {
             </View>
             <Icon name="chevronRight" size={18} color={colors.muted}/>
           </Pressable>
-          {customer.vehicles.map((vehicle) => <CarRow key={vehicle.id} vehicle={vehicle} onPress={() => choose(customer, vehicle)}/>)}
+          {customer.history ? <History history={customer.history}/> : null}
+          {customer.vehicles.map((vehicle) => <CarRow key={vehicle.id} vehicle={vehicle} orders={vehicle.orderCount} onPress={() => choose(customer, vehicle)}/>)}
           <Pressable accessibilityRole="button" onPress={() => addVehicle(customer)} style={styles.addCar}>
             <Icon name="plus" size={18}/>
             <Text style={styles.addCarText}>Добавить автомобиль</Text>
@@ -153,10 +154,37 @@ function Search() {
 }
 
 /** A car of the customer: the plate, the model, its body and colour. */
-function CarRow({ vehicle, onPress, disabled }: { vehicle: DraftVehicle; onPress: () => void; disabled?: boolean }) {
+const plural = (count: number, one: string, few: string, many: string) => {
+  const last = count % 10; const lastTwo = count % 100;
+  return lastTwo >= 11 && lastTwo <= 14 ? many : last === 1 ? one : last >= 2 && last <= 4 ? few : many;
+};
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).replace('.', '') + '.';
+
+/** When the customer was last here, what they usually book, how much a visit usually comes to. */
+function History({ history }: { history: NonNullable<Customer['history']> }) {
   const styles = useStyles();
   const { colors } = useTheme();
-  const note = [bodyName(vehicle.bodyType), vehicle.color, vehicle.tenantClass ? `класс «${vehicle.tenantClass}»` : null].filter(Boolean).join(' · ');
+  const tiles = [
+    { label: 'Была', value: history.lastVisitAt ? shortDate(history.lastVisitAt) : 'впервые', color: colors.tileSky },
+    { label: 'Обычно', value: history.usualService ? history.usualService.replace(/^./, (letter) => letter.toLowerCase()) : '—', color: colors.tileSage },
+    { label: 'Средний чек', value: history.averageCheckMinor !== null ? money(history.averageCheckMinor) : '—', color: colors.tilePeach }
+  ];
+  return (
+    <View style={styles.history}>
+      {tiles.map((tile) => (
+        <View key={tile.label} style={[styles.historyTile, { backgroundColor: tile.color }]}>
+          <Text style={styles.historyLabel}>{tile.label}</Text>
+          <Text style={styles.historyValue} numberOfLines={2}>{tile.value}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function CarRow({ vehicle, onPress, disabled, orders }: { vehicle: DraftVehicle; onPress: () => void; disabled?: boolean; orders?: number }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
+  const note = [bodyName(vehicle.bodyType), vehicle.color, orders !== undefined ? `${orders} ${plural(orders, 'заказ', 'заказа', 'заказов')}` : vehicle.tenantClass ? `класс «${vehicle.tenantClass}»` : null].filter(Boolean).join(' · ');
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`${vehicle.plate}, ${vehicleName(vehicle)}`} disabled={disabled} onPress={onPress}
       android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={[styles.car, disabled && { opacity: 0.5 }]}>
@@ -182,6 +210,10 @@ const useStyles = makeStyles((colors, scheme) => StyleSheet.create({
   car: { flexDirection: 'row', alignItems: 'center', gap: space.m, minHeight: 64, paddingVertical: 10, paddingHorizontal: space.m, borderRadius: radius.m, backgroundColor: colors.soft, overflow: 'hidden' },
   carName: { fontSize: 15, fontWeight: '600' },
   small: { color: colors.muted, fontSize: 12 },
+  history: { flexDirection: 'row', gap: 6 },
+  historyTile: { flex: 1, borderRadius: 16, paddingVertical: 10, paddingHorizontal: space.m, gap: 2 },
+  historyLabel: { color: colors.tileInk, fontSize: 11, fontWeight: '600', opacity: 0.75 },
+  historyValue: { color: colors.tileInk, fontSize: 14, lineHeight: 18, fontWeight: '600' },
   addCar: { height: 48, borderRadius: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.s },
   addCarText: { fontSize: 14, fontWeight: '700' }
 }));

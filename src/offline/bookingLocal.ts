@@ -103,7 +103,8 @@ export function localSearchVehicles(pack: BookingPack, plate: string): Array<Veh
   if (normalized.length < 2) return [];
   return pack.customers.flatMap((customer) => customer.vehicles
     .filter((vehicle) => normalizePlate(vehicle.plate).includes(normalized))
-    .map((vehicle) => ({ ...vehicle, customer: { id: customer.id, name: customer.name, phoneDisplay: customer.phoneDisplay, visitCount: customer.visitCount, vehicles: [] } })))
+    // A plate search on the server does not count orders: neither does this one.
+    .map(({ orderCount: _orders, ...vehicle }) => ({ ...vehicle, customer: { id: customer.id, name: customer.name, phoneDisplay: customer.phoneDisplay, visitCount: customer.visitCount, vehicles: [] } })))
     .slice(0, 10);
 }
 

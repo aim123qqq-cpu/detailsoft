@@ -185,6 +185,7 @@ export const bookingsMethods = {
     const items = this.db.prepare(`SELECT b.id, b.channel, b.start_at, b.estimated_duration_minutes,
         b.status, b.preliminary_amount_minor,
         c.id customer_id, c.name customer_name, c.phone_display customer_phone,
+        (SELECT COUNT(*) FROM orders o WHERE o.tenant_id = c.tenant_id AND o.customer_id = c.id AND o.status = 'CLOSED') customer_visits,
         v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color, v.body_type,
         w.order_id,
         EXISTS (SELECT 1 FROM booking_slot_conflicts sc WHERE sc.booking_id = b.id AND sc.resolved_at IS NULL) slot_conflict,
@@ -209,7 +210,8 @@ export const bookingsMethods = {
         customer: {
           id: row.customer_id,
           name: row.customer_name,
-          phoneDisplay: row.customer_phone
+          phoneDisplay: row.customer_phone,
+          visitCount: row.customer_visits
         },
         vehicle: {
           id: row.vehicle_id,
@@ -241,6 +243,7 @@ export const bookingsMethods = {
     const items = this.db.prepare(`SELECT b.id, b.channel, b.start_at, b.estimated_duration_minutes,
         b.status, b.preliminary_amount_minor,
         c.id customer_id, c.name customer_name, c.phone_display customer_phone,
+        (SELECT COUNT(*) FROM orders o WHERE o.tenant_id = c.tenant_id AND o.customer_id = c.id AND o.status = 'CLOSED') customer_visits,
         v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color, v.body_type,
         w.order_id,
         EXISTS (SELECT 1 FROM booking_slot_conflicts sc WHERE sc.booking_id = b.id AND sc.resolved_at IS NULL) slot_conflict,
@@ -261,7 +264,7 @@ export const bookingsMethods = {
         orderId: row.order_id ?? null,
         slotConflict: row.slot_conflict === 1,
         services: serviceNames(row),
-        customer: { id: row.customer_id, name: row.customer_name, phoneDisplay: row.customer_phone },
+        customer: { id: row.customer_id, name: row.customer_name, phoneDisplay: row.customer_phone, visitCount: row.customer_visits },
         vehicle: { id: row.vehicle_id, make: row.make, model: row.model, generation: row.generation, plate: row.plate_display, color: row.color, bodyType: row.body_type }
       }));
     return { kind: 'listed', items };
