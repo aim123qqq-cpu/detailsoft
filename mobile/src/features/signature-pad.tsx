@@ -64,9 +64,9 @@ export function SignaturePad({ onChange, onDrawing }: { onChange: (dataUrl: stri
 }
 
 const useStyles = makeStyles((colors) => StyleSheet.create({
-  pad: { height: HEIGHT, borderRadius: radius.m, overflow: 'hidden', backgroundColor: '#ffffff', justifyContent: 'center' },
+  pad: { height: HEIGHT, borderRadius: radius.m, overflow: 'hidden', backgroundColor: '#ffffff', justifyContent: 'center', borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.carDraw },
   hint: { position: 'absolute', alignSelf: 'center', color: '#9aa3aa', fontSize: 16 },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
-  state: { color: colors.muted, fontSize: 14 },
-  clear: { color: colors.primary, fontSize: 15, fontWeight: '800' }
+  state: { color: colors.muted, fontSize: 13 },
+  clear: { color: colors.ink, fontSize: 14, fontWeight: '700' }
 }));

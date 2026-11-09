@@ -4,15 +4,17 @@ import * as Haptics from 'expo-haptics';
 import { File, Paths } from 'expo-file-system';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { OrderDocument, OrderDocumentType } from '@df/types';
 import { documentHtml } from '@/features/document-html';
 import { DOCUMENT_TITLES, DocumentPaper } from '@/features/document-paper';
 import { SignaturePad } from '@/features/signature-pad';
 import { useSession } from '@/lib/session';
-import { space, makeStyles } from '@/lib/theme';
+import { cardShadow, makeStyles, radius, space } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
-import { Body, Button, Field, Label, Loading, Notice, Screen } from '@/ui';
+import { Body, Button, Field, Heading, Loading, Notice, Screen } from '@/ui';
+import { FlowHeader } from '@/ui/brand';
 
 /** An act: with `documentId` the issued one (view, PDF); without it, the preview to sign and issue. */
 export default function DocumentScreen() {
@@ -24,6 +26,7 @@ export default function DocumentScreen() {
 
 function Signer({ orderId, type, defaultSigner }: { orderId: string; type: OrderDocumentType; defaultSigner: string }) {
   const styles = useStyles();
+  const insets = useSafeAreaInsets();
   const { api } = useSession();
   const preview = useResource(useCallback((signal: AbortSignal) => api.previewDocument(orderId, type, signal), [api, orderId, type]));
   const [signerName, setSignerName] = useState(defaultSigner);
@@ -46,15 +49,17 @@ function Signer({ orderId, type, defaultSigner }: { orderId: string; type: Order
 
   if (!preview.data && !preview.error) return <Loading label="Готовим документ…"/>;
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content} scrollEnabled={!drawing} keyboardShouldPersistTaps="handled">
-      <Stack.Screen options={{ title: DOCUMENT_TITLES[type] }}/>
+    <ScrollView style={styles.root} contentContainerStyle={[styles.content, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 32 }]} scrollEnabled={!drawing} keyboardShouldPersistTaps="handled">
+      <FlowHeader title={DOCUMENT_TITLES[type]} note={preview.data ? `${preview.data.content.vehicle.plate} · ${preview.data.content.customer.name}` : undefined}/>
       {preview.error ? <Notice>{preview.error}</Notice> : null}
       {preview.data ? <>
         <DocumentPaper content={preview.data.content}/>
-        <Label>Подпись клиента</Label>
-        <Body muted>Покажите документ клиенту. Подпись необязательна: акт можно оформить без неё и подписать на бумаге.</Body>
-        <Field label="ФИО подписанта" value={signerName} onChangeText={setSignerName} maxLength={120} autoCapitalize="words"/>
-        <SignaturePad onChange={setSignature} onDrawing={setDrawing}/>
+        <View style={styles.card}>
+          <Heading>Подпись клиента</Heading>
+          <Body muted style={{ fontSize: 13 }}>Покажите документ клиенту. Без подписи акт можно оформить и подписать на бумаге.</Body>
+          <Field label="ФИО подписанта" value={signerName} onChangeText={setSignerName} maxLength={120} autoCapitalize="words"/>
+          <SignaturePad onChange={setSignature} onDrawing={setDrawing}/>
+        </View>
         {error ? <Notice>{error}</Notice> : null}
         <Button title="Подписать и сохранить" busy={busy === 'signed'} disabled={busy !== null || !signature || signerName.trim().length < 2} onPress={() => void issue(true)}/>
         <Button title="Оформить без подписи" tone="secondary" busy={busy === 'unsigned'} disabled={busy !== null} onPress={() => void issue(false)}/>
@@ -64,6 +69,7 @@ function Signer({ orderId, type, defaultSigner }: { orderId: string; type: Order
 }
 
 function Viewer({ orderId, documentId }: { orderId: string; documentId: string }) {
+  const insets = useSafeAreaInsets();
   const { api } = useSession();
   const { data: document, error, reload } = useResource(useCallback((signal: AbortSignal) => api.getDocument(orderId, documentId, signal), [api, orderId, documentId]));
   const [sharing, setSharing] = useState(false);
@@ -86,8 +92,8 @@ function Viewer({ orderId, documentId }: { orderId: string; documentId: string }
   };
 
   return (
-    <Screen>
-      <Stack.Screen options={{ title: `${DOCUMENT_TITLES[document.type]} № ${document.number}` }}/>
+    <Screen contentStyle={{ paddingTop: insets.top + 18 }}>
+      <FlowHeader title={`${DOCUMENT_TITLES[document.type].replace(/ (.*)$/, '')} № ${document.number}`} note={`${document.content.vehicle.plate} · ${document.content.customer.name}`}/>
       {document.outdated ? <Notice tone="info">Акт устарел: после подписания приёмку осмотрели повторно. Документ сохранён без изменений — оформите новый.</Notice> : null}
       <DocumentPaper content={document.content} number={document.number} signerName={document.signerName} signatureDataUrl={document.signatureDataUrl}
         signedAt={document.signedAt} actorName={document.actorName}/>
@@ -100,7 +106,9 @@ function Viewer({ orderId, documentId }: { orderId: string; documentId: string }
   );
 }
 
-const useStyles = makeStyles((colors) => StyleSheet.create({
+const useStyles = makeStyles((colors, scheme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.ground },
-  content: { padding: space.l, paddingBottom: space.xxl, gap: space.m }
+  content: { paddingHorizontal: space.l, gap: 14 },
+  meta: { color: colors.muted, fontSize: 12, paddingHorizontal: 4 },
+  card: { borderRadius: radius.l, backgroundColor: colors.surface, padding: space.l, gap: space.m, ...cardShadow(scheme) }
 }));

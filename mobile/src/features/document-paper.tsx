@@ -97,13 +97,13 @@ function Party({ label, value }: { label: string; value: string }) {
 
 const ink = '#16191c';
 const styles = StyleSheet.create({
-  paper: { backgroundColor: '#fbfaf7', borderRadius: radius.m, padding: space.l, gap: 6 },
-  center: { color: '#5c6368', fontSize: 13, fontWeight: '700' },
-  title: { color: ink, fontSize: 20, fontWeight: '800' },
+  paper: { backgroundColor: '#FFFFFF', borderRadius: radius.l, padding: space.l, gap: 6, borderWidth: 1, borderColor: '#ECECEA' },
+  center: { color: '#5c6368', fontSize: 13, fontWeight: '600' },
+  title: { color: ink, fontSize: 22, fontWeight: '500', letterSpacing: -0.4 },
   meta: { color: '#5c6368', fontSize: 13 },
   parties: { flexDirection: 'row', flexWrap: 'wrap', marginVertical: space.s, borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#d9d6cf', paddingVertical: space.s },
   party: { width: '50%', paddingVertical: 4, paddingRight: space.s },
-  h: { color: ink, fontSize: 15, fontWeight: '800', marginTop: space.s },
+  h: { color: ink, fontSize: 15, fontWeight: '600', marginTop: space.s },
   text: { color: ink, fontSize: 14, lineHeight: 20 },
   bold: { color: ink, fontSize: 14, fontWeight: '700' },
   small: { color: '#5c6368', fontSize: 12, lineHeight: 17 },

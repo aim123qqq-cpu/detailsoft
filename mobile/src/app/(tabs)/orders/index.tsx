@@ -86,7 +86,7 @@ export default function OrdersScreen() {
             </View>
             {item.totalAmountMinor !== null ? <Text style={styles.readyTitle}>{money(item.totalAmountMinor)}</Text> : null}
           </View>
-          {session.capabilities.closeOrders ? <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/orders/handover/[id]', params: { id: item.id, title: item.vehicle.plate } })} style={styles.readyButton}>
+          {session.capabilities.closeOrders ? <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/orders/handover/[id]', params: { id: item.id, title: item.vehicle.plate, subtitle: `${vehicleName(item.vehicle)} · ${item.customer.name}` } })} style={styles.readyButton}>
             <Text style={styles.readyButtonText}>Выдать автомобиль</Text><Icon name="chevronRight" size={16} color="#121212"/>
           </Pressable> : null}
         </Pressable>

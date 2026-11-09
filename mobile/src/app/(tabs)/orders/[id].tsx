@@ -15,7 +15,7 @@ import { useSession, useSignedIn } from '@/lib/session';
 import { orderShareText } from '@/lib/share-text';
 import { floatShadow, makeStyles, radius, space, useTheme } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
-import { Body, Button, Loading, Notice, Screen } from '@/ui';
+import { Body, Button, Heading, Loading, Notice, Screen } from '@/ui';
 import { RoundButton } from '@/ui/brand';
 import { Icon } from '@/ui/icons';
 import { Text } from '@/ui/text';
@@ -55,7 +55,7 @@ export default function OrderScreen() {
   const caps = session.capabilities;
   const needsEstimate = order.status === 'ESTIMATE_DRAFT' && (!current || decision?.decision === 'REJECTED');
   const awaitsDecision = order.status === 'ESTIMATE_DRAFT' && current && !decision;
-  const params = { id: order.id, title: title ?? '' };
+  const params = { id: order.id, title: title ?? '', subtitle: subtitle ?? '' };
   const openDocument = (type: OrderDocumentType, documentId?: string) => router.push({ pathname: '/orders/document/[id]', params: { id: order.id, type, ...(documentId ? { documentId } : {}), signer: customerName } });
   const share = async () => {
     setShareError('');
@@ -87,7 +87,7 @@ export default function OrderScreen() {
               <Text style={styles.headTitle} numberOfLines={1}>{vehicleText || title || 'Заказ'}</Text>
               <Text style={styles.headNote} numberOfLines={1}>{[title, `открыт ${shortDate(order.createdAt)}`].filter(Boolean).join(' · ')}</Text>
             </View>
-            <View style={{ width: 44 }}/>
+            {order.status === 'CLOSED' && estimate ? <RoundButton icon="arrowUpRight" label="Поделиться заказ-нарядом" onPress={() => void share()}/> : <View style={{ width: 44 }}/>}
           </View>
           <View style={styles.drawing}>
             {order.intake ? <CarDiagram layout={layout} marks={marks} width={Math.min(width * 0.42, 170)}/>
@@ -107,11 +107,12 @@ export default function OrderScreen() {
           <View style={styles.handle}/>
           <View style={styles.moneyRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.meta}>{headline}</Text>
+              {order.status === 'CLOSED' ? <View style={styles.closedChip}><Text style={styles.closedText}>Закрыт</Text></View> : <Text style={styles.meta}>{headline}</Text>}
               <Text style={styles.total} numberOfLines={1} adjustsFontSizeToFit>{estimate ? money(estimate.totalAmountMinor) : '—'}</Text>
             </View>
             <StageRing stage={stage}/>
           </View>
+          {order.status === 'CLOSED' && order.handover ? <Text style={styles.meta}>открыт {shortDate(order.createdAt)} · закрыт {shortDate(order.handover.handedOverAt)}</Text> : null}
 
           {customerName ? <View style={styles.person}>
             <View style={styles.avatar}><Text style={styles.avatarText}>{initials(customerName)}</Text></View>
@@ -137,13 +138,14 @@ export default function OrderScreen() {
               </View>
             ))}
           </View> : null}
-          {estimate && decision ? <Text style={styles.meta}>{decision.decision === 'APPROVED' ? 'Согласовано' : 'Клиент отказался'} {approvalMethod[decision.method]} · {decision.responsible}</Text> : null}
+          {estimate && decision && order.status !== 'CLOSED' ? <Text style={styles.meta}>{decision.decision === 'APPROVED' ? 'Согласовано' : 'Клиент отказался'} {approvalMethod[decision.method]} · {decision.responsible}</Text> : null}
 
           {awaitsDecision && current && caps.approveEstimates ? <ApprovalPanel order={order} estimate={current} onChanged={replace}/> : null}
           {needsEstimate && caps.manageIntake ? <Button title={current ? 'Новая версия сметы' : 'Составить смету'} onPress={() => router.push({ pathname: '/orders/estimate/[id]', params })}/> : null}
           {needsEstimate && !caps.manageIntake ? <Body muted>Смету составляет администратор или приёмщик.</Body> : null}
           {order.status === 'READY' && caps.closeOrders ? <Button title="Выдать автомобиль" onPress={() => router.push({ pathname: '/orders/handover/[id]', params })}/> : null}
 
+          {order.status === 'CLOSED' ? <Story order={order} total={estimate?.totalAmountMinor ?? null}/> : <>
           <Row title="Приёмка" note={order.intake ? `${findings.length ? `${findings.length} замеч.` : 'без замечаний'} · фото ${intakePhotos}` : 'Ещё не проведена'}
             action={canIntake ? (order.intake ? 'Изменить' : 'Провести') : undefined} onPress={canIntake ? openIntake : undefined}/>
           {findings.length ? <View style={styles.findings}>
@@ -162,6 +164,8 @@ export default function OrderScreen() {
             <Row title="Работы" note={`${order.assignment ? `${order.assignment.masterName} · ` : ''}выполнено ${done} из ${operations.length}${order.work.status === 'PAUSED' ? ` · пауза: ${order.work.pauseNote ?? ''}` : ''}`}/>
           ) : null}
           {order.handover ? <Row title="Выдача" note={`${order.handover.responsible} · ${shortDate(order.handover.handedOverAt)}${order.handover.note ? ` · ${order.handover.note}` : ''}`}/> : null}
+          </>}
+          {order.status === 'CLOSED' ? <Heading style={{ marginTop: 4 }}>Документы</Heading> : null}
 
           {(['intake_act', 'handover_act'] as const).filter((type) => type === 'intake_act' ? Boolean(order.intake) && (caps.manageIntake || caps.closeOrders) : order.status === 'CLOSED' && caps.closeOrders).map((type) => {
             const latest = order.documents.find((document) => document.type === type && document.current) ?? null;
@@ -175,12 +179,41 @@ export default function OrderScreen() {
             );
           })}
 
-          {order.status === 'CLOSED' && estimate ? <>
-            <Button title="Поделиться заказ-нарядом" tone="raised" onPress={() => void share()}/>
-            {shareError ? <Notice>{shareError}</Notice> : null}
-          </> : null}
+          {shareError ? <Notice>{shareError}</Notice> : null}
         </View>
       </ScrollView>
+    </View>
+  );
+}
+
+/** How a closed order went: intake, the agreed estimate, the work, the handover, each with who and when. */
+function Story({ order, total }: { order: import('@df/types').WorkOrder; total: number | null }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
+  const findings = order.intake?.findings.length ?? 0;
+  const photos = order.photos.filter((photo) => photo.phase === 'intake').length;
+  const operations = order.work?.operations ?? [];
+  const steps = [
+    order.intake ? { title: 'Приёмка', note: `${shortDate(order.intake.completedAt)} · ${findings ? `замечаний: ${findings}` : 'без замечаний'}, фото: ${photos}` } : null,
+    order.approval ? { title: order.approval.decision === 'APPROVED' ? 'Смета согласована' : 'Смета отклонена', note: [approvalMethod[order.approval.method].replace(/^./, (letter) => letter.toUpperCase()), order.approval.responsible, total !== null ? money(total) : null].filter(Boolean).join(' · ') } : null,
+    order.work ? { title: 'Работы', note: `${order.assignment?.masterName ?? 'мастер'} · выполнено ${operations.filter((operation) => operation.status === 'DONE').length} из ${operations.length}` } : null,
+    order.handover ? { title: 'Выдача', note: [order.handover.note, order.handover.responsible, shortDate(order.handover.handedOverAt)].filter(Boolean).join(' · ') } : null
+  ].filter((step) => step !== null);
+  return (
+    <View style={{ gap: space.m }}>
+      <Heading style={{ marginTop: 4 }}>Как прошёл заказ</Heading>
+      {steps.map((step, index) => (
+        <View key={step.title} style={styles.step}>
+          <View style={styles.stepRail}>
+            <View style={[styles.stepDot, { backgroundColor: colors.ok }]}><Icon name="check" size={12} color="#FFFFFF" strokeWidth={2.4}/></View>
+            {index < steps.length - 1 ? <View style={styles.stepLine}/> : null}
+          </View>
+          <View style={{ flex: 1, paddingBottom: space.m }}>
+            <Text style={styles.rowTitle}>{step.title}</Text>
+            <Text style={styles.meta}>{step.note}</Text>
+          </View>
+        </View>
+      ))}
     </View>
   );
 }
@@ -251,6 +284,12 @@ const useStyles = makeStyles((colors, scheme) => StyleSheet.create({
   rowTitle: { fontSize: 15, fontWeight: '600' },
   rowAction: { fontSize: 13, fontWeight: '700', color: colors.accent },
   extra: { fontSize: 13, fontWeight: '600', color: colors.muted },
+  closedChip: { alignSelf: 'flex-start', height: 26, paddingHorizontal: 10, borderRadius: 13, backgroundColor: colors.soft, justifyContent: 'center', marginBottom: 2 },
+  closedText: { color: colors.muted, fontSize: 12, fontWeight: '700' },
+  step: { flexDirection: 'row', gap: space.m },
+  stepRail: { alignItems: 'center', width: 22 },
+  stepDot: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  stepLine: { flex: 1, width: 2, backgroundColor: colors.line, marginTop: 2 },
   findings: { gap: 6, paddingHorizontal: 4 },
   finding: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   pin: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
