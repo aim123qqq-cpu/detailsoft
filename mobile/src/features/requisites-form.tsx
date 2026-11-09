@@ -4,7 +4,7 @@ import type { CenterRequisites } from '@df/shared/orderDocuments';
 import { useSession } from '@/lib/session';
 import { space } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
-import { Body, Button, Field, Label, Notice } from '@/ui';
+import { Body, Button, Field, Heading, Notice } from '@/ui';
 
 /**
  * The center as the contractor in its acts: the rules for car service (Government Decree No. 780) and
@@ -32,7 +32,7 @@ export function RequisitesForm() {
 
   return (
     <View style={{ gap: space.m }}>
-      <Label>Реквизиты для документов</Label>
+      <Heading style={{ marginTop: space.m }}>Реквизиты для документов</Heading>
       <Body muted>Печатаются в актах приёмки и выдачи как данные исполнителя. Пустые поля не печатаются.</Body>
       <Field label="Наименование" value={value.legalName} onChangeText={set('legalName')} placeholder="ИП Иванов Иван Иванович"/>
       <Field label="ИНН" value={value.inn} onChangeText={set('inn')} keyboardType="number-pad" placeholder="10 или 12 цифр"/>

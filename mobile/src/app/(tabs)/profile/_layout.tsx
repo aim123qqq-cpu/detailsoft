@@ -14,7 +14,7 @@ export default function ProfileStack() {
       <Stack.Screen name="team" options={{ title: 'Команда и роли', headerShown: false }}/>
       <Stack.Screen name="member/[id]" options={{ title: 'Сотрудник', headerShown: false }}/>
       <Stack.Screen name="role/[key]" options={{ title: 'Роль', headerShown: false }}/>
-      <Stack.Screen name="settings" options={{ title: 'График центра' }}/>
+      <Stack.Screen name="settings" options={{ title: 'График центра', headerShown: false }}/>
       <Stack.Screen name="notifications" options={{ title: 'Уведомления', headerShown: false }}/>
     </Stack>
   );
