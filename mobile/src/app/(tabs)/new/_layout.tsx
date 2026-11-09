@@ -7,7 +7,7 @@ export const unstable_settings = { initialRouteName: 'index' };
 export default function NewStack() {
   const options = useStackOptions();
   return (
-    <Stack screenOptions={options}>
+    <Stack screenOptions={{ ...options, headerShown: false }}>
       <Stack.Screen name="index" options={{ title: 'Новая запись' }}/>
       <Stack.Screen name="vehicle" options={{ title: 'Новый автомобиль' }}/>
       <Stack.Screen name="services" options={{ title: 'Услуги' }}/>

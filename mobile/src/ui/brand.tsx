@@ -77,6 +77,16 @@ export function FlowHeader({ title, note, onBack, right }: { title: string; note
   );
 }
 
+/** How far a step-by-step flow has gone: one bar per step, the done and current ones dark. */
+export function StepBar({ step, total }: { step: number; total: number }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', gap: 4, paddingHorizontal: 4 }} accessibilityLabel={`Шаг ${step} из ${total}`}>
+      {Array.from({ length: total }, (_, index) => <View key={index} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: index < step ? colors.ink : colors.line }}/>)}
+    </View>
+  );
+}
+
 /** A text action under the buttons: «Назад», «Демо-режим». */
 export function TextLink({ title, onPress, tone = 'ink', testID }: { title: string; onPress: () => void; tone?: 'ink' | 'muted' | 'accent'; testID?: string }) {
   const styles = useStyles();

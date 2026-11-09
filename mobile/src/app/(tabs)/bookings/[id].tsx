@@ -5,7 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BookingListItem } from '@df/types';
 import { BookingStatus, DateStrip, SlotGrid, startIntake } from '@/features/booking-ui';
-import { addDays, channelLabel, dayKey, dayOfMonth, duration, longDay, money, monthShort, timeOf, vehicleName, weekday } from '@/lib/format';
+import { addDays, bodyName, channelLabel, dayKey, dayOfMonth, duration, longDay, money, monthShort, timeOf, vehicleName, weekday } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
 import { cardShadow, makeStyles, radius, space, useTheme } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
@@ -15,8 +15,6 @@ import { Icon } from '@/ui/icons';
 import { Plate } from '@/ui/plate';
 import { ButtonPair, Sheet } from '@/ui/sheet';
 import { Text } from '@/ui/text';
-
-const BODY_TYPES: Record<string, string> = { sedan: 'седан', hatchback: 'хэтчбек', suv: 'внедорожник', crossover: 'кроссовер', wagon: 'универсал', coupe: 'купе', minivan: 'минивэн', pickup: 'пикап', van: 'фургон' };
 
 /** One booking: who and what, then arrival (intake), moving, cancelling or a no-show. */
 export default function BookingScreen() {
@@ -65,7 +63,7 @@ export default function BookingScreen() {
     const order = await startIntake(api, item);
     setItem((current) => ({ ...current, orderId: order.id }));
   });
-  const vehicleNote = [item.vehicle.bodyType ? BODY_TYPES[item.vehicle.bodyType] ?? item.vehicle.bodyType : null, item.vehicle.color].filter(Boolean).join(' · ');
+  const vehicleNote = [bodyName(item.vehicle.bodyType), item.vehicle.color].filter(Boolean).join(' · ');
 
   return (
     <Screen contentStyle={{ paddingTop: insets.top + 18 }}>

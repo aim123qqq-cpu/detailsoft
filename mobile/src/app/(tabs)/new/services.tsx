@@ -8,9 +8,13 @@ import type { BookingQuote, QuoteSelection, ServiceOffering } from '@df/types';
 import { useBookingDraft } from '@/lib/booking-draft';
 import { duration, money, vehicleName } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
-import { radius, space, makeStyles, useTheme } from '@/lib/theme';
+import { cardShadow, space, makeStyles, useTheme } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
-import { Body, Button, Card, Label, Loading, Notice, Screen } from '@/ui';
+import { Body, Button, Card, Heading, Loading, Notice, Screen } from '@/ui';
+import { FlowHeader, StepBar } from '@/ui/brand';
+import { Icon } from '@/ui/icons';
+import { Plate } from '@/ui/plate';
+import { DOCK_SPACE, Dock } from '@/ui/sheet';
 
 const keyOf = (selections: QuoteSelection[]) => selections.map((item) => `${item.type}:${item.id}`).join(',');
 
@@ -51,36 +55,39 @@ export default function ServicesScreen() {
 
   return (
     <View style={styles.root}>
-      <Screen contentStyle={{ paddingBottom: 140 + insets.bottom }}>
-        <Card>
-          <Text style={styles.plate}>{draft.vehicle.plate}</Text>
-          <Text style={styles.vehicle}>{vehicleName(draft.vehicle)}</Text>
-          <Text style={styles.meta}>{draft.customer.name}{catalog.data ? ` · класс «${catalog.data.vehicleClass}»` : ''}</Text>
-        </Card>
+      <Screen contentStyle={{ paddingTop: insets.top + 18, paddingBottom: DOCK_SPACE + insets.bottom }}>
+        <FlowHeader title="Услуги" note="Шаг 3 из 4"/>
+        <StepBar step={3} total={4}/>
+        <View style={styles.car}>
+          <Plate plate={draft.vehicle.plate}/>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.carName} numberOfLines={1}>{vehicleName(draft.vehicle)}</Text>
+            <Text style={styles.carNote} numberOfLines={1}>{draft.customer.name}{catalog.data ? ` · класс «${catalog.data.vehicleClass}»` : ''}</Text>
+          </View>
+        </View>
         {catalog.error ? <><Notice>{catalog.error}</Notice><Button title="Повторить" tone="secondary" onPress={catalog.reload}/></> : null}
         {catalog.data && !catalog.data.categories.some((category) => category.items.length) ? <Card>
-          <Label>Услуг пока нет</Label>
+          <Heading>Услуг пока нет</Heading>
           <Body muted>{canEditCatalog ? 'Добавьте услуги центра — название, время и цену, — и вернитесь к записи.' : 'Попросите владельца центра добавить услуги в каталог.'}</Body>
           {canEditCatalog ? <Button title="Открыть каталог услуг" tone="secondary" onPress={() => router.push('/profile/catalog')}/> : null}
         </Card> : null}
-        {catalog.data?.categories.map((category) => (
+        {catalog.data?.categories.filter((category) => category.items.length).map((category) => (
           <View key={category.name} style={styles.category}>
-            <Label>{category.name}</Label>
+            <Heading style={{ marginTop: 4 }}>{category.name}</Heading>
             {category.items.map((item) => {
               const on = selected(item);
               const line = current?.lines.find((entry) => entry.type === item.type && entry.id === item.id);
               return (
                 <Pressable key={`${item.type}-${item.id}`} accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={item.name}
-                  onPress={() => toggle(item)} android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={[styles.offer, on && styles.offerOn]}>
-                  <View style={[styles.check, on && styles.checkOn]}>{on ? <Text style={styles.checkMark}>✓</Text> : null}</View>
+                  onPress={() => toggle(item)} android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={styles.offer}>
+                  <View style={[styles.check, on && styles.checkOn]}>{on ? <Icon name="check" size={16} color={colors.pillInk} strokeWidth={2.2}/> : null}</View>
                   <View style={styles.offerBody}>
                     <Text style={styles.offerName}>{item.name}{item.type === 'package' ? ' · комплекс' : ''}</Text>
-                    {item.description ? <Text style={styles.meta} numberOfLines={2}>{item.description}</Text> : null}
-                    <Text style={styles.soft}>{duration(item.durationMinutes)} · операций: {item.operations.length}</Text>
+                    <Text style={styles.small} numberOfLines={2}>{[item.description, duration(item.durationMinutes), item.operations.length ? `операций: ${item.operations.length}` : null].filter(Boolean).join(' · ')}</Text>
                   </View>
                   <View style={styles.price}>
                     <Text style={[styles.priceText, line?.excluded && styles.struck]}>{item.price.label}</Text>
-                    {line?.excluded ? <Text style={styles.soft}>в комплексе</Text> : item.pricingMode === 'from' ? <Text style={styles.soft}>после осмотра</Text> : null}
+                    {line?.excluded ? <Text style={styles.tiny}>в комплексе</Text> : item.pricingMode === 'from' ? <Text style={styles.tiny}>после осмотра</Text> : null}
                   </View>
                 </Pressable>
               );
@@ -90,38 +97,35 @@ export default function ServicesScreen() {
         {current?.warnings.map((warning) => <Notice key={`${warning.code}-${warning.itemId}`} tone="info">{warning.message}</Notice>)}
         {error ? <Notice>{error}</Notice> : null}
       </Screen>
-      <View style={[styles.dock, { paddingBottom: insets.bottom > 0 ? space.m : space.l }]}>
+      <Dock>
         <View style={{ flex: 1 }}>
-          <Text style={styles.soft}>Предварительно</Text>
-          {current ? <Text style={styles.total}>{money(current.totalAmountMinor)} <Text style={styles.meta}>· {duration(current.totalDurationMinutes)}</Text></Text>
-            : key ? <ActivityIndicator color={colors.primary} style={{ alignSelf: 'flex-start' }}/> : <Text style={styles.meta}>Выберите услуги</Text>}
+          <Text style={styles.small}>Предварительно</Text>
+          {current ? <Text style={styles.total} numberOfLines={1} adjustsFontSizeToFit>{money(current.totalAmountMinor)} <Text style={styles.totalNote}>· {duration(current.totalDurationMinutes)}</Text></Text>
+            : key ? <ActivityIndicator color={colors.ink} style={{ alignSelf: 'flex-start' }}/> : <Text style={styles.totalNote}>Выберите услуги</Text>}
         </View>
-        <Button title="Выбрать время" disabled={!current} style={styles.next}
+        <Button title="Выбрать время" disabled={!current} style={{ flex: 1.1 }}
           onPress={() => { update({ selections, quote: current }); router.push('/new/schedule'); }}/>
-      </View>
+      </Dock>
     </View>
   );
 }
 
-const useStyles = makeStyles((colors) => StyleSheet.create({
+const useStyles = makeStyles((colors, scheme) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.ground },
-  plate: { color: colors.primary, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
-  vehicle: { color: colors.text, fontSize: 18, fontWeight: '700' },
-  meta: { color: colors.muted, fontSize: 14 },
-  soft: { color: colors.faint, fontSize: 13 },
-  category: { gap: space.s },
-  offer: { flexDirection: 'row', gap: space.m, backgroundColor: colors.surface, borderRadius: radius.l, padding: space.l, borderWidth: 1, borderColor: 'transparent', overflow: 'hidden' },
-  offerOn: { borderColor: colors.primary },
-  check: { width: 24, height: 24, borderRadius: 7, borderWidth: 2, borderColor: colors.line, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
-  checkOn: { backgroundColor: colors.primary, borderColor: colors.primary },
-  checkMark: { color: colors.primaryInk, fontSize: 14, fontWeight: '900' },
+  car: { flexDirection: 'row', alignItems: 'center', gap: space.m, paddingVertical: 14, paddingHorizontal: space.l, borderRadius: 24, backgroundColor: colors.tileSky },
+  carName: { color: colors.tileInk, fontSize: 16, fontWeight: '600' },
+  carNote: { color: colors.tileInk, fontSize: 12, opacity: 0.75 },
+  category: { gap: 10 },
+  offer: { flexDirection: 'row', alignItems: 'flex-start', gap: space.m, backgroundColor: colors.surface, borderRadius: 22, padding: space.l, overflow: 'hidden', ...cardShadow(scheme) },
+  check: { width: 26, height: 26, borderRadius: 9, borderWidth: 1.5, borderColor: colors.line, alignItems: 'center', justifyContent: 'center' },
+  checkOn: { backgroundColor: colors.pill, borderColor: colors.pill },
   offerBody: { flex: 1, gap: 3 },
-  offerName: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  offerName: { fontSize: 16, fontWeight: '600' },
+  small: { color: colors.muted, fontSize: 12 },
+  tiny: { color: colors.muted, fontSize: 11 },
   price: { alignItems: 'flex-end', gap: 2, maxWidth: 110 },
-  priceText: { color: colors.text, fontSize: 15, fontWeight: '800', textAlign: 'right' },
-  struck: { color: colors.faint, textDecorationLine: 'line-through' },
-  dock: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: space.m, paddingHorizontal: space.l, paddingTop: space.m,
-    backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
-  total: { color: colors.text, fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  next: { minWidth: 150 }
+  priceText: { fontSize: 15, fontWeight: '600', textAlign: 'right', fontVariant: ['tabular-nums'] },
+  struck: { color: colors.muted, textDecorationLine: 'line-through' },
+  total: { fontSize: 24, fontWeight: '500', letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
+  totalNote: { fontSize: 14, color: colors.muted, fontWeight: '400' }
 }));

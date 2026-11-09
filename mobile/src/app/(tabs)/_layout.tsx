@@ -12,7 +12,7 @@ import { TabBar, TabBarSpace, tabBarHeight } from '@/ui/tab-bar';
 export const unstable_settings = { initialRouteName: 'home' };
 
 // The floating navigation shows on the sections' own screens; a card or a step-by-step flow has its own bottom actions.
-const WITH_BAR = new Set(['/', '/home', '/bookings', '/orders', '/profile', '/profile/team', '/analytics']);
+const WITH_BAR = new Set(['/', '/home', '/bookings', '/new', '/new/done', '/orders', '/profile', '/profile/team', '/analytics']);
 
 export default function TabsLayout() {
   const session = useSignedIn();

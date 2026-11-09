@@ -32,6 +32,15 @@ export function Sheet({ visible, title, note, onClose, children }: { visible: bo
   );
 }
 
+/** The panel fixed to the bottom of a step: white, rounded on top, the total and the next action. */
+export function Dock({ children }: { children: ReactNode }) {
+  const styles = useStyles();
+  const insets = useSafeAreaInsets();
+  return <View style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) + 14 }]}>{children}</View>;
+}
+/** The room a screen leaves at its end for the dock. */
+export const DOCK_SPACE = 120;
+
 /** Two buttons side by side at the bottom of a sheet or a screen: the way back on the left, the action on the right. */
 export function ButtonPair({ children }: { children: ReactNode }) {
   return <View style={{ flexDirection: 'row', gap: space.s }}>{children}</View>;
@@ -39,6 +48,8 @@ export function ButtonPair({ children }: { children: ReactNode }) {
 
 const useStyles = makeStyles((colors, scheme) => StyleSheet.create({
   place: { flex: 1, justifyContent: 'flex-end' },
+  dock: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: space.l, paddingTop: 14,
+    backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, ...floatShadow(scheme) },
   scrim: { flex: 1, backgroundColor: colors.scrim },
   sheet: { maxHeight: '88%', backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, paddingTop: 10, ...floatShadow(scheme) },
   handle: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: colors.line, marginBottom: 6 },

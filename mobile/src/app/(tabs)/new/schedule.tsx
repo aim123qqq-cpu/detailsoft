@@ -1,20 +1,26 @@
 import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Text } from '@/ui/text';
 import * as Haptics from 'expo-haptics';
 import { randomUUID } from 'expo-crypto';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DateStrip, SlotGrid } from '@/features/booking-ui';
 import { useBookingDraft } from '@/lib/booking-draft';
-import { addDays, dayKey, duration, money, timeOf, vehicleName } from '@/lib/format';
+import { addDays, channelLabel, dayKey, duration, money, timeOf, vehicleName } from '@/lib/format';
 import { useSession, useSignedIn } from '@/lib/session';
-import { space, makeStyles } from '@/lib/theme';
+import { makeStyles, space } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
-import { Body, Button, Card, Label, Notice, Screen } from '@/ui';
+import { Body, Button, Card, Heading, Notice, Screen } from '@/ui';
+import { FlowHeader, StepBar } from '@/ui/brand';
+import { DOCK_SPACE, Dock } from '@/ui/sheet';
+import { Text } from '@/ui/text';
 
-/** Step 3: a day and a free start time, then the booking is made. */
+const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+
+/** Step 4: a day and a free start time, then the booking is made. */
 export default function ScheduleScreen() {
   const styles = useStyles();
+  const insets = useSafeAreaInsets();
   const { api } = useSession();
   const session = useSignedIn();
   const timeZone = session.tenant.timezone;
@@ -47,36 +53,55 @@ export default function ScheduleScreen() {
   };
 
   return (
-    <Screen>
-      <View>
-        <Label>День</Label>
-        <DateStrip from={today} days={14} value={day} onChange={(key) => { setDay(key); setStartAt(''); }} today={today}/>
-      </View>
-      <View style={{ gap: space.s }}>
-        <Label>Свободное время · {duration(minutes)}</Label>
-        {availability.error ? <Notice>{availability.error}</Notice> : <SlotGrid availability={availability.data?.date === day ? availability.data : null} value={startAt} onChange={setStartAt}/>}
-      </View>
-      <Card>
-        <Label>Запись</Label>
-        <Text style={styles.main}>{customer.name} · {vehicle.plate}</Text>
-        <Text style={styles.meta}>{vehicleName(vehicle)}</Text>
-        {quote.lines.filter((line) => !line.excluded).map((line) => (
-          <View key={`${line.type}-${line.id}`} style={styles.line}><Text style={styles.lineName}>{line.name}</Text><Text style={styles.amount}>{money(line.amountMinor)}</Text></View>
-        ))}
-        <View style={[styles.line, styles.total]}><Text style={styles.lineName}>Предварительно</Text><Text style={styles.totalAmount}>{money(quote.totalAmountMinor)}</Text></View>
-      </Card>
-      {error ? <Notice>{error}</Notice> : null}
-      <Button title={startAt ? `Записать на ${timeOf(startAt, timeZone)}` : 'Выберите время'} busy={saving} disabled={!startAt} onPress={() => void book()}/>
-    </Screen>
+    <View style={styles.root}>
+      <Screen contentStyle={{ paddingTop: insets.top + 18, paddingBottom: DOCK_SPACE + insets.bottom }}>
+        <FlowHeader title="Время" note="Шаг 4 из 4"/>
+        <StepBar step={4} total={4}/>
+        <View style={styles.monthRow}>
+          <Text style={styles.month}>{MONTHS[Number(day.slice(5, 7)) - 1]}</Text>
+          <Text style={styles.meta}>на 2 недели вперёд</Text>
+        </View>
+        <DateStrip from={today} days={14} value={day} onChange={(key) => { setDay(key); setStartAt(''); }} today={today} raised/>
+        <View style={styles.sectionHead}>
+          <Heading>Свободное время</Heading>
+          <Text style={styles.meta}>нужно {duration(minutes)}</Text>
+        </View>
+        {availability.error ? <Notice>{availability.error}</Notice> : <SlotGrid availability={availability.data?.date === day ? availability.data : null} value={startAt} onChange={setStartAt} raised/>}
+        <Heading style={{ marginTop: 4 }}>Запись</Heading>
+        <Card>
+          <View style={{ gap: 2 }}>
+            <Text style={styles.main}>{customer.name} · {vehicle.plate}</Text>
+            <Text style={styles.meta}>{vehicleName(vehicle)} · {channelLabel(draft.channel).toLowerCase()}</Text>
+          </View>
+          <View style={styles.divider}/>
+          {quote.lines.filter((line) => !line.excluded).map((line) => (
+            <View key={`${line.type}-${line.id}`} style={styles.line}><Text style={styles.lineName}>{line.name}</Text><Text style={styles.amount}>{money(line.amountMinor)}</Text></View>
+          ))}
+        </Card>
+        {error ? <Notice>{error}</Notice> : null}
+      </Screen>
+      <Dock>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.meta}>Предварительно</Text>
+          <Text style={styles.total} numberOfLines={1} adjustsFontSizeToFit>{money(quote.totalAmountMinor)}</Text>
+        </View>
+        <Button title={startAt ? `Записать на ${timeOf(startAt, timeZone)}` : 'Выберите время'}
+          style={{ flex: 1.2 }} busy={saving} disabled={!startAt} onPress={() => void book()}/>
+      </Dock>
+    </View>
   );
 }
 
 const useStyles = makeStyles((colors) => StyleSheet.create({
-  main: { color: colors.text, fontSize: 17, fontWeight: '800' },
-  meta: { color: colors.muted, fontSize: 14 },
-  line: { flexDirection: 'row', justifyContent: 'space-between', gap: space.m, paddingVertical: 3 },
-  lineName: { color: colors.text, fontSize: 16, flex: 1 },
-  amount: { color: colors.text, fontSize: 16, fontVariant: ['tabular-nums'] },
-  total: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, marginTop: 4, paddingTop: space.s },
-  totalAmount: { color: colors.text, fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] }
+  root: { flex: 1, backgroundColor: colors.ground },
+  monthRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: 4 },
+  month: { fontSize: 26, fontWeight: '500', letterSpacing: -0.5 },
+  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4 },
+  meta: { color: colors.muted, fontSize: 13 },
+  main: { fontSize: 16, fontWeight: '600' },
+  divider: { height: 1, backgroundColor: colors.line },
+  line: { flexDirection: 'row', justifyContent: 'space-between', gap: space.m },
+  lineName: { fontSize: 15, flex: 1 },
+  amount: { fontSize: 15, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  total: { fontSize: 24, fontWeight: '500', letterSpacing: -0.5, fontVariant: ['tabular-nums'] }
 }));

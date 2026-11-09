@@ -27,8 +27,10 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
 }
 
 /** A row of days to pick from (moving a booking, a new one); the chosen day is black. */
-export function DateStrip({ from, days, value, onChange, today, counts }: {
+export function DateStrip({ from, days, value, onChange, today, counts, raised }: {
   from: string; days: number; value: string; onChange: (key: string) => void; today: string; counts?: Record<string, number>;
+  /** White days with a shadow, larger: on a screen; soft ones in a sheet. */
+  raised?: boolean;
 }) {
   const styles = useStyles();
   const keys = Array.from({ length: days }, (_, index) => addDays(from, index));
@@ -38,7 +40,7 @@ export function DateStrip({ from, days, value, onChange, today, counts }: {
         const selected = key === value;
         return (
           <Pressable key={key} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`${weekday(key)}, ${dayOfMonth(key)} ${monthShort(key)}`}
-            onPress={() => onChange(key)} style={[styles.day, selected && styles.daySelected]}>
+            onPress={() => onChange(key)} style={[styles.day, raised && styles.dayRaised, selected && styles.daySelected]}>
             <Text style={[styles.dayWeek, selected && styles.dayInk]}>{key === today ? 'сег' : weekday(key)}</Text>
             <Text style={[styles.dayNumber, selected && styles.dayInk]}>{dayOfMonth(key)}</Text>
             {counts ? <Text style={[styles.dayWeek, selected && styles.dayInk]}>{counts[key] ? `${counts[key]} зап.` : '—'}</Text> : null}
@@ -84,7 +86,7 @@ export function WeekStrip({ from, value, onChange, today, counts, onShift }: {
 }
 
 /** The center's free start times for a day; taken ones are struck through. */
-export function SlotGrid({ availability, value, onChange }: { availability: BookingAvailability | null; value: string; onChange: (startAt: string) => void }) {
+export function SlotGrid({ availability, value, onChange, raised }: { availability: BookingAvailability | null; value: string; onChange: (startAt: string) => void; raised?: boolean }) {
   const styles = useStyles();
   if (!availability) return <Body muted>Проверяем график…</Body>;
   if (availability.closed) return <Body muted>В этот день центр не работает.</Body>;
@@ -95,7 +97,7 @@ export function SlotGrid({ availability, value, onChange }: { availability: Book
         const selected = slot.startAt === value;
         return (
           <Pressable key={slot.startAt} accessibilityRole="button" accessibilityState={{ selected, disabled: !slot.available }} disabled={!slot.available}
-            onPress={() => onChange(slot.startAt)} style={[styles.slot, selected && styles.daySelected]}>
+            onPress={() => onChange(slot.startAt)} style={[styles.slot, raised && slot.available && styles.slotRaised, selected && styles.daySelected]}>
             <Text style={[styles.slotText, selected && styles.dayInk, !slot.available && styles.slotTakenText]}>{slot.time}</Text>
           </Pressable>
         );
@@ -236,6 +238,7 @@ const useStyles = makeStyles((colors, scheme) => StyleSheet.create({
   segmentTextSelected: { color: colors.ink },
   strip: { gap: space.s, paddingHorizontal: space.l },
   day: { width: 54, minHeight: 66, paddingVertical: 8, borderRadius: 18, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  dayRaised: { width: 56, minHeight: 72, borderRadius: 20, backgroundColor: colors.surface, ...cardShadow(scheme) },
   daySelected: { backgroundColor: colors.pill },
   dayWeek: { fontSize: 11, opacity: 0.7 },
   dayNumber: { fontSize: 18, fontWeight: '600' },
@@ -251,6 +254,7 @@ const useStyles = makeStyles((colors, scheme) => StyleSheet.create({
   dot: { width: 4, height: 4, borderRadius: 2 },
   slots: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
   slot: { width: '23%', height: 44, borderRadius: 15, backgroundColor: colors.soft, alignItems: 'center', justifyContent: 'center' },
+  slotRaised: { backgroundColor: colors.surface, height: 46, borderRadius: 16, ...cardShadow(scheme) },
   slotText: { fontSize: 15, fontWeight: '600', fontVariant: ['tabular-nums'] },
   slotTakenText: { color: colors.muted, textDecorationLine: 'line-through', fontWeight: '400' },
   row: { flexDirection: 'row', gap: space.m },

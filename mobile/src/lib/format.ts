@@ -1,4 +1,8 @@
 import type { WorkOrder } from '@df/types';
+import { BODY_TYPES } from '@df/shared/carLayouts';
+
+/** "suv" → "кроссовер", as the car picker names body types. */
+export const bodyName = (code: string | null | undefined) => code ? (BODY_TYPES.find((item) => item.code === code)?.label ?? code).toLowerCase() : '';
 
 export const money = (amountMinor: number) => `${Math.round(amountMinor / 100).toLocaleString('ru-RU').replace(/ | /g, ' ')} ₽`;
 
