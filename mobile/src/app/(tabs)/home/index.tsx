@@ -140,7 +140,7 @@ function NextVisit({ item, today, timeZone }: { item: BookingListItem; today: st
       </View>
       <View style={styles.dashed}>
         <Text style={styles.meta}>Запись</Text>
-        <Text style={styles.when}>{dayTitle(day, today).replace(/^./, (letter) => letter.toLowerCase())}, {timeOf(item.startAt, timeZone)}</Text>
+        <Text style={styles.when}>{[item.services?.length ? item.services.join(', ') : null, `${dayTitle(day, today).replace(/^./, (letter) => letter.toLowerCase())}, ${timeOf(item.startAt, timeZone)}`].filter(Boolean).join(' · ')}</Text>
       </View>
       <View style={styles.amountRow}>
         <Text style={styles.amount}>{money(item.preliminaryAmountMinor)}</Text>

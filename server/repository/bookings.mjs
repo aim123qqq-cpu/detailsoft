@@ -1,6 +1,16 @@
 import { createHash, randomUUID, availabilityForDate, computeQuote, isSlotAvailable, localDateTime, OPERATION_PRICE_CLASS, PACKAGE_PRICE_CLASS, clientId, apiTimestamp, calendarDateTimestamp } from './shared.mjs';
 
 /** Bookings: quote, free time, creation, moves and quote versions. Mixed into DetailFlowRepository (server/repository.mjs). */
+// What a booking in a list is for: the names of its services as of its current composition
+// (the last revision, else the original snapshot).
+const SERVICE_NAMES = `(SELECT lines_json FROM booking_quote_versions qv WHERE qv.booking_id = b.id AND qv.tenant_id = b.tenant_id ORDER BY qv.version DESC LIMIT 1) current_lines,
+        (SELECT json_group_array(name) FROM (SELECT ql.name FROM booking_quote_lines ql WHERE ql.booking_id = b.id ORDER BY ql.rowid)) original_names`;
+function serviceNames(row) {
+  try {
+    return row.current_lines ? JSON.parse(row.current_lines).map((line) => line.name).filter(Boolean) : JSON.parse(row.original_names ?? '[]');
+  } catch { return []; }
+}
+
 export const bookingsMethods = {
   /** Prices for the vehicle's class (or the '*' default) feed the shared quote rule. */
   pricedPackage(tenantId, vehicleClass, packageId) {
@@ -177,7 +187,8 @@ export const bookingsMethods = {
         c.id customer_id, c.name customer_name, c.phone_display customer_phone,
         v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color, v.body_type,
         w.order_id,
-        EXISTS (SELECT 1 FROM booking_slot_conflicts sc WHERE sc.booking_id = b.id AND sc.resolved_at IS NULL) slot_conflict
+        EXISTS (SELECT 1 FROM booking_slot_conflicts sc WHERE sc.booking_id = b.id AND sc.resolved_at IS NULL) slot_conflict,
+        ${SERVICE_NAMES}
       FROM bookings b
       JOIN customers c ON c.id = b.customer_id AND c.tenant_id = b.tenant_id
       JOIN vehicles v ON v.id = b.vehicle_id AND v.tenant_id = b.tenant_id
@@ -194,6 +205,7 @@ export const bookingsMethods = {
         preliminaryAmountMinor: row.preliminary_amount_minor,
         orderId: row.order_id ?? null,
         slotConflict: row.slot_conflict === 1,
+        services: serviceNames(row),
         customer: {
           id: row.customer_id,
           name: row.customer_name,
@@ -231,7 +243,8 @@ export const bookingsMethods = {
         c.id customer_id, c.name customer_name, c.phone_display customer_phone,
         v.id vehicle_id, v.make, v.model, v.generation, v.plate_display, v.color, v.body_type,
         w.order_id,
-        EXISTS (SELECT 1 FROM booking_slot_conflicts sc WHERE sc.booking_id = b.id AND sc.resolved_at IS NULL) slot_conflict
+        EXISTS (SELECT 1 FROM booking_slot_conflicts sc WHERE sc.booking_id = b.id AND sc.resolved_at IS NULL) slot_conflict,
+        ${SERVICE_NAMES}
       FROM bookings b
       JOIN customers c ON c.id = b.customer_id AND c.tenant_id = b.tenant_id
       JOIN vehicles v ON v.id = b.vehicle_id AND v.tenant_id = b.tenant_id
@@ -247,6 +260,7 @@ export const bookingsMethods = {
         preliminaryAmountMinor: row.preliminary_amount_minor,
         orderId: row.order_id ?? null,
         slotConflict: row.slot_conflict === 1,
+        services: serviceNames(row),
         customer: { id: row.customer_id, name: row.customer_name, phoneDisplay: row.customer_phone },
         vehicle: { id: row.vehicle_id, make: row.make, model: row.model, generation: row.generation, plate: row.plate_display, color: row.color, bodyType: row.body_type }
       }));

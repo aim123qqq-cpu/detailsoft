@@ -29,6 +29,9 @@ test('a longer composition is saved together with a new time in one step, or not
     assert.equal((await book(call, 'b', 'veh_camry', '11:00')).status, 201);
     assert.equal((await book(call, 'c', 'veh_camry', '11:00')).status, 201);
     const longer = { selections: [{ type: 'package', id: 'package_complex' }], expectedQuoteVersion: 1 };
+    // The lists name a booking's services, so a row says what the visit is for.
+    const services = async (view) => (await call(`/api/bookings?${view}`)).body.items.find((item) => item.id === booking.id).services;
+    assert.deepEqual(await services('view=upcoming'), [booking.lines[0].name]);
 
     const refused = await call(`/api/bookings/${booking.id}/quote`, { method: 'PUT', body: longer });
     assert.equal(refused.body.error.code, 'slot_unavailable');
@@ -44,6 +47,10 @@ test('a longer composition is saved together with a new time in one step, or not
     assert.equal(moved.body.quoteVersion, 2);
     assert.equal(moved.body.startAt, at('12:00'));
     assert.equal(moved.body.estimatedDurationMinutes, 120);
+    const names = moved.body.lines.map((line) => line.name);
+    assert.deepEqual(await services('view=upcoming'), names, 'after a change of composition, the new services');
+    assert.deepEqual(await services('from=2026-12-28&to=2026-12-28'), names);
+    assert.notDeepEqual(names, [booking.lines[0].name]);
     assert.equal((await call(`/api/bookings/${booking.id}/quote`, { method: 'PUT', body: { ...longer, expectedQuoteVersion: 2, startAt: 'вчера' } })).status, 422);
   } finally {
     await new Promise((done) => server.close(done));

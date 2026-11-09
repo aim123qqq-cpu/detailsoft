@@ -350,6 +350,8 @@ export type BookingListItem = {
   orderId: string | null;
   slotConflict?: boolean;
   pendingSync?: boolean;
+  /** Names of the booking's services as of its current composition (absent on a booking made offline). */
+  services?: string[];
   customer: Pick<Customer, 'id' | 'name' | 'phoneDisplay'>;
   vehicle: Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color' | 'bodyType'>;
 };
