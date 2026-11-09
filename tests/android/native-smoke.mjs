@@ -389,10 +389,11 @@ try {
   await tap('Каталог услуг', { timeout: 20_000 });
   await waitFor('Бережная мойка', { timeout: 20_000 });
   screenshot(resolve(out, '29-catalog.png'));
-  await tap('＋ Услуга');
+  await tap('Новая услуга');
   await tap('Например, озонирование салона', { timeout: 20_000 });
   await type('Ozon');
   back();
+  await tap(/^Время работы: /); // the drum opens under the time field
   await tapNode(await scrollTo(/^1 ч$/));
   await sleep(600);
   await tap(/^0$/);
@@ -615,7 +616,7 @@ try {
   await waitFor('Первые шаги', { timeout: 20_000 });
   screenshot(resolve(out, '35-first-steps.png'));
   await tap('Добавьте услуги');
-  await waitFor('＋ Услуга', { timeout: 20_000 });
+  await waitFor('Новая услуга', { timeout: 20_000 });
   back();
   await tap('Профиль');
   await waitFor('Detailing Test', { timeout: 20_000 });

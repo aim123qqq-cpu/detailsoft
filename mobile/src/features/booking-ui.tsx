@@ -19,7 +19,7 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
       {options.map((option) => (
         <Pressable key={option.value} accessibilityRole="tab" accessibilityState={{ selected: value === option.value }} onPress={() => onChange(option.value)}
           style={[styles.segment, value === option.value && styles.segmentSelected]}>
-          <Text style={[styles.segmentText, value === option.value && styles.segmentTextSelected]} numberOfLines={1}>{option.label}</Text>
+          <Text style={[styles.segmentText, value === option.value && styles.segmentTextSelected]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{option.label}</Text>
         </Pressable>
       ))}
     </View>

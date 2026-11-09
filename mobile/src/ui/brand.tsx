@@ -106,7 +106,7 @@ const useStyles = makeStyles((colors, scheme) => StyleSheet.create({
   headText: { flex: 1, alignItems: 'center' },
   headTitle: { fontSize: 15, fontWeight: '600' },
   headNote: { fontSize: 12, color: colors.muted },
-  headSide: { width: 44, alignItems: 'flex-end' },
+  headSide: { minWidth: 44, alignItems: 'flex-end' },
   link: { minHeight: 44, paddingHorizontal: 8, justifyContent: 'center', alignSelf: 'center' },
   linkText: { fontSize: 14, fontWeight: '700' }
 }));

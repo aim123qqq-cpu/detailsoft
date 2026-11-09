@@ -1,13 +1,16 @@
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { Text } from '@/ui/text';
-import { Stack, router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ManagedCatalogItem } from '@df/types';
 import { duration, money } from '@/lib/format';
-import { useSession } from '@/lib/session';
-import { radius, space, makeStyles } from '@/lib/theme';
+import { useSession, useSignedIn } from '@/lib/session';
+import { cardShadow, makeStyles, radius, space, useTheme } from '@/lib/theme';
 import { useResource } from '@/lib/use-resource';
-import { Body, Button, Card, Chip, Field, Label, Loading, Notice, Pill, Screen } from '@/ui';
+import { Body, Button, Card, Chip, Field, Heading, Loading, Notice, Screen } from '@/ui';
+import { FlowHeader } from '@/ui/brand';
+import { Icon } from '@/ui/icons';
+import { Text } from '@/ui/text';
 
 /** The price of an item for a class: its own price, else the '*' default, as on the server. */
 function priceFor(item: ManagedCatalogItem, tenantClass: string) {
@@ -21,7 +24,10 @@ function priceFor(item: ManagedCatalogItem, tenantClass: string) {
 /** Services and packages by section, with prices for a vehicle class. Simple services are edited here. */
 export default function CatalogScreen() {
   const styles = useStyles();
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { api } = useSession();
+  const session = useSignedIn();
   const { data, error, reload, refresh } = useResource(useCallback((signal: AbortSignal) => api.catalog(signal), [api]));
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
   const [tenantClass, setTenantClass] = useState<string | null>(null);
@@ -44,14 +50,16 @@ export default function CatalogScreen() {
   };
 
   return (
-    <Screen>
-      <Stack.Screen options={{ title: 'Каталог услуг', headerRight: () => (
-        <Pressable accessibilityRole="button" hitSlop={10} onPress={() => router.push({ pathname: '/profile/service/[id]', params: { id: 'new' } })}>
-          <Text style={styles.headerAction}>＋ Услуга</Text>
+    <Screen contentStyle={{ paddingTop: insets.top + 18, gap: 14 }}>
+      <FlowHeader title="Каталог услуг" note={session.tenant.name} right={
+        <Pressable accessibilityRole="button" accessibilityLabel="Новая услуга" onPress={() => router.push({ pathname: '/profile/service/[id]', params: { id: 'new' } })} style={styles.add}>
+          <Icon name="plus" size={16} strokeWidth={2.4} color={colors.pillInk}/>
+          <Text style={styles.addText}>Услуга</Text>
         </Pressable>
-      ) }}/>
-      {classes.length ? <View>
-        <Label>Цены для класса</Label>
+      }/>
+
+      {classes.length ? <View style={{ gap: 8 }}>
+        <Text style={[styles.meta, { paddingHorizontal: 4 }]}>Цены для класса</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} style={styles.bleed}>
           {classes.map((value) => <Chip key={value} label={value} selected={current === value} onPress={() => setTenantClass(value)}/>)}
         </ScrollView>
@@ -60,51 +68,71 @@ export default function CatalogScreen() {
       {data.sections.map((section) => {
         const items = data.items.filter((item) => item.category === section.name && (archived || item.active));
         return (
-          <View key={section.id} style={styles.section}>
-            <View style={styles.sectionHead}><Text style={styles.sectionName}>{section.name}</Text><Text style={styles.meta}>{section.activeCount} из {section.itemCount}</Text></View>
-            {items.length ? items.map((item) => {
-              const price = priceFor(item, current);
-              return (
-                <Pressable key={`${item.type}-${item.id}`} accessibilityRole="button" accessibilityLabel={item.name} disabled={!item.simple}
-                  onPress={() => router.push({ pathname: '/profile/service/[id]', params: { id: item.id } })}
-                  android_ripple={{ color: 'rgba(127,127,127,.12)' }} style={[styles.item, !item.active && styles.inactive]}>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={styles.itemName}>{item.name}</Text>
-                    <Text style={styles.meta}>{item.type === 'package' ? `комплекс · операций: ${item.operations.length}` : item.simple ? 'услуга' : `составная · операций: ${item.operations.length}`}{price ? ` · ${duration(price.durationMinutes)}` : ''}</Text>
-                    {!item.active ? <Pill label="не для записи"/> : null}
-                  </View>
-                  <Text style={styles.price}>{price ? `${item.pricingMode === 'fixed' ? '' : 'от '}${money(price.amountMinor)}` : 'нет цены'}</Text>
-                </Pressable>
-              );
-            }) : <Body muted>В разделе пока нет услуг.</Body>}
+          <View key={section.id} style={{ gap: 10 }}>
+            <View style={styles.sectionHead}><Heading>{section.name}</Heading><Text style={styles.meta}>{archived ? `${section.activeCount} из ${section.itemCount}` : section.activeCount}</Text></View>
+            {items.length ? <View style={styles.list}>
+              {items.map((item, index) => {
+                const price = priceFor(item, current);
+                const kind = item.type === 'package' ? `комплекс · операций: ${item.operations.length}` : item.simple ? 'услуга' : `составная · операций: ${item.operations.length}`;
+                const under = !item.active ? 'не для записи' : item.pricingMode === 'inspection' ? 'после осмотра' : null;
+                return (
+                  <Pressable key={`${item.type}-${item.id}`} accessibilityRole="button" accessibilityLabel={item.name} disabled={!item.simple}
+                    onPress={() => router.push({ pathname: '/profile/service/[id]', params: { id: item.id } })}
+                    style={[styles.item, index > 0 && styles.itemLine]}>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={[styles.itemName, !item.active && styles.off]}>{item.name}</Text>
+                      <Text style={styles.small}>{kind}{price ? ` · ${duration(price.durationMinutes)}` : ''}</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={[styles.price, !item.active && styles.off]}>{price ? `${item.pricingMode === 'fixed' ? '' : 'от '}${money(price.amountMinor)}` : 'нет цены'}</Text>
+                      {under ? <Text style={styles.under}>{under}</Text> : null}
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View> : <Body muted>В разделе пока нет услуг.</Body>}
           </View>
         );
       })}
 
-      <Chip label={archived ? 'Скрыть недоступные для записи' : 'Показать недоступные для записи'} selected={archived} onPress={() => setArchived((value) => !value)}/>
+      <Pressable accessibilityRole="button" onPress={() => setArchived((value) => !value)} style={styles.textButton} hitSlop={6}>
+        <Text style={styles.textButtonLabel}>{archived ? 'Скрыть недоступные для записи' : 'Показать недоступные для записи'}</Text>
+      </Pressable>
 
       {adding ? <Card>
         <Field label="Новый раздел" value={sectionName} onChangeText={setSectionName} placeholder="Например, Защитные покрытия" maxLength={60} autoFocus/>
         {sectionError ? <Notice>{sectionError}</Notice> : null}
         <Button title="Создать раздел" busy={busy} disabled={sectionName.trim().length < 2} onPress={() => void addSection()}/>
         <Button title="Отмена" tone="quiet" onPress={() => { setAdding(false); setSectionName(''); }}/>
-      </Card> : <Button title="＋ Раздел" tone="secondary" onPress={() => setAdding(true)}/>}
+      </Card> : (
+        <Pressable accessibilityRole="button" onPress={() => setAdding(true)} style={styles.dashed}>
+          <Icon name="plus" size={16} strokeWidth={2.4}/>
+          <Text style={styles.textButtonLabel}>Раздел</Text>
+        </Pressable>
+      )}
 
-      <Body muted>Простые услуги (название, время, цена) меняются здесь. Составные услуги, комплексы, библиотека операций, порядок и удаление разделов — в веб-версии.</Body>
+      <Text style={styles.hint}>Простые услуги (название, время, цена) меняются здесь. Составные услуги, комплексы, библиотека операций, порядок и удаление разделов — в веб-версии.</Text>
     </Screen>
   );
 }
 
-const useStyles = makeStyles((colors) => StyleSheet.create({
-  headerAction: { color: colors.primary, fontSize: 16, fontWeight: '800' },
-  bleed: { marginHorizontal: -space.l },
-  chips: { gap: space.s, paddingHorizontal: space.l },
-  section: { gap: space.s },
-  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: space.s },
-  sectionName: { color: colors.text, fontSize: 18, fontWeight: '800' },
+const useStyles = makeStyles((colors, scheme) => StyleSheet.create({
+  add: { height: 44, marginLeft: -10, paddingHorizontal: 16, borderRadius: 22, backgroundColor: colors.pill, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  addText: { color: colors.pillInk, fontSize: 14, fontWeight: '700' },
   meta: { color: colors.muted, fontSize: 13 },
-  item: { flexDirection: 'row', alignItems: 'center', gap: space.m, backgroundColor: colors.surface, borderRadius: radius.l, padding: space.l, overflow: 'hidden' },
-  inactive: { opacity: 0.6 },
-  itemName: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  price: { color: colors.text, fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] }
+  bleed: { marginHorizontal: -space.l, flexGrow: 0 },
+  chips: { gap: 6, paddingHorizontal: space.l, paddingVertical: 4 },
+  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4 },
+  list: { borderRadius: radius.l, backgroundColor: colors.surface, paddingHorizontal: space.l, paddingVertical: 4, ...cardShadow(scheme) },
+  item: { flexDirection: 'row', alignItems: 'center', gap: space.m, minHeight: 62, paddingVertical: 8 },
+  itemLine: { borderTopWidth: 1, borderTopColor: colors.line },
+  itemName: { fontSize: 15, fontWeight: '600' },
+  off: { color: colors.muted },
+  small: { color: colors.muted, fontSize: 12 },
+  price: { fontSize: 15, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  under: { color: colors.muted, fontSize: 11 },
+  textButton: { alignSelf: 'center', padding: 6 },
+  textButtonLabel: { fontSize: 14, fontWeight: '700' },
+  dashed: { height: 52, borderRadius: 26, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  hint: { color: colors.muted, fontSize: 12, lineHeight: 17, paddingHorizontal: 4 }
 }));
