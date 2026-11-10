@@ -17,7 +17,7 @@ import { ProfileScreen } from './ProfileScreen';
 import { VehicleProfileScreen } from './VehicleProfileScreen';
 import { CustomerProfileScreen } from './CustomerProfileScreen';
 import type { Booking, BookingQuote, Customer, Lead, OrderTarget, QuoteSelection, SessionContext, Vehicle } from './types';
-import { type Workspace, Icon, VehicleCard, Header, BottomNav } from './app/AppChrome';
+import { type ManageSection, type Workspace, BrandMark, Icon, VehicleCard, Header, BottomNav, Sidebar } from './app/AppChrome';
 import { AddVehicle } from './app/AddVehicle';
 import { OrderWorkspaceLoader } from './app/OrderWorkspaceLoader';
 
@@ -56,6 +56,21 @@ function initialSearch(): { mode: 'phone' | 'plate'; query: string } {
     : { mode: 'phone', query: formatPhoneInput(phone!.slice(0, 20)) };
 }
 
+/** Wide screens only: what DetailFlow does, beside the sign-in form. */
+function AuthPromo() {
+  const steps = [['Запись и расписание', 'по телефону и госномеру'], ['Приёмка со схемой кузова', 'фото и акт'], ['Смета и согласование', 'лично или удалённо'], ['Работы, выдача, документы', 'до и после']];
+  return (
+    <aside className="auth-promo" aria-hidden="true">
+      <div className="auth-promo-brand"><span><BrandMark size={32}/></span><b>DetailFlow</b></div>
+      <div>
+        <p className="auth-promo-title">От звонка<br/>до выдачи —<br/>в одном окне</p>
+        <ol>{steps.map(([title, note], index) => <li key={title}><i>0{index + 1}</i><span>{title}</span><small>{note}</small></li>)}</ol>
+      </div>
+      <small>© {new Date().getFullYear()} DetailFlow</small>
+    </aside>
+  );
+}
+
 export function App() {
   const [handedSearch] = useState(initialSearch);
   const [workspace, setWorkspace] = useState<Workspace>('new');
@@ -75,6 +90,14 @@ export function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [online, setOnline] = useState(() => navigator.onLine);
+  // Wide screens get the side menu, narrow ones the bottom bar; the same breakpoint as in styles.css.
+  const [wide, setWide] = useState(() => window.matchMedia('(min-width: 1100px)').matches);
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 1100px)');
+    const update = () => setWide(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
   const [searchRetryKey, setSearchRetryKey] = useState(0);
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
   const createCustomerCard = useRef<HTMLDivElement>(null);
@@ -298,6 +321,12 @@ export function App() {
     setWorkspace('profile');
   };
 
+  const openManage = (section: ManageSection) => {
+    setOverlays([]);
+    setProfileTarget((current) => ({ open: section, n: current.n + 1 }));
+    setWorkspace('profile');
+  };
+
   const selectWorkspace = (nextWorkspace: Workspace) => {
     setOverlays([]);
     if (nextWorkspace === 'profile') setProfileTarget((current) => ({ n: current.n + 1 }));
@@ -344,6 +373,7 @@ export function App() {
 
   if (authGate === 'login') return (
     <div className="app-shell login-shell">
+      {wide && <AuthPromo/>}
       <main id="main-content" tabIndex={-1}>
         <LoginScreen
           onSignedIn={() => window.location.reload()}
@@ -368,8 +398,9 @@ export function App() {
 
   return (
     <SessionInfo.Provider value={session}>
-    <div className="app-shell">
+    <div className={`app-shell ${overlay || (workspace === 'new' && (step > 1 || profileVehicleId)) ? 'can-back' : ''}`}>
       <a className="skip-link" href="#main-content">Перейти к содержимому</a>
+      {wide && <Sidebar active={workspace} manage={workspace === 'profile' ? profileTarget.open : undefined} session={session} canBook={newBookingAllowed} onSelect={selectWorkspace} onManage={openManage}/>}
       {/* The connection banner sits above the header in one sticky block: it pushes content, never covers it. */}
       <div className="app-top">
         <SyncBanner online={online}/>
@@ -513,7 +544,7 @@ export function App() {
         )}
         </div>
       </main>
-      <BottomNav active={workspace} onSelect={selectWorkspace}/>
+      {!wide && <BottomNav active={workspace} onSelect={selectWorkspace}/>}
     </div>
     </SessionInfo.Provider>
   );

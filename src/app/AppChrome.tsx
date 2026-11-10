@@ -1,9 +1,9 @@
-import type { Vehicle } from '../types';
+import type { SessionContext, Vehicle } from '../types';
 import { bodyLabels } from './AddVehicle';
 
 export type Workspace = 'bookings' | 'new' | 'orders' | 'analytics' | 'profile';
 
-export type IconName = 'arrow' | 'search' | 'phone' | 'car' | 'user' | 'calendar' | 'clipboard' | 'plus' | 'check' | 'spark' | 'chart' | 'bell';
+export type IconName = 'arrow' | 'search' | 'phone' | 'car' | 'user' | 'calendar' | 'clipboard' | 'plus' | 'check' | 'spark' | 'chart' | 'bell' | 'grid' | 'team' | 'gear' | 'chevron';
 
 export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, React.ReactNode> = {
@@ -18,7 +18,11 @@ export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
     check: <path d="m5 12 4 4L19 6"/>,
     spark: <><path d="m12 3 1.2 4.3L17 9l-3.8 1.7L12 15l-1.2-4.3L7 9l3.8-1.7L12 3Z"/><path d="m18 15 .7 2.3L21 18l-2.3.7L18 21l-.7-2.3L15 18l2.3-.7L18 15Z"/></>,
     chart: <><path d="M5 19V9m7 10V5m7 14v-7"/><path d="M3 19h18"/></>,
-    bell: <><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16Z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></>
+    bell: <><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16Z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></>,
+    grid: <><rect x="4" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8"/></>,
+    team: <><circle cx="9" cy="9" r="3"/><path d="M3.5 19c.5-3.2 2.4-5 5.5-5s5 1.8 5.5 5"/><path d="M15.5 6.3a3 3 0 0 1 0 5.4M17.5 14.4c1.7.7 2.7 2.2 3 4.6"/></>,
+    gear: <><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2m0 12.6v2.2M3.5 12h2.2m12.6 0h2.2M6 6l1.6 1.6m8.8 8.8L18 18M6 18l1.6-1.6m8.8-8.8L18 6"/></>,
+    chevron: <path d="m9 6 6 6-6 6"/>
   };
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }
@@ -65,5 +69,56 @@ export function BottomNav({ active, onSelect }: { active: Workspace; onSelect: (
       <button data-testid="orders-nav" className={active === 'orders' ? 'active' : ''} aria-current={active === 'orders' ? 'page' : undefined} onClick={() => onSelect('orders')}><Icon name="clipboard"/><span>Заказы</span></button>
       <button data-testid="profile-nav" className={active === 'profile' ? 'active' : ''} aria-current={active === 'profile' ? 'page' : undefined} onClick={() => onSelect('profile')}><Icon name="user"/><span>Профиль</span></button>
     </nav>
+  );
+}
+
+/** The DetailFlow mark: a car front with an orange windscreen. */
+export function BrandMark({ size = 30, ink = '#121212' }: { size?: number; ink?: string }) {
+  return <svg width={size} height={size} viewBox="272 272 480 480" aria-hidden="true"><path d="M370 400L340 480H684L654 400Z" fill="#EE6A22"/><path d="M322 582V488L366 368H658L702 488V582M322 536H702M393 536V582M632 536V582M370 655H393M632 655H655" fill="none" stroke={ink} strokeWidth="46" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+}
+
+export type ManageSection = 'catalog' | 'team' | 'settings';
+
+/** Wide screens: the sections live in a side column; phones keep the bottom bar. */
+export function Sidebar({ active, manage, session, canBook, onSelect, onManage }: {
+  active: Workspace; manage?: ManageSection; session: SessionContext | null; canBook: boolean;
+  onSelect: (workspace: Workspace) => void; onManage: (section: ManageSection) => void;
+}) {
+  const inProfile = active === 'profile';
+  const item = (workspace: Workspace, icon: IconName, label: string) => {
+    const current = active === workspace && !(inProfile && manage);
+    return <button data-testid={`side-${workspace}`} className={current ? 'active' : ''} aria-current={current ? 'page' : undefined} onClick={() => onSelect(workspace)}><Icon name={icon}/><span>{label}</span></button>;
+  };
+  const manageItem = (section: ManageSection, icon: IconName, label: string) => {
+    const current = inProfile && manage === section;
+    return <button data-testid={`side-${section}`} className={current ? 'active' : ''} aria-current={current ? 'page' : undefined} onClick={() => onManage(section)}><Icon name={icon}/><span>{label}</span></button>;
+  };
+  const capabilities = session?.capabilities;
+  const name = session?.actor.displayName ?? '';
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+  return (
+    <aside className="sidebar" aria-label="Разделы">
+      <div className="sidebar-brand"><span><BrandMark size={26}/></span><b>DetailFlow</b></div>
+      {canBook && <button className="sidebar-new" data-testid="side-new" onClick={() => onSelect('new')}><Icon name="plus"/> Новая запись</button>}
+      <nav aria-label="Основная навигация">
+        {item('bookings', 'calendar', 'Записи')}
+        {item('orders', 'clipboard', 'Заказы')}
+        {(!capabilities || capabilities.viewAnalytics) && item('analytics', 'chart', 'Статистика')}
+      </nav>
+      {capabilities && (capabilities.manageCatalog || capabilities.manageTeam || capabilities.manageSettings) && <nav aria-label="Управление центром">
+        <span className="sidebar-label">Управление центром</span>
+        {capabilities.manageCatalog && manageItem('catalog', 'grid', 'Каталог')}
+        {capabilities.manageTeam && manageItem('team', 'team', 'Команда и роли')}
+        {capabilities.manageSettings && manageItem('settings', 'gear', 'Настройки центра')}
+      </nav>}
+      <div className="sidebar-foot">
+        {session && <div className="sidebar-center"><small>Рабочий центр</small><strong>{session.tenant.name}</strong></div>}
+        <button className={`sidebar-user ${inProfile && !manage ? 'active' : ''}`} data-testid="side-profile" onClick={() => onSelect('profile')}>
+          <span className="sidebar-avatar">{initials || <Icon name="user" size={18}/>}</span>
+          <span><strong>{name || 'Профиль'}</strong><small>{session?.actor.roleNames.join(', ')}</small></span>
+          <Icon name="chevron" size={18}/>
+        </button>
+      </div>
+    </aside>
   );
 }
