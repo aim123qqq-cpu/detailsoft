@@ -42,3 +42,15 @@ export function orderTarget(bookingId: string, orderId: string | null, item: Pic
     vehicle: { ...item.vehicle, status: 'active', active: true }
   };
 }
+
+/** True on screens wide enough for the side menu and split layouts; the same breakpoint as in styles.css. */
+export function useWide() {
+  const [wide, setWide] = useState(() => window.matchMedia('(min-width: 1100px)').matches);
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 1100px)');
+    const update = () => setWide(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  return wide;
+}

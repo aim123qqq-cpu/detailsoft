@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSessionInfo } from '../session';
 import { ApiRequestError, api } from '../api';
 import { ServicesStep } from '../BookingFlow';
-import type { Booking, BookingAvailability, BookingListItem, BookingQuote, BookingStatus, Lead, LeadStatus, OrderTarget, QuoteSelection } from '../types';
-import { money, useWorkspaceItems, LoadingState, ErrorState, orderTarget } from './shared';
+import type { Booking, BookingAvailability, CenterSettings, BookingListItem, BookingQuote, BookingStatus, Lead, LeadStatus, OrderTarget, QuoteSelection } from '../types';
+import { money, useWorkspaceItems, useWide, LoadingState, ErrorState, orderTarget } from './shared';
 
 const bookingDate = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' });
 
@@ -86,16 +86,28 @@ export function BookingsWorkspace({ onNew, onLeadConvert, onOpenCustomer, onOpen
   const overdue = useWorkspaceItems(api.listOverdueBookings);
   const leads = useWorkspaceItems(canManage ? api.listLeads : noLeads);
   const [tab, setTab] = useState<'bookings' | 'leads'>('bookings');
-  const [calendarMode, setCalendarMode] = useState<'day' | 'week' | 'list'>('list');
+  const wide = useWide();
+  // A wide screen opens on the day grid, a phone on the list.
+  const [calendarMode, setCalendarMode] = useState<'day' | 'week' | 'list'>(() => window.matchMedia('(min-width: 1100px)').matches ? 'day' : 'list');
+  const [full, setFull] = useState(false);
   const [calendarDate, setCalendarDate] = useState(localDateKey(new Date()));
   const [selected, setSelected] = useState<BookingListItem | null>(null);
   const weekDays = useMemo(() => calendarWeek(calendarDate), [calendarDate]);
-  const calendarFrom = calendarMode === 'week' ? weekDays[0] : calendarDate;
-  const calendarTo = calendarMode === 'week' ? weekDays[6] : calendarDate;
-  const calendar = useCalendarItems(tab === 'bookings' && calendarMode !== 'list', calendarFrom, calendarTo);
+  // The wide layout always shows the week strip, so it loads the whole week.
+  const calendarFrom = wide || calendarMode === 'week' ? weekDays[0] : calendarDate;
+  const calendarTo = wide || calendarMode === 'week' ? weekDays[6] : calendarDate;
+  const calendar = useCalendarItems(wide || (tab === 'bookings' && calendarMode !== 'list'), calendarFrom, calendarTo);
+  const [hours, setHours] = useState<CenterSettings | null>(null);
+  useEffect(() => {
+    if (!wide) return;
+    const controller = new AbortController();
+    api.getCenterSettings(controller.signal).then(setHours).catch(() => { /* the grid falls back to 9–20 */ });
+    return () => controller.abort();
+  }, [wide]);
 
   useEffect(() => {
-    if (selected) window.scrollTo({ top: 0, behavior: 'auto' });
+    if (selected && !wide) window.scrollTo({ top: 0, behavior: 'auto' });
+    if (!selected) setFull(false);
   }, [selected?.id]);
 
   // Returning from the order workspace: reload lists and pick up the opened booking's new state.
@@ -108,6 +120,62 @@ export function BookingsWorkspace({ onNew, onLeadConvert, onOpenCustomer, onOpen
     const updated = [...bookings.items, ...overdue.items].find((booking) => booking.id === selected.id);
     if (updated && (updated.status !== selected.status || updated.orderId !== selected.orderId)) setSelected(updated);
   }, [bookings.items, overdue.items]);
+
+  if (wide) {
+    const reload = () => { bookings.retry(); overdue.retry(); calendar.retry(); };
+    const view = tab === 'leads' ? 'leads' : calendarMode;
+    const pick = (next: 'day' | 'week' | 'list' | 'leads') => { if (next === 'leads') setTab('leads'); else { setTab('bookings'); setCalendarMode(next); } };
+    const live = (day: string) => calendar.items.filter((item) => item.startAt.slice(0, 10) === day && item.status !== 'CANCELLED' && item.status !== 'NO_SHOW');
+    const openLeads = leads.items.filter((item) => item.status === 'NEW' || item.status === 'CONTACTED').length;
+    const firstOverdue = overdue.items[0];
+    const showSide = Boolean(selected) || view === 'day';
+    return (
+      <section className={`screen workspace-screen bookings-wide ${full ? 'full' : ''}`} data-testid="bookings-workspace">
+        <div className="bw-bar">
+          <div className="bw-days" aria-label="Неделя">
+            <button className="bw-arrow" aria-label="Предыдущая неделя" onClick={() => setCalendarDate(addCalendarDays(calendarDate, -7))}>‹</button>
+            {weekDays.map((day) => {
+              const count = live(day).length;
+              const current = day === calendarDate;
+              return <button key={day} className={current ? 'selected' : ''} aria-pressed={current} aria-label={`${calendarWeekday.format(dateFromKey(day))}, ${calendarHeading.format(dateFromKey(day))}: записей ${count}`}
+                onClick={() => { setCalendarDate(day); if (view !== 'list' && view !== 'leads') setCalendarMode('day'); }}>
+                <span>{calendarWeekday.format(dateFromKey(day)).slice(0, 2)}</span><strong>{dateFromKey(day).getDate()}</strong><small>{count || '—'}</small>
+              </button>;
+            })}
+            <button className="bw-arrow" aria-label="Следующая неделя" onClick={() => setCalendarDate(addCalendarDays(calendarDate, 7))}>›</button>
+          </div>
+          <div className="bw-switch" role="tablist" aria-label="Режим расписания">
+            <button role="tab" aria-selected={view === 'day'} className={view === 'day' ? 'selected' : ''} onClick={() => pick('day')}>День</button>
+            <button role="tab" aria-selected={view === 'week'} className={view === 'week' ? 'selected' : ''} onClick={() => pick('week')}>Неделя</button>
+            <button role="tab" aria-selected={view === 'list'} className={view === 'list' ? 'selected' : ''} onClick={() => pick('list')}>Список</button>
+            {canManage && <button role="tab" aria-selected={view === 'leads'} className={view === 'leads' ? 'selected' : ''} onClick={() => pick('leads')}>Обращения{openLeads > 0 && <i>{openLeads}</i>}</button>}
+          </div>
+          {firstOverdue && <div className="bw-overdue" data-testid="overdue-bookings">
+            <div><strong>Требуют отметки · {overdue.items.length}</strong><span>{bookingDate.format(new Date(firstOverdue.startAt))}, {bookingTime.format(new Date(firstOverdue.startAt))} · {firstOverdue.customer.name}</span></div>
+            <button onClick={() => setSelected(firstOverdue)}>Отметить</button>
+          </div>}
+        </div>
+        <div className={`bw-split ${showSide ? '' : 'no-side'}`}>
+          <div className="bw-main">
+            {view === 'leads' ? <LeadsPanel data={leads} onConvert={onLeadConvert} onOpenCustomer={onOpenCustomer}/>
+              : view === 'list' ? <>
+                <div className="workspace-toolbar"><div><h2>Ближайшие визиты</h2><p>С сегодняшнего дня, по времени</p></div>{canManage && <button onClick={onNew}>+ Новая</button>}</div>
+                {bookings.loading ? <LoadingState/> : bookings.error ? <ErrorState message={bookings.error} onRetry={bookings.retry}/> : bookings.items.length === 0
+                  ? <div className="workspace-state"><strong>Записей пока нет</strong><span>{canManage ? 'Создайте первую запись для клиента' : 'Записи появятся, когда администратор их создаст'}</span></div>
+                  : <div className="workspace-list">{[...overdue.items, ...bookings.items].map((item) => <BookingCard key={item.id} item={item} onOpen={() => setSelected(item)}/>)}</div>}
+              </> : calendar.error ? <ErrorState message={calendar.error} onRetry={calendar.retry}/>
+              : view === 'week' ? <WeekGrid days={weekDays} items={calendar.items} hours={hours} selectedId={selected?.id} date={calendarDate} onOpen={setSelected} onDay={(day) => { setCalendarDate(day); setCalendarMode('day'); }} onNew={canManage ? onNew : undefined}/>
+              : <DayGrid date={calendarDate} items={calendar.items.filter((item) => item.startAt.slice(0, 10) === calendarDate)} hours={hours} loading={calendar.loading} selectedId={selected?.id} onOpen={setSelected} onNew={canManage ? onNew : undefined}/>}
+          </div>
+          {showSide && <aside className="bw-side" aria-label="Запись">
+            {selected
+              ? <BookingDetails key={selected.id} panel onFull={setFull} item={selected} onBack={() => { setSelected(null); reload(); }} onChanged={(next) => { setSelected(next); reload(); }} onOpenCustomer={onOpenCustomer} onOpenOrder={onOpenOrder} refreshToken={refreshToken} canManage={canManage}/>
+              : <div className="bw-empty"><strong>Выберите запись</strong><span>Нажмите на запись в расписании — здесь появятся клиент, автомобиль, состав и действия.</span></div>}
+          </aside>}
+        </div>
+      </section>
+    );
+  }
 
   if (selected) {
     return <BookingDetails item={selected} onBack={() => { setSelected(null); bookings.retry(); overdue.retry(); calendar.retry(); }} onChanged={setSelected} onOpenCustomer={onOpenCustomer} onOpenOrder={onOpenOrder} refreshToken={refreshToken} canManage={canManage}/>;
@@ -269,7 +337,11 @@ function BookingCard({ item, onOpen }: { item: BookingListItem; onOpen: () => vo
   );
 }
 
-function BookingDetails({ item, onBack, onChanged, onOpenCustomer, onOpenOrder, refreshToken, canManage }: {
+function BookingDetails({ item, onBack, onChanged, onOpenCustomer, onOpenOrder, refreshToken, canManage, panel, onFull }: {
+  /** Shown in the side column of the wide layout: no way back, a close button instead. */
+  panel?: boolean;
+  /** Changing the composition needs the whole width. */
+  onFull?: (full: boolean) => void;
   item: BookingListItem;
   onBack: () => void;
   onChanged: (item: BookingListItem) => void;
@@ -296,6 +368,7 @@ function BookingDetails({ item, onBack, onChanged, onOpenCustomer, onOpenOrder, 
   const [newStartAt, setNewStartAt] = useState('');
   const status = bookingStatuses[item.status];
   const locked = Boolean(item.orderId) || item.status !== 'CONFIRMED';
+  useEffect(() => { onFull?.(mode === 'compose'); }, [mode]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -370,7 +443,7 @@ function BookingDetails({ item, onBack, onChanged, onOpenCustomer, onOpenOrder, 
 
   return (
     <section className="screen booking-details-screen" data-testid="booking-details">
-      <button className="details-back" onClick={onBack}>← Все записи</button>
+      {panel ? <button className="panel-close" aria-label="Закрыть запись" onClick={onBack}>×</button> : <button className="details-back" onClick={onBack}>← Все записи</button>}
       <div className="booking-details-hero">
         <div><span className={`status-pill ${status.className}`}>{status.label}</span><small>#{item.id.replace('booking_', '').slice(0, 7)}</small></div>
         <h2>{item.customer.name}</h2>
@@ -531,4 +604,85 @@ function CompositionReview({ booking, draft, reason, onReason, loading, error, s
       <button className="primary-button" data-testid="save-composition" disabled={loading || unchanged || (slotConflict && !newStartAt)} onClick={onSave}>{loading ? 'Сохраняем…' : `Сохранить v${booking.quoteVersion + 1}${newStartAt ? ' и перенести' : ''}`}</button>
     </div>
   </div>;
+}
+
+const gridTints = ['peach', 'sky', 'sage'];
+
+function minutesOf(value: string) {
+  const [hour, minute] = value.split(':').map(Number);
+  return hour * 60 + (minute || 0);
+}
+
+/** Wide screens: a day as a time grid, overlapping visits side by side. */
+function DayGrid({ date, items, hours, loading, selectedId, onOpen, onNew }: {
+  date: string; items: BookingListItem[]; hours: CenterSettings | null; loading: boolean; selectedId?: string;
+  onOpen: (item: BookingListItem) => void; onNew?: () => void;
+}) {
+  const visits = items.filter((item) => item.status !== 'CANCELLED' && item.status !== 'NO_SHOW').map((item) => {
+    const start = new Date(item.startAt);
+    const from = start.getHours() * 60 + start.getMinutes();
+    return { item, from, to: from + Math.max(item.estimatedDurationMinutes, 20) };
+  }).sort((a, b) => a.from - b.from);
+  const open = Math.floor(Math.min(minutesOf(hours?.openTime ?? '09:00'), ...visits.map((visit) => visit.from)) / 60);
+  const close = Math.ceil(Math.max(minutesOf(hours?.closeTime ?? '20:00'), ...visits.map((visit) => visit.to)) / 60);
+  const rowHeight = 56;
+  // Lanes: a visit takes the first lane that is free at its start.
+  const laneEnds: number[] = [];
+  const placed = visits.map((visit) => {
+    let lane = laneEnds.findIndex((end) => end <= visit.from);
+    if (lane < 0) lane = laneEnds.length;
+    laneEnds[lane] = visit.to;
+    return { ...visit, lane };
+  });
+  const lanes = Math.max(1, laneEnds.length);
+  const busy = visits.reduce((sum, visit) => sum + visit.item.estimatedDurationMinutes, 0);
+  const capacity = (close - open) * 60 * (hours?.simultaneousCapacity ?? 1);
+  const now = new Date();
+  const nowMinutes = localDateKey(now) === date ? now.getHours() * 60 + now.getMinutes() : -1;
+  const title = new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }).format(dateFromKey(date));
+  return <div className="day-grid" data-testid="booking-calendar">
+    <div className="day-grid-head">
+      <h2>{title[0].toUpperCase() + title.slice(1)}</h2>
+      <span>{visits.length ? `${visits.length} ${visitWord(visits.length)} · загрузка ${Math.min(100, Math.round(busy / capacity * 100))}%` : loading ? 'Загружаем…' : 'День свободен'}</span>
+      {onNew && <button onClick={onNew}>+ Запись</button>}
+    </div>
+    <div className="day-grid-body" style={{ height: (close - open) * rowHeight + 12 }}>
+      {Array.from({ length: close - open + 1 }, (_, index) => <div key={index} className="day-grid-hour" style={{ top: index * rowHeight }}><span>{open + index}:00</span></div>)}
+      <div className="day-grid-lanes">
+        {placed.map(({ item, from, to, lane }, index) => {
+          const tall = to - from >= 50;
+          return <button key={item.id} data-testid={`calendar-booking-${item.id}`} className={`day-visit ${item.status === 'ARRIVED' ? 'done' : gridTints[index % gridTints.length]} ${item.id === selectedId ? 'selected' : ''}`}
+            style={{ top: (from - open * 60) / 60 * rowHeight, height: Math.max(30, (to - from) / 60 * rowHeight - 4), left: `${lane / lanes * 100}%`, width: `calc(${100 / lanes}% - 6px)` }} onClick={() => onOpen(item)}>
+            <strong>{bookingTime.format(new Date(item.startAt))} · {item.customer.name}</strong>
+            {tall && <small>{item.vehicle.make} {item.vehicle.model} · {item.vehicle.plate} · {money.format(item.preliminaryAmountMinor / 100)}</small>}
+          </button>;
+        })}
+      </div>
+      {nowMinutes >= open * 60 && nowMinutes <= close * 60 && <div className="day-grid-now" style={{ top: (nowMinutes - open * 60) / 60 * rowHeight }}/>}
+    </div>
+  </div>;
+}
+
+/** Wide screens: seven columns, a day's visits one under another. */
+function WeekGrid({ days, items, hours, date, selectedId, onOpen, onDay, onNew }: {
+  days: string[]; items: BookingListItem[]; hours: CenterSettings | null; date: string; selectedId?: string;
+  onOpen: (item: BookingListItem) => void; onDay: (day: string) => void; onNew?: () => void;
+}) {
+  const dayMinutes = Math.max(60, minutesOf(hours?.closeTime ?? '20:00') - minutesOf(hours?.openTime ?? '09:00')) * (hours?.simultaneousCapacity ?? 1);
+  return <div className="week-grid" data-testid="booking-calendar">{days.map((day) => {
+    const visits = items.filter((item) => item.startAt.slice(0, 10) === day && item.status !== 'CANCELLED' && item.status !== 'NO_SHOW').sort((a, b) => a.startAt.localeCompare(b.startAt));
+    const load = Math.min(100, Math.round(visits.reduce((sum, item) => sum + item.estimatedDurationMinutes, 0) / dayMinutes * 100));
+    const dayOff = hours ? !hours.workingDays.includes(dateFromKey(day).getDay()) : false;
+    return <section key={day} className={`week-day ${day === date ? 'selected' : ''}`}>
+      <button className="week-day-head" onClick={() => onDay(day)} aria-label={`Открыть день: ${calendarHeading.format(dateFromKey(day))}`}>
+        <span>{calendarWeekday.format(dateFromKey(day))}</span><strong>{dateFromKey(day).getDate()}</strong>
+      </button>
+      <div className="week-day-load"><i className={load > 75 ? 'hot' : ''} style={{ width: `${load}%` }}/></div>
+      <small>{visits.length ? `загрузка ${load}%` : '—'}</small>
+      {visits.map((item, index) => <button key={item.id} data-testid={`calendar-booking-${item.id}`} className={`week-visit ${item.status === 'ARRIVED' ? 'done' : gridTints[index % gridTints.length]} ${item.id === selectedId ? 'selected' : ''}`} onClick={() => onOpen(item)}>
+        <strong>{bookingTime.format(new Date(item.startAt))}</strong><span>{item.customer.name}</span>
+      </button>)}
+      {visits.length === 0 && (dayOff ? <em>выходной</em> : onNew && day >= localDateKey(new Date()) && <button className="week-add" onClick={onNew}>+ Записать</button>)}
+    </section>;
+  })}</div>;
 }
