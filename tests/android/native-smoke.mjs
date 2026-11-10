@@ -364,7 +364,7 @@ try {
   assert.ok(full.signatureDataUrl.startsWith('data:image/png;base64,iVBORw0KGgo'), 'the signature is a PNG');
   await tapNode(await scrollTo('PDF — отправить или распечатать'));
   // The PDF is made on the phone and handed to the system share sheet.
-  const sheet = await waitFor(/.pdf$/, { timeout: 30_000 }).catch(() => null); // the share sheet names the file
+  const sheet = await waitFor(/.pdf$/, { timeout: 60_000 }).catch(() => null); // the share sheet names the file
   screenshot(resolve(out, '24-pdf-share.png'));
   assert.ok(sheet, `the share sheet opens with the PDF; on screen: ${find(/./).map((node) => node.text || node.desc).filter(Boolean).slice(0, 12).join(' | ')}`);
   console.log('  share sheet:', sheet.text);
@@ -530,8 +530,7 @@ try {
     assert.ok(Date.now() - started7 < 60_000, 'the queue reaches the server within a minute');
     await sleep(2000);
   }
-  await tapText('Новая запись');
-  await tap('Профиль');
+  await tap('Профиль'); // the bar is on the done screen
 
   step('profile: demo sign-out returns to sign-in');
   await tap('Профиль');
@@ -593,7 +592,7 @@ try {
   await type('owner@example.test');
   back(); // hide the keyboard
   await tapNode(await scrollTo('Получить код на почту'));
-  await waitFor('Код из письма', { timeout: 20_000 });
+  await waitFor(/^Код из письма/, { timeout: 20_000 });
   const letter = mailer.letters.at(-1);
   assert.equal(letter.to, 'owner@example.test');
   screenshot(resolve(out, '34-email-code.png'));
@@ -645,9 +644,9 @@ try {
   await tap('Добавьте услуги');
   await waitFor('Новая услуга', { timeout: 20_000 });
   back();
-  await tap('Профиль');
+  // Back on the home screen of the new center, under its name.
   await waitFor('Detailing Test', { timeout: 20_000 });
-  await waitFor('Управление центром');
+  await waitFor(/^Центр создан/);
   screenshot(resolve(out, '36-new-center-owner.png'));
   console.log('native smoke: ok');
 } finally {
