@@ -6,6 +6,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { carLayout, findLayoutElement } from '@df/shared/carLayouts';
 import type { OrderDocumentType } from '@df/types';
 import { ApprovalPanel } from '@/features/approval-panel';
+import { SyncBanner } from '@/features/sync-banner';
 import { CarDiagram, SEVERITY, findingMarks, severityColor } from '@/features/car-diagram';
 import { DOCUMENT_TITLES } from '@/features/document-paper';
 import { DotGround } from '@/features/inspection';
@@ -89,6 +90,8 @@ export default function OrderScreen() {
             </View>
             {order.status === 'CLOSED' && estimate ? <RoundButton icon="arrowUpRight" label="Поделиться заказ-нарядом" onPress={() => void share()}/> : <View style={{ width: 44 }}/>}
           </View>
+          {/* Offline, the work done here waits on the phone: say so, as on the other screens. */}
+          <View style={{ paddingHorizontal: space.l }}><SyncBanner/></View>
           <View style={styles.drawing}>
             {order.intake ? <CarDiagram layout={layout} marks={marks} width={Math.min(width * 0.42, 170)}/>
               : <Text style={styles.headNote}>Приёмка ещё не проведена</Text>}

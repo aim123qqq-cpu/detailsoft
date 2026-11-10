@@ -60,6 +60,8 @@ const loginTitle = () => find('DetailFlow').find((node) => node.text === 'Detail
 const ORDERS = /^Все \d+$/;
 // A button by its own text: the floating bar has a «Новая запись» of its own (its label, not its text).
 const tapText = async (text, options) => { await waitFor(text, options); const node = find(text).find((item) => item.text === text); if (!node) throw new Error(`No text on screen: ${text}`); await tapNode(node); };
+// Back to the top of a long screen: the dark work card with its counters is there.
+const toTop = async () => { for (let swipe = 0; swipe < 4; swipe += 1) adb('shell', 'input', 'swipe', '540', '700', '540', '1900', '250'); await sleep(700); };
 const openOrders = async () => { await tap('Заказы'); await waitFor(ORDERS, { timeout: 20_000 }); };
 
 async function newOrder(vehicleId, hour) {
@@ -200,19 +202,23 @@ try {
   screenshot(resolve(out, '08-assign.png'));
   await tap(/^в работе: \d+$/);
   await tap('Начать работу');
-  await tap('Бережная мойка');
+  await tapNode(await scrollTo('Бережная мойка'));
+  await toTop();
   await waitFor(/^1 из 2$/);
-  await tap('Пауза');
+  await tapNode(await scrollTo('Пауза'));
   await tap('Ждём сушки');
   await tap('Поставить паузу');
+  await toTop();
   await waitFor(/^Причина паузы: Ждём сушки/);
   screenshot(resolve(out, '09-paused.png'));
-  await tap('Продолжить работу');
+  await tapNode(await scrollTo('Продолжить работу'));
+  await toTop();
   await waitFor(/^В работе$/); // resumed
-  await tap('Защита кузова');
+  await tapNode(await scrollTo('Защита кузова'));
+  await toTop();
   await waitFor(/^2 из 2$/);
   screenshot(resolve(out, '10-checklist-done.png'));
-  await tap('Завершить');
+  await tapNode(await scrollTo('Завершить'));
   await waitFor('Завершить работы?');
   await tapNode(find(/^(Завершить|ЗАВЕРШИТЬ)$/).at(-1));
   await sleep(1500);
@@ -326,8 +332,8 @@ try {
   await waitFor('Бережная мойка', { timeout: 20_000 });
   await tapNode(await scrollTo('Услуга из каталога или своя работа'));
   await type('Bitum removal');
-  back();
-  await tapNode(await scrollTo(/^Добавить свою работу: /));
+  adb('shell', 'input', 'keyevent', 'KEYCODE_ENTER'); // nothing in the catalog by that name: Enter adds it as own work
+  await sleep(1200);
   await tapNode(await scrollTo('Сумма: Bitum removal'));
   await type('500');
   back();
@@ -432,8 +438,8 @@ try {
   for (let swipe = 0; swipe < 4; swipe += 1) adb('shell', 'input', 'swipe', '540', '700', '540', '1900', '300'); // back to the top of the catalog
   await scrollTo('Ozon', { swipes: 14 });
   await sleep(1500); // the list reloads on return
-  await tap('Ozon');
-  await waitFor('Цена, ₽', { timeout: 20_000 }); // the edit form of the new service
+  await tapNode(await scrollTo('Ozon'));
+  await waitFor(/^Цена, ₽/, { timeout: 20_000 }); // the edit form of the new service
   await scrollTo('Доступно для записи');
   await scrollTo('Сохранить услугу');
   const catalog6 = await (await api('/api/tenants/current/catalog')).json();
@@ -487,6 +493,7 @@ try {
   await sleep(1500);
   await network.down();
   await tapNode(await scrollTo('Начать работу'));
+  await toTop(); // the banner sits at the top of the order
   await waitFor('Нет связи с сервером', { timeout: 30_000 });
   await tapNode(await scrollTo('Бережная мойка'));
   await waitFor(/^1 из 2$/, { timeout: 20_000 });

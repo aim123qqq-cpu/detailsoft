@@ -53,7 +53,16 @@ export async function scrollTo(matcher, { swipes = 8 } = {}) {
   for (let attempt = 0; attempt <= swipes; attempt += 1) {
     const [node] = find(matcher);
     // After a swipe the list may still glide: look again once it stops, so a tap lands where the element is.
-    if (node) return attempt ? (await sleep(700), find(matcher)[0] ?? node) : node;
+    if (node) {
+      const settled = attempt ? (await sleep(700), find(matcher)[0] ?? node) : node;
+      // Just above the bottom edge a tap lands in the gesture bar (a system «back») or under a docked panel:
+      // bring the element up a little; one fixed to the bottom (a dock button) does not move and is taken as is.
+      if (settled.bounds.y2 < 2150) return settled;
+      adb('shell', 'input', 'swipe', '540', '1500', '540', '1000', '350');
+      await sleep(900);
+      const moved = find(matcher)[0];
+      return moved && moved.y !== settled.y ? moved : settled;
+    }
     adb('shell', 'input', 'swipe', '540', '1800', '540', '900', '350');
     await sleep(600);
   }
