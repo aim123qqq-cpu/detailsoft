@@ -363,6 +363,8 @@ export function App() {
     }
   };
 
+  // A management section opened in the profile gives the header its own title.
+  const manageTitle = workspace === 'profile' && profileTarget.open ? { catalog: 'Каталог', team: 'Команда и роли', settings: 'Настройки центра' }[profileTarget.open] : undefined;
   const newBookingAllowed = !session || session.capabilities.manageBookings;
   const bookingsAllowed = !session || session.capabilities.manageBookings || session.capabilities.manageIntake;
   const analyticsAllowed = !session || session.capabilities.viewAnalytics;
@@ -404,9 +406,9 @@ export function App() {
       {/* The connection banner sits above the header in one sticky block: it pushes content, never covers it. */}
       <div className="app-top">
         <SyncBanner online={online}/>
-        <Header step={step} workspace={workspace} orderTitle={orderHeader} overlayTitle={overlay ? overlay.kind === 'customer' ? 'Карточка клиента' : overlay.kind === 'vehicle' ? 'Карточка автомобиля' : overlay.kind === 'notifications' ? 'Уведомления' : orderHeader : undefined}
+        <Header step={step} workspace={workspace} orderTitle={orderHeader} overlayTitle={overlay ? overlay.kind === 'customer' ? 'Карточка клиента' : overlay.kind === 'vehicle' ? 'Карточка автомобиля' : overlay.kind === 'notifications' ? 'Уведомления' : orderHeader : manageTitle}
           unread={unread} onBell={memberId && overlay?.kind !== 'notifications' ? openNotifications : undefined}
-          overlayEyebrow={overlay?.kind === 'order' ? 'Рабочий заказ' : overlay?.kind === 'notifications' ? 'Для вас' : undefined} onBack={() => overlay ? closeOverlay() : workspace !== 'new' ? startNewBooking() : profileVehicleId ? setProfileVehicleId(null) : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
+          overlayEyebrow={overlay?.kind === 'order' ? 'Рабочий заказ' : overlay?.kind === 'notifications' ? 'Для вас' : manageTitle ? 'Управление центром' : undefined} onBack={() => overlay ? closeOverlay() : workspace !== 'new' ? startNewBooking() : profileVehicleId ? setProfileVehicleId(null) : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
       </div>
       <main id="main-content" tabIndex={-1}>
         {overlay?.kind === 'customer' && <CustomerProfileScreen
@@ -429,7 +431,7 @@ export function App() {
         {workspace === 'orders' && <OrdersWorkspace onOpenCustomer={openCustomerProfile} onOpenOrder={openOrderWorkspace} refreshToken={workspaceRefresh}/>}
         {workspace === 'analytics' && (analyticsAllowed ? <AnalyticsScreen/> : <NoAccess section="Раздел «Статистика»"/>)}
         {workspace === 'new' && !newBookingAllowed && <NoAccess section="Раздел «Новая запись»"/>}
-        {workspace === 'profile' && <ProfileScreen key={profileTarget.n} open={profileTarget.open} onSignIn={() => setAuthGate('login')}/>}
+        {workspace === 'profile' && <ProfileScreen key={profileTarget.n} open={profileTarget.open} onSignIn={() => setAuthGate('login')} onSection={(section) => setProfileTarget((current) => ({ open: section ?? undefined, n: current.n }))}/>}
         {workspace === 'new' && newBookingAllowed && step === 1 && profileVehicleId && <VehicleProfileScreen vehicleId={profileVehicleId} onBack={() => setProfileVehicleId(null)} onOpenCustomer={openCustomerProfile}/>}
         {workspace === 'new' && newBookingAllowed && step === 1 && !profileVehicleId && (
           <section className="screen" aria-label="Поиск клиента и автомобиля">

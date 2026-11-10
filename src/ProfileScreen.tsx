@@ -42,7 +42,7 @@ function signedInWith(actor: SessionContext['actor']) {
     : actor.authProvider === 'email' ? 'Вы вошли по email' : 'Вы вошли через мессенджер';
 }
 
-export function ProfileScreen({ onSignIn, open }: { onSignIn: () => void; open?: 'catalog' | 'team' | 'settings' }) {
+export function ProfileScreen({ onSignIn, open, onSection }: { onSignIn: () => void; open?: 'catalog' | 'team' | 'settings'; onSection?: (section: 'catalog' | 'team' | 'settings' | null) => void }) {
   const [signingOut, setSigningOut] = useState(false);
   const [session, setSession] = useState<SessionContext | null>(null);
   const [error, setError] = useState('');
@@ -81,9 +81,9 @@ export function ProfileScreen({ onSignIn, open }: { onSignIn: () => void; open?:
   const roleNames = session.actor.roleNames?.length ? session.actor.roleNames : session.actor.roles.map((role) => roleLabels[role] ?? role);
   const grantedCapabilities = capabilityLabels.filter(([capability]) => session.capabilities[capability]);
 
-  if (showCatalog) return <CatalogScreen onBack={() => setShowCatalog(false)}/>;
-  if (showSettings) return <CenterSettingsScreen onBack={() => setShowSettings(false)}/>;
-  if (showTeam) return <TeamScreen onBack={() => setShowTeam(false)}/>;
+  if (showCatalog) return <CatalogScreen onBack={() => { setShowCatalog(false); onSection?.(null); }}/>;
+  if (showSettings) return <CenterSettingsScreen onBack={() => { setShowSettings(false); onSection?.(null); }}/>;
+  if (showTeam) return <TeamScreen onBack={() => { setShowTeam(false); onSection?.(null); }}/>;
 
   return (
     <section className="screen profile-screen" data-testid="profile-screen">
@@ -117,13 +117,13 @@ export function ProfileScreen({ onSignIn, open }: { onSignIn: () => void; open?:
         <div><span><i>RU</i><b>Язык интерфейса</b></span><strong>{session.preferences.locale === 'ru-RU' ? 'Русский' : session.preferences.locale}</strong></div>
       </section>
 
-      {session.capabilities.manageCatalog && <button className="profile-catalog-entry" data-testid="catalog-entry" onClick={() => setShowCatalog(true)}>
+      {session.capabilities.manageCatalog && <button className="profile-catalog-entry" data-testid="catalog-entry" onClick={() => { setShowCatalog(true); onSection?.('catalog'); }}>
         <span><i>₽</i><b>Каталог услуг</b><small>Цены, длительность и доступность</small></span><strong>Открыть →</strong>
       </button>}
-      {session.capabilities.manageSettings && <button className="profile-catalog-entry profile-settings-entry" data-testid="center-settings-entry" onClick={() => setShowSettings(true)}>
+      {session.capabilities.manageSettings && <button className="profile-catalog-entry profile-settings-entry" data-testid="center-settings-entry" onClick={() => { setShowSettings(true); onSection?.('settings'); }}>
         <span><i>◷</i><b>График и загрузка</b><small>Рабочие дни, часы и вместимость</small></span><strong>Открыть →</strong>
       </button>}
-      {session.capabilities.manageTeam && <button className="profile-catalog-entry profile-team-entry" data-testid="team-entry" onClick={() => setShowTeam(true)}>
+      {session.capabilities.manageTeam && <button className="profile-catalog-entry profile-team-entry" data-testid="team-entry" onClick={() => { setShowTeam(true); onSection?.('team'); }}>
         <span><i>👥</i><b>Команда</b><small>Сотрудники, роли и блокировка доступа</small></span><strong>Открыть →</strong>
       </button>}
 
