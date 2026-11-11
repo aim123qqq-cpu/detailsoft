@@ -1994,3 +1994,15 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
   .nb-wide .date-strip { grid-template-columns: repeat(7, minmax(0, 1fr)); }
   .nb-wide .time-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+
+/* ---------- Notifications as a side panel on a wide screen ---------- */
+.nt-layer { position: fixed; z-index: 60; inset: 0; }
+.nt-backdrop { position: absolute; inset: 0; width: 100%; border: 0; background: rgba(18,18,18,.28); cursor: default; animation: nt-fade .2s ease both; }
+.nt-drawer { position: absolute; top: 12px; right: 12px; bottom: 12px; width: min(440px, calc(100% - 24px)); display: flex; flex-direction: column; overflow-y: auto; padding: 24px 22px; border-radius: 30px; background: var(--card); box-shadow: var(--nav-shadow); animation: nt-in .25s cubic-bezier(.2,.8,.2,1) both; }
+.nt-drawer > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.nt-drawer h2 { margin: 0; font-size: 24px; font-weight: 500; letter-spacing: -.03em; }
+.nt-close { width: 44px; height: 44px; border: 0; border-radius: 50%; color: var(--text); background: var(--soft); font-size: 22px; cursor: pointer; }
+.nt-drawer .notifications-screen { padding: 0; animation: none; }
+@keyframes nt-in { from { opacity: 0; transform: translateX(24px); } }
+@keyframes nt-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .nt-drawer, .nt-backdrop { animation: none; } }

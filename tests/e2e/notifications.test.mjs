@@ -72,6 +72,21 @@ test('the bell shows unread reminders, the feed opens and reads them, the owner 
     await page.getByTestId('device-push').waitFor();
     assert.equal(await page.getByTestId('pref-device').isChecked(), false, 'off until the person turns it on');
     assert.equal(new URL(page.url()).search, '', 'the address is cleaned');
+
+    // A wide screen: the feed slides in over the section, which stays; Escape closes it.
+    const wide = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+    await wide.addInitScript(() => localStorage.setItem('detailflow.session', 'owner-token'));
+    await wide.goto(baseUrl, { waitUntil: 'domcontentloaded' });
+    await wide.getByTestId('side-bookings').click();
+    await wide.getByTestId('bookings-workspace').waitFor();
+    await wide.getByTestId('notifications-bell').click();
+    await wide.getByTestId('notifications-drawer').getByTestId('notification').first().waitFor();
+    assert.equal(await wide.getByTestId('bookings-workspace').isVisible(), true, 'the schedule stays under the panel');
+    await wide.waitForTimeout(400); // the panel slides in
+    await wide.screenshot({ path: resolve('artifacts', '125-wide-notifications.png') });
+    await wide.keyboard.press('Escape');
+    assert.equal(await wide.getByTestId('notifications-drawer').count(), 0);
+    await wide.getByTestId('bookings-workspace').waitFor();
   } finally {
     await browser.close();
     await new Promise((done) => server.close(done));

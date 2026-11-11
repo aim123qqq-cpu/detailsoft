@@ -218,6 +218,13 @@ export function App() {
     return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
   }, [memberId]);
 
+  useEffect(() => {
+    if (!wide || overlays.at(-1)?.kind !== 'notifications') return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setOverlays((stack) => stack.slice(0, -1)); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [wide, overlays]);
+
   // Lists under an overlay are refreshed on return: intake, work or handover may have changed them.
   const [workspaceRefresh, setWorkspaceRefresh] = useState(0);
   const closeOverlay = () => {
@@ -370,6 +377,9 @@ export function App() {
   // A management section opened in the profile gives the header its own title.
   // A wide screen shows the customer, services and time of a new booking side by side.
   const wideBooking = wide && workspace === 'new' && (!session || session.capabilities.manageBookings) && !profileVehicleId && (step === 1 || step === 3 || step === 4);
+  // Wide screens: the notifications feed is a panel over the section, which stays as it was.
+  const drawer = wide && overlay?.kind === 'notifications';
+  const pageOverlay = drawer ? null : overlay;
   const manageTitle = wideBooking ? 'Записать клиента' : workspace === 'profile' && profileTarget.open ? { catalog: 'Каталог', team: 'Команда и роли', settings: 'Настройки центра' }[profileTarget.open] : undefined;
   const newBookingAllowed = !session || session.capabilities.manageBookings;
   const bookingsAllowed = !session || session.capabilities.manageBookings || session.capabilities.manageIntake;
@@ -406,13 +416,13 @@ export function App() {
 
   return (
     <SessionInfo.Provider value={session}>
-    <div className={`app-shell ${overlay || (workspace === 'new' && (step > 1 || profileVehicleId)) ? 'can-back' : ''}`}>
+    <div className={`app-shell ${pageOverlay || (workspace === 'new' && (step > 1 || profileVehicleId)) ? 'can-back' : ''}`}>
       <a className="skip-link" href="#main-content">Перейти к содержимому</a>
       {wide && <Sidebar active={workspace} manage={workspace === 'profile' ? profileTarget.open : undefined} session={session} canBook={newBookingAllowed} onSelect={selectWorkspace} onManage={openManage}/>}
       {/* The connection banner sits above the header in one sticky block: it pushes content, never covers it. */}
       <div className="app-top">
         <SyncBanner online={online}/>
-        <Header step={step} workspace={workspace} orderTitle={orderHeader} overlayTitle={overlay ? overlay.kind === 'customer' ? 'Карточка клиента' : overlay.kind === 'vehicle' ? 'Карточка автомобиля' : overlay.kind === 'notifications' ? 'Уведомления' : orderHeader : manageTitle}
+        <Header step={step} workspace={workspace} orderTitle={orderHeader} overlayTitle={pageOverlay ? pageOverlay.kind === 'customer' ? 'Карточка клиента' : pageOverlay.kind === 'vehicle' ? 'Карточка автомобиля' : pageOverlay.kind === 'notifications' ? 'Уведомления' : orderHeader : manageTitle}
           unread={unread} onBell={memberId && overlay?.kind !== 'notifications' ? openNotifications : undefined}
           overlayEyebrow={overlay?.kind === 'order' ? 'Рабочий заказ' : overlay?.kind === 'notifications' ? 'Для вас' : manageTitle ? (wideBooking ? 'Новая запись' : 'Управление центром') : undefined} note={workspace === 'customers' && customersTotal !== null ? `${customersTotal} ${customersTotal % 10 === 1 && customersTotal % 100 !== 11 ? 'клиент' : customersTotal % 10 >= 2 && customersTotal % 10 <= 4 && (customersTotal % 100 < 12 || customersTotal % 100 > 14) ? 'клиента' : 'клиентов'}` : undefined} onBack={() => overlay ? closeOverlay() : workspace !== 'new' ? startNewBooking() : profileVehicleId ? setProfileVehicleId(null) : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
       </div>
@@ -426,11 +436,18 @@ export function App() {
           onOpenCustomer={openCustomerProfile}
           onBook={startBookingFor}
         />}
-        {overlay?.kind === 'notifications' && <NotificationsScreen onRead={markedRead} onOpenBookings={() => { setOverlays([]); setWorkspace('bookings'); }}/>}
+        {overlay?.kind === 'notifications' && !drawer && <NotificationsScreen onRead={markedRead} onOpenBookings={() => { setOverlays([]); setWorkspace('bookings'); }}/>}
+        {drawer && <div className="nt-layer">
+          <button className="nt-backdrop" aria-label="Закрыть уведомления" tabIndex={-1} onClick={closeOverlay}/>
+          <aside className="nt-drawer" role="dialog" aria-modal="true" aria-label="Уведомления" data-testid="notifications-drawer">
+            <header><h2>Уведомления</h2><button className="nt-close" aria-label="Закрыть" onClick={closeOverlay}>×</button></header>
+            <NotificationsScreen onRead={markedRead} onOpenBookings={() => { setOverlays([]); setWorkspace('bookings'); }}/>
+          </aside>
+        </div>}
         {overlay?.kind === 'vehicle' && <VehicleProfileScreen key={overlay.id} vehicleId={overlay.id} backLabel="Назад" onBack={closeOverlay} onOpenCustomer={openCustomerProfile}/>}
         {overlay?.kind === 'order' && <OrderWorkspaceLoader key={`${overlay.id}-${overlay.orderId ?? 'new'}`} target={overlay} onPhaseChange={setOrderHeader} onBack={closeOverlay}/>}
         {/* Workspaces stay mounted under a profile so lists and opened details keep their state. */}
-        <div className={`workspace-layer ${wideBooking ? 'nb-wide' : ''}`} hidden={Boolean(overlay)}>
+        <div className={`workspace-layer ${wideBooking ? 'nb-wide' : ''}`} hidden={Boolean(pageOverlay)}>
         {workspace === 'bookings' && (bookingsAllowed
           ? <BookingsWorkspace onNew={startNewBooking} onLeadConvert={startLeadBooking} onOpenCustomer={openCustomerProfile} onOpenOrder={openOrderWorkspace} refreshToken={workspaceRefresh}/>
           : <NoAccess section="Раздел «Записи»"/>)}
