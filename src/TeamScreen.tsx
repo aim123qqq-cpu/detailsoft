@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
+import { useWide } from './workspace/shared';
 import { RolesPanel } from './RolesPanel';
 import type { AuthProvider, CenterRole, MessengerProvider, SignInProvider, TeamMember, TeamRole } from './types';
 
@@ -154,10 +155,11 @@ export function TeamScreen({ onBack }: { onBack: () => void }) {
     finally { setSaving(false); }
   };
 
+  const wide = useWide();
   const selected = members.find((member) => member.id === selectedId);
   const activeCount = members.filter((member) => member.status === 'active').length;
 
-  return <section className="screen team-screen" data-testid="team-screen">
+  return <section className={`screen team-screen ${mode === 'list' && wide ? 'team-wide' : ''}`} data-testid="team-screen">
     <button className="details-back" onClick={mode === 'list' ? onBack : () => { setMode('list'); setAccessToken(''); setError(''); }}>← {mode === 'list' ? 'Профиль' : 'Команда'}</button>
     <div className="team-hero">
       <span>Сотрудники центра</span>
@@ -165,14 +167,14 @@ export function TeamScreen({ onBack }: { onBack: () => void }) {
       <p>{mode === 'list' ? 'Доступы действуют только внутри текущего центра.' : 'Один сотрудник может совмещать несколько ролей.'}</p>
     </div>
 
-    {mode === 'list' && <div className="workspace-section-tabs" role="tablist" aria-label="Команда">
+    {mode === 'list' && !wide && <div className="workspace-section-tabs" role="tablist" aria-label="Команда">
       <button role="tab" data-testid="team-tab-members" aria-selected={tab === 'members'} className={tab === 'members' ? 'selected' : ''} onClick={() => setTab('members')}>Сотрудники</button>
       <button role="tab" data-testid="team-tab-roles" aria-selected={tab === 'roles'} className={tab === 'roles' ? 'selected' : ''} onClick={() => setTab('roles')}>Роли и права</button>
     </div>}
 
-    {mode === 'list' && tab === 'roles' && <RolesPanel onChanged={() => { loadRoles(); load(); }}/>}
+    {mode === 'list' && (tab === 'roles' || wide) && <RolesPanel onChanged={() => { loadRoles(); load(); }}/>}
 
-    {mode === 'list' && tab === 'members' && <>
+    {mode === 'list' && (tab === 'members' || wide) && <div className="team-members">
       <div className="team-summary"><div><strong>{activeCount}</strong><span>активных</span></div><div><strong>{members.filter((member) => member.roles.includes('owner') && member.status === 'active').length}</strong><span>владельцев</span></div><button data-testid="add-team-member" onClick={openCreate}>+ Добавить</button></div>
       {loading && <div className="workspace-state"><span className="spinner"/> Загружаем команду</div>}
       {!loading && error && !members.length && <div className="workspace-state error-state"><strong>Не удалось загрузить команду</strong><span>{error}</span><button onClick={() => { setLoading(true); setError(''); load(); }}>Повторить</button></div>}
@@ -181,7 +183,7 @@ export function TeamScreen({ onBack }: { onBack: () => void }) {
         <div><h3>{member.displayName}</h3><p>{member.roles.map(roleLabel).join(' · ')}</p><small>{member.status === 'active' ? '● Доступ активен' : '○ Доступ заблокирован'}{member.messengerLinks?.length ? ` · ${member.messengerLinks.map((link) => providerTitles[link.provider]).join(', ')}` : ''}</small></div>
         <button aria-label={`Настроить ${member.displayName}`} onClick={() => openEdit(member)}>›</button>
       </article>)}</div>
-    </>}
+    </div>}
 
     {mode === 'create' && <div className="team-form">
       {!accessToken && <>

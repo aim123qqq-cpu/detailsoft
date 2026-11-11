@@ -1951,3 +1951,18 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
   .stats-chart { height: 240px; }
 }
 .stats-bar .analytics-period button.selected { color: var(--pill-ink); background: var(--pill); box-shadow: none; }
+
+/* ---------- Management sections on a wide screen ---------- */
+.team-members { display: contents; }
+@media (min-width: 1100px) {
+  .app-shell:not(.login-shell) > main:has(.catalog-manager), .app-shell:not(.login-shell) > main:has(.team-wide), .app-shell:not(.login-shell) > main:has(.center-settings-screen) { max-width: 1480px; }
+  /* The header already names the section; the side menu is the way back. */
+  .catalog-manager > .details-back, .catalog-manager-hero, .team-wide > .details-back, .team-wide > .team-hero, .center-settings-screen > .details-back, .center-settings-hero { display: none; }
+  .catalog-manager, .team-wide, .center-settings-screen { padding-top: 4px; }
+  .catalog-manager .catalog-managed-list { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+  .team-wide { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 20px; }
+  .team-wide > .team-members, .team-wide > .roles-panel, .team-wide > .role-editor { display: block; min-width: 0; padding: 22px; border-radius: 28px; background: var(--card); box-shadow: var(--shadow); }
+  .team-wide > .team-members { grid-column: 1; grid-row: 1; }
+  .team-wide > .roles-panel, .team-wide > .role-editor { grid-column: 2; grid-row: 1; }
+  .team-wide .team-summary { margin-top: 0; }
+}
