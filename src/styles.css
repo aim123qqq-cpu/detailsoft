@@ -1893,3 +1893,61 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
   .customer-profile-screen .flow-side > .customer-section { margin-bottom: 0; padding: 0; border: 0; background: none; box-shadow: none; }
   .customer-profile-screen .customer-profile-hero, .vehicle-profile-screen .vehicle-profile-hero { padding: 0 0 6px; border: 0; background: none; box-shadow: none; }
 }
+
+/* ---------- Statistics ---------- */
+.stats-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.stats-bar h2 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.02em; }
+.stats-bar span { color: var(--muted); font-size: 13px; }
+.stats-bar .analytics-period { margin: 0; padding: 0; display: flex; gap: 6px; background: none; }
+.stats-bar .analytics-period button { min-height: 40px; padding: 0 16px; border-radius: 20px; color: var(--text); background: var(--card); box-shadow: var(--shadow); font-size: 14px; font-weight: 700; }
+.stats-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.stats-tiles article { min-height: 132px; display: grid; align-content: start; gap: 6px; padding: 20px; border-radius: 26px; color: #121212; }
+.stats-tiles small { font-size: 14px; }
+.stats-tiles strong { font-size: 38px; font-weight: 500; line-height: 1.1; letter-spacing: -.04em; }
+.stats-tiles span { font-size: 13px; opacity: .7; }
+.stats-total { grid-column: 1 / -1; color: #F4F4F2 !important; background: var(--dark-card); }
+.stats-total strong { font-size: 44px; }
+.stats-tile.peach { background: #FADFCD; }
+.stats-tile.sky { background: #DCE6EA; }
+.stats-tile.sage { grid-column: 1 / -1; background: #E3ECC4; }
+.stats-grid { display: grid; gap: 14px; margin-top: 14px; }
+.stats-card { padding: 20px; border-radius: 26px; background: var(--card); box-shadow: var(--shadow); }
+.stats-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.stats-card-head h3 { margin: 0; font-size: 17px; font-weight: 600; }
+.stats-card-head > span { color: var(--muted); font-size: 13px; }
+.stats-legend i { display: inline-block; width: 9px; height: 9px; margin: 0 4px 0 10px; border-radius: 3px; background: var(--text); }
+.stats-legend i:last-of-type { background: var(--accent); }
+.stats-chart { height: 200px; display: flex; align-items: stretch; gap: 3px; }
+.stats-day { flex: 1; min-width: 0; display: grid; grid-template-rows: 1fr 18px; }
+.stats-day > div { display: flex; align-items: flex-end; justify-content: center; gap: 2px; }
+.stats-day i, .stats-day b { width: 4px; max-width: 45%; border-radius: 3px; background: var(--text); }
+.stats-day b { background: var(--accent); }
+.stats-day span { align-self: end; color: var(--muted); font-size: 11px; text-align: center; }
+.stats-empty { margin: 0; color: var(--muted); font-size: 14px; }
+.stats-top { display: grid; margin: 0; padding: 0; list-style: none; }
+.stats-top li { display: grid; grid-template-columns: 24px 1fr auto; gap: 6px 0; padding: 12px 0; border-top: 1px solid var(--line); font-size: 15px; }
+.stats-top li:first-child { padding-top: 0; border-top: 0; }
+.stats-top i { color: var(--muted); font-size: 13px; font-style: normal; }
+.stats-top strong { font-weight: 600; white-space: nowrap; }
+.stats-top em { grid-column: 2; align-self: center; height: 5px; border-radius: 3px; background: var(--soft); }
+.stats-top em b { display: block; height: 100%; border-radius: 3px; background: var(--text); }
+.stats-top em b.first { background: var(--accent); }
+.stats-top small { padding-left: 10px; color: var(--muted); font-size: 12px; text-align: right; }
+.stats-statuses { display: grid; gap: 12px; }
+.stats-statuses > div { display: grid; grid-template-columns: 110px 1fr 28px; align-items: center; gap: 10px; font-size: 14px; }
+.stats-statuses i { height: 8px; border-radius: 4px; background: var(--soft); }
+.stats-statuses b { display: block; height: 100%; border-radius: 4px; background: var(--text); }
+.stats-statuses strong { text-align: right; font-weight: 600; }
+.stats-progress { height: 22px; margin-bottom: 12px; border-radius: 6px; background: repeating-linear-gradient(90deg, var(--soft) 0 5px, transparent 5px 8px); }
+.stats-progress b { display: block; height: 100%; border-radius: 6px; background: repeating-linear-gradient(90deg, var(--text) 0 5px, transparent 5px 8px); }
+@media (min-width: 768px) {
+  .stats-tiles { grid-template-columns: 1.25fr 1fr 1fr 1fr; }
+  .stats-total, .stats-tile.sage { grid-column: auto; }
+}
+@media (min-width: 1100px) {
+  .app-shell:not(.login-shell) > main:has(.stats-screen) { max-width: 1480px; }
+  .stats-screen { padding-top: 4px; }
+  .stats-grid { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); align-items: start; gap: 16px; margin-top: 16px; }
+  .stats-chart { height: 240px; }
+}
+.stats-bar .analytics-period button.selected { color: var(--pill-ink); background: var(--pill); box-shadow: none; }

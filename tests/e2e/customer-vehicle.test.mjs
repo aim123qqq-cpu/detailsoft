@@ -353,7 +353,7 @@ test('mobile customer → vehicle → services → booking flow works end to end
     assert.doesNotMatch(analyticsText, /оплат|выруч/i);
     await page.waitForTimeout(400);
     await page.screenshot({ path: resolve(artifacts, '23-analytics.png') });
-    await page.getByText('Статусы заказов').scrollIntoViewIfNeeded();
+    await page.getByText('Заказы по статусам').scrollIntoViewIfNeeded();
     await page.waitForTimeout(250);
     await page.screenshot({ path: resolve(artifacts, '24-analytics-details.png') });
 

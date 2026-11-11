@@ -50,19 +50,19 @@ export function AnalyticsScreen() {
     return () => controller.abort();
   }, [range, retry]);
 
-  const chartDays = overview?.daily.slice(-14) ?? [];
-  const chartMax = Math.max(1, ...chartDays.map((item) => item.bookings + item.orders));
+  const chartDays = overview?.daily.slice(-30) ?? [];
+  const chartMax = Math.max(1, ...chartDays.map((item) => Math.max(item.bookings, item.orders)));
   const statusMax = Math.max(1, ...(overview?.orderStatuses.map((item) => item.count) ?? []));
+  const topMax = Math.max(1, ...(overview?.topServices.map((item) => item.count) ?? []));
+  const times = (count: number) => `${count} ${count % 10 === 1 && count % 100 !== 11 ? 'раз' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'раза' : 'раз'}`;
 
   return (
-    <section className="screen analytics-screen" data-testid="analytics-screen">
-      <div className="analytics-intro">
-        <span>Операционная сводка</span>
-        <h2>Пульс центра</h2>
-        <p>Записи, заказы и выполнение работ в одном месте.</p>
+    <section className="screen analytics-screen stats-screen" data-testid="analytics-screen">
+      <div className="stats-bar">
+        <div><h2>Пульс центра</h2>{overview && <span>{shortDate.format(new Date(`${overview.period.from}T12:00:00`))} — {shortDate.format(new Date(`${overview.period.to}T12:00:00`))}</span>}</div>
         <div className="analytics-period" aria-label="Период аналитики">
           {[7, 30, 90].map((item) => (
-            <button key={item} className={days === item ? 'selected' : ''} onClick={() => setDays(item)}>{item} дней</button>
+            <button key={item} className={days === item ? 'selected' : ''} aria-pressed={days === item} onClick={() => setDays(item)}>{item} дней</button>
           ))}
         </div>
       </div>
@@ -71,39 +71,51 @@ export function AnalyticsScreen() {
       {error && <div className="workspace-state error"><strong>Не удалось загрузить аналитику</strong><span>{error}</span><button onClick={() => setRetry((current) => current + 1)}>Повторить</button></div>}
 
       {!loading && !error && overview && <>
-        <div className="analytics-range">{shortDate.format(new Date(`${overview.period.from}T12:00:00`))} — {shortDate.format(new Date(`${overview.period.to}T12:00:00`))}</div>
-        <div className="analytics-kpis">
-          <article className="analytics-kpi accent"><small>Заказы</small><strong>{overview.orders.total}</strong><span>{overview.orders.active} активных</span></article>
-          <article className="analytics-kpi"><small>Записи</small><strong>{overview.bookings.total}</strong><span>{overview.bookings.cancelled} отменено</span></article>
-          <article className="analytics-kpi"><small>Закрыто</small><strong>{overview.orders.closed}</strong><span>{overview.orders.ready} готовы</span></article>
-          <article className="analytics-kpi wide"><small>Согласовано по сметам</small><strong>{money.format(overview.orders.approvedEstimateAmountMinor / 100)} ₽</strong><span>Операционный объём согласованных работ</span></article>
+        <div className="stats-tiles">
+          <article className="stats-total"><small>Согласовано по сметам</small><strong>{money.format(overview.orders.approvedEstimateAmountMinor / 100)} ₽</strong>
+            <span>{overview.orders.averageApprovedEstimateAmountMinor ? `в среднем ${money.format(overview.orders.averageApprovedEstimateAmountMinor / 100)} ₽ за заказ` : 'согласованных смет пока нет'}</span></article>
+          <article className="stats-tile peach"><small>Заказы</small><strong>{overview.orders.total}</strong><span>{overview.orders.active} в работе</span></article>
+          <article className="stats-tile sky"><small>Записи</small><strong>{overview.bookings.total}</strong><span>{overview.bookings.cancelled} отменено</span></article>
+          <article className="stats-tile sage"><small>Закрыто</small><strong>{overview.orders.closed}</strong><span>{overview.orders.ready} к выдаче</span></article>
         </div>
 
-        <section className="analytics-card">
-          <div className="analytics-card-head"><div><small>Динамика</small><h3>Активность по дням</h3></div><span><i/> записи <i/> заказы</span></div>
-          <div className="activity-chart" aria-label="График записей и заказов">
-            {chartDays.map((item) => <div className="activity-day" key={item.date} title={`${item.date}: ${item.bookings} записей, ${item.orders} заказов`}>
-              <div><i style={{ height: `${Math.max(item.bookings ? 10 : 2, item.bookings / chartMax * 100)}%` }}/><b style={{ height: `${Math.max(item.orders ? 10 : 2, item.orders / chartMax * 100)}%` }}/></div>
-              <span>{new Date(`${item.date}T12:00:00`).getDate()}</span>
-            </div>)}
-          </div>
-        </section>
+        <div className="stats-grid">
+          <section className="stats-card">
+            <div className="stats-card-head"><h3>Активность по дням</h3><span className="stats-legend"><i/> записи <i/> заказы</span></div>
+            <div className="stats-chart" aria-label="График записей и заказов">
+              {chartDays.map((item, index) => <div className="stats-day" key={item.date} title={`${item.date}: записей ${item.bookings}, заказов ${item.orders}`}>
+                <div><i style={{ height: `${Math.max(item.bookings ? 8 : 0, item.bookings / chartMax * 100)}%` }}/><b style={{ height: `${Math.max(item.orders ? 8 : 0, item.orders / chartMax * 100)}%` }}/></div>
+                <span>{index % 3 === 0 ? new Date(`${item.date}T12:00:00`).getDate() : ''}</span>
+              </div>)}
+            </div>
+          </section>
 
-        <section className="analytics-card">
-          <div className="analytics-card-head"><div><small>Воронка</small><h3>Статусы заказов</h3></div><b>{overview.orders.total}</b></div>
-          <div className="status-bars">
-            {overview.orderStatuses.length === 0 && <p>За выбранный период заказов нет.</p>}
-            {overview.orderStatuses.map((item) => <div key={item.status}>
-              <span>{statusLabels[item.status]}</span><i><b style={{ width: `${item.count / statusMax * 100}%` }}/></i><strong>{item.count}</strong>
-            </div>)}
-          </div>
-        </section>
+          <section className="stats-card">
+            <div className="stats-card-head"><h3>Топ услуг</h3><span>чаще всего</span></div>
+            {overview.topServices.length === 0 ? <p className="stats-empty">Появится после первых согласованных смет.</p> : <ol className="stats-top">
+              {overview.topServices.map((item, index) => <li key={item.name}>
+                <i>{index + 1}</i><span>{item.name}</span><strong>{money.format(item.amountMinor / 100)} ₽</strong>
+                <em><b className={index === 0 ? 'first' : ''} style={{ width: `${Math.max(3, item.count / topMax * 100)}%` }}/></em><small>{times(item.count)}</small>
+              </li>)}
+            </ol>}
+          </section>
 
-        <section className="operations-summary">
-          <div><small>Выполнение операций</small><strong>{overview.operations.completionPercent}%</strong></div>
-          <i><b style={{ width: `${overview.operations.completionPercent}%` }}/></i>
-          <p>{overview.operations.done} из {overview.operations.total} выполнено · {overview.operations.blocked} заблокировано</p>
-        </section>
+          <section className="stats-card">
+            <div className="stats-card-head"><h3>Заказы по статусам</h3><span>{overview.orders.total}</span></div>
+            <div className="stats-statuses">
+              {overview.orderStatuses.length === 0 && <p className="stats-empty">За выбранный период заказов нет.</p>}
+              {overview.orderStatuses.map((item) => <div key={item.status}>
+                <span>{statusLabels[item.status]}</span><i><b style={{ width: `${item.count / statusMax * 100}%` }}/></i><strong>{item.count}</strong>
+              </div>)}
+            </div>
+          </section>
+
+          <section className="stats-card">
+            <div className="stats-card-head"><h3>Выполнение операций</h3><span>{overview.operations.completionPercent}%</span></div>
+            <div className="stats-progress"><b style={{ width: `${overview.operations.completionPercent}%` }}/></div>
+            <p className="stats-empty">{overview.operations.done} из {overview.operations.total} выполнено · {overview.operations.blocked} заблокировано</p>
+          </section>
+        </div>
       </>}
     </section>
   );
