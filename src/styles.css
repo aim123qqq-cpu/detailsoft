@@ -2073,3 +2073,17 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
   .nb-wide > .first-steps b { font-size: 19px; font-weight: 600; }
   .nb-wide > .first-steps li.done i { color: #fff; background: var(--muted); }
 }
+
+/* ---------- Tinted tiles follow the theme (statistics, day and week grids, customer state) ---------- */
+:root { --tile-peach: #FADFCD; --tile-sky: #DCE6EA; --tile-sage: #E3ECC4; --tile-ink: #121212; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --tile-peach: #352218; --tile-sky: #1E2A30; --tile-sage: #262E17; --tile-ink: #F4F4F2; } }
+:root[data-theme="dark"] { --tile-peach: #352218; --tile-sky: #1E2A30; --tile-sage: #262E17; --tile-ink: #F4F4F2; }
+.stats-tiles article { color: var(--tile-ink); }
+.stats-tile.peach, .day-visit.peach, .week-visit.peach, .customers-now.wait { background: var(--tile-peach); }
+.stats-tile.sky, .day-visit.sky, .week-visit.sky { background: var(--tile-sky); }
+.stats-tile.sage, .day-visit.sage, .week-visit.sage, .customers-now.work { background: var(--tile-sage); }
+.day-visit, .week-visit, .customers-now.work, .customers-now.wait { color: var(--tile-ink); }
+/* The queue figures sit side by side and keep their words whole on a narrow phone. */
+.workspace-hero > div { grid-template-columns: auto auto auto auto; justify-content: start; column-gap: 6px; }
+.workspace-hero > div > small { margin-right: 28px; white-space: nowrap; }
+.workspace-hero > div > *:nth-child(3) { position: relative; z-index: 1; }
