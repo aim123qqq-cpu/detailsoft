@@ -1804,3 +1804,27 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
   .week-day em { margin: auto 0; color: var(--muted); font-size: 13px; font-style: normal; text-align: center; }
   .week-add { min-height: 44px; white-space: nowrap; margin: auto 0; border: 0; color: var(--text); background: none; font-size: 14px; font-weight: 700; cursor: pointer; }
 }
+
+/* ---------- Orders on a wide screen: a column per stage ---------- */
+@media (min-width: 1100px) {
+  .app-shell:not(.login-shell) > main:has(.orders-board-screen) { max-width: 1680px; }
+  .orders-board-screen { padding-top: 4px; }
+  .orders-board-screen .workspace-filters { margin-bottom: 18px; }
+  .orders-board { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: start; gap: 14px; }
+  .orders-column { min-height: 420px; display: grid; align-content: start; gap: 10px; padding: 12px; border-radius: 24px; background: color-mix(in srgb, var(--card) 45%, transparent); }
+  .orders-column header { display: flex; align-items: baseline; justify-content: space-between; padding: 6px 6px 2px; }
+  .orders-column h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .orders-column header span, .orders-column > p { color: var(--muted); font-size: 13px; }
+  .orders-column > p { margin: 0; padding: 4px 6px; }
+  .board-card { display: grid; gap: 4px; padding: 14px; border: 0; border-radius: 18px; color: var(--text); background: var(--card); box-shadow: var(--shadow); text-align: left; cursor: pointer; }
+  .board-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .board-card-top .plate { font-style: normal; }
+  .board-card-top strong { font-size: 15px; font-weight: 600; white-space: nowrap; }
+  .board-card b { font-size: 16px; font-weight: 600; }
+  .board-card > span:not(.board-card-top) { color: var(--muted); font-size: 13px; }
+  .board-card small { margin-top: 6px; color: var(--muted); font-size: 13px; }
+  .board-card.ready { color: var(--dark-ink); background: var(--dark-card); }
+  .board-card.ready .plate { border-color: var(--dark-ink); color: var(--dark-ink); background: transparent; }
+  .board-card.ready > span:not(.board-card-top), .board-card.ready small { color: inherit; opacity: .65; }
+  .orders-closed { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+}

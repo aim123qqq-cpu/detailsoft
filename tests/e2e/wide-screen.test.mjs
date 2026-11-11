@@ -63,6 +63,15 @@ test('a wide screen: the side menu, the day grid and a booking opened beside it'
     await page.getByRole('button', { name: 'Закрыть запись' }).click();
     assert.equal(await page.getByTestId('booking-details').count(), 0);
 
+    // Orders are a board: a column per stage, the seeded closed order in its own list.
+    await page.getByTestId('side-orders').click();
+    await page.getByTestId('orders-board').waitFor();
+    assert.equal(await page.locator('.orders-column').count(), 5);
+    await page.screenshot({ path: resolve('artifacts', '122-wide-orders-board.png') });
+    await page.getByRole('button', { name: /^Закрытые/ }).click();
+    await page.locator('.orders-closed .order-card').first().click();
+    await page.getByTestId('order-details').waitFor();
+
     // Management sections name themselves in the header.
     await page.getByTestId('side-settings').click();
     await page.getByRole('heading', { level: 1, name: 'Настройки центра' }).waitFor();

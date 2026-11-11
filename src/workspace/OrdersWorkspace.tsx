@@ -5,7 +5,7 @@ import { OrderDocumentsPanel } from '../OrderDocuments';
 import { ShareOrderButton } from '../ShareOrderButton';
 import { productFeatures } from '../features';
 import type { OrderListItem, OrderTarget, WorkOrder } from '../types';
-import { money, useWorkspaceItems, LoadingState, ErrorState, orderTarget } from './shared';
+import { money, useWorkspaceItems, useWide, LoadingState, ErrorState, orderTarget } from './shared';
 
 const orderStatuses: Record<WorkOrder['status'], { label: string; group: 'active' | 'ready' | 'closed' }> = {
   INTAKE: { label: 'Приёмка', group: 'active' },
@@ -28,6 +28,7 @@ export function OrdersWorkspace({ onOpenCustomer, onOpenOrder, refreshToken }: {
   const { items, loading, error, retry } = useWorkspaceItems(api.listOrders);
   const [filter, setFilter] = useState<OrderFilter>('all');
   const [selected, setSelected] = useState<OrderListItem | null>(null);
+  const wide = useWide();
   const isMaster = Boolean(session?.capabilities.acceptAssignments);
   // An order executor without front-desk rights starts on their own queue.
   const defaultApplied = useRef(false);
@@ -54,6 +55,42 @@ export function OrdersWorkspace({ onOpenCustomer, onOpenOrder, refreshToken }: {
   }, [refreshToken]);
 
   if (selected) return <OrderDetails item={selected} onBack={() => { setSelected(null); retry(); }} onOpenCustomer={onOpenCustomer} onOpenOrder={onOpenOrder} refreshToken={refreshToken}/>;
+
+  if (wide) {
+    // A column per stage; closed orders are a separate list.
+    const boardFilter = filter === 'mine' || filter === 'closed' ? filter : 'all';
+    const open = (boardFilter === 'mine' ? items.filter(isMine) : items).filter((item) => item.status !== 'CLOSED');
+    const closed = items.filter((item) => item.status === 'CLOSED');
+    const columns: Array<{ title: string; statuses: WorkOrder['status'][] }> = [
+      { title: 'Приёмка', statuses: ['INTAKE'] }, { title: 'Смета', statuses: ['ESTIMATE_DRAFT'] }, { title: 'Согласован', statuses: ['APPROVED'] },
+      { title: 'В работе', statuses: ['IN_PROGRESS', 'QC'] }, { title: 'К выдаче', statuses: ['READY'] }
+    ];
+    return (
+      <section className="screen workspace-screen orders-board-screen" data-testid="orders-workspace">
+        <div className="workspace-filters" aria-label="Фильтр заказов">
+          <button className={boardFilter === 'all' ? 'selected' : ''} onClick={() => setFilter('all')}>Все</button>
+          {isMaster && <button className={boardFilter === 'mine' ? 'selected' : ''} onClick={() => setFilter('mine')}>Мои {items.filter(isMine).filter((item) => item.status !== 'CLOSED').length}</button>}
+          <button className={boardFilter === 'closed' ? 'selected' : ''} onClick={() => setFilter('closed')}>Закрытые {closed.length}</button>
+        </div>
+        {loading ? <LoadingState/> : error ? <ErrorState message={error} onRetry={retry}/> : boardFilter === 'closed' ? (
+          closed.length === 0 ? <div className="workspace-state"><strong>Закрытых заказов пока нет</strong><span>Они появятся после выдачи автомобиля</span></div>
+            : <div className="workspace-list orders-list orders-closed">{closed.map((item) => <OrderCard key={item.id} item={item} onOpen={() => setSelected(item)}/>)}</div>
+        ) : <div className="orders-board" data-testid="orders-board">{columns.map((column) => {
+          const cards = open.filter((item) => column.statuses.includes(item.status));
+          return <section key={column.title} className="orders-column" aria-label={column.title}>
+            <header><h2>{column.title}</h2><span>{cards.length}</span></header>
+            {cards.map((item) => <button key={item.id} className={`board-card ${item.status === 'READY' ? 'ready' : ''}`} data-testid={`order-card-${item.id}`} onClick={() => setSelected(item)}>
+              <span className="board-card-top"><em className="plate">{item.vehicle.plate}</em>{item.totalAmountMinor !== null && <strong>{money.format(item.totalAmountMinor / 100)}</strong>}</span>
+              <b>{item.vehicle.make} {item.vehicle.model}</b>
+              <span>{item.customer.name}</span>
+              <small>{item.status === 'QC' ? 'контроль качества' : item.status === 'INTAKE' ? 'идёт приёмка' : item.status === 'ESTIMATE_DRAFT' ? 'ждёт согласования' : item.masterName ?? 'мастер не назначен'}</small>
+            </button>)}
+            {cards.length === 0 && <p>Пусто</p>}
+          </section>;
+        })}</div>}
+      </section>
+    );
+  }
 
   return (
     <section className="screen workspace-screen" data-testid="orders-workspace">
