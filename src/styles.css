@@ -2006,3 +2006,55 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
 @keyframes nt-in { from { opacity: 0; transform: translateX(24px); } }
 @keyframes nt-fade { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .nt-drawer, .nt-backdrop { animation: none; } }
+
+/* ---------- Body diagram: white panels with a grey line, as in the app ---------- */
+:root { --car-panel: #FFFFFF; --car-draw: #8F918E; --car-glass: #E3E7EA; --car-wheel: #E6E6E3; --car-selected: #FCE1D2; --car-tint-hi: #F8D2CB; --car-tint-mid: #FADDC2; --car-tint-lo: #F1E7C1; --sev-hi: #D9472F; --sev-mid: #E5862C; --sev-lo: #D8B43A; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --car-panel: #1F2022; --car-draw: #74777C; --car-glass: #141517; --car-wheel: #0B0B0C; --car-selected: #45281A; --car-tint-hi: #4B2420; --car-tint-mid: #47321C; --car-tint-lo: #3F3819; --sev-hi: #F0604A; --sev-mid: #F2953E; --sev-lo: #E3C24A; } }
+:root[data-theme="dark"] { --car-panel: #1F2022; --car-draw: #74777C; --car-glass: #141517; --car-wheel: #0B0B0C; --car-selected: #45281A; --car-tint-hi: #4B2420; --car-tint-mid: #47321C; --car-tint-lo: #3F3819; --sev-hi: #F0604A; --sev-mid: #F2953E; --sev-lo: #E3C24A; }
+/* The printed act is always a light sheet. */
+.document-diagram { --car-panel: #F1EFEA; --car-draw: #6A7075; --car-glass: #C9D3DA; --car-wheel: #3A3F43; --car-tint-hi: #EC7B74; --car-tint-mid: #F4A26F; --car-tint-lo: #F0D27A; }
+.diagram-stage { padding: 18px 8px 14px; border: 0; border-radius: 22px; background: var(--ground); }
+.car-diagram { filter: none; }
+.car-shell { fill: var(--car-panel); }
+.car-part { stroke: var(--car-draw); stroke-width: .9; }
+.car-part.part-body, .car-part.part-bed, .car-part.part-mirror { fill: var(--car-panel); stroke: var(--car-draw); }
+.car-part.part-glass { fill: var(--car-glass); stroke: var(--car-draw); }
+.car-part.part-wheel { fill: var(--car-wheel); stroke: var(--car-draw); stroke-width: .9; }
+.car-part[role=button]:hover, .car-part[role=button]:focus-visible, .car-part.part-glass[role=button]:hover, .car-part.part-glass[role=button]:focus-visible { fill: var(--car-selected); }
+.car-part.marked.severity-low { fill: var(--car-tint-lo); }
+.car-part.marked.severity-medium { fill: var(--car-tint-mid); }
+.car-part.marked.severity-high { fill: var(--car-tint-hi); }
+.car-part.selected, .car-part.selected:hover { fill: var(--car-selected); stroke: var(--accent); stroke-width: 2; }
+.car-details { stroke: var(--car-draw); stroke-opacity: .6; }
+.car-outline { stroke: var(--car-draw); stroke-width: 1.3; }
+.car-badge text { fill: #FFFFFF; font-size: 8px; font-weight: 700; }
+.car-badge circle { fill: rgba(14,19,24,.88); stroke: #FFFFFF; stroke-width: .7; }
+.car-badge.marked circle { stroke: var(--ground); stroke-width: 2; }
+.car-badge.marked.severity-low circle { fill: var(--sev-lo); }
+.car-badge.marked.severity-medium circle { fill: var(--sev-mid); }
+.car-badge.marked.severity-high circle { fill: var(--sev-hi); }
+.car-badge.selected circle { fill: var(--accent); stroke: var(--ground); stroke-width: 2; }
+.car-badge.selected text { fill: #FFFFFF; }
+.car-badge circle.car-badge-count { fill: var(--card); stroke: var(--text); stroke-width: 1; }
+.car-badge text.car-badge-count-text { fill: var(--text); font-size: 6px; }
+/* On screen only the marked and the chosen parts carry their number, as pins; the act numbers all of them. */
+.car-diagram[data-interactive] .car-badge:not(.marked):not(.selected) { display: none; }
+.legend.low::before { background: var(--sev-lo); }
+.legend.medium::before { background: var(--sev-mid); }
+.legend.high::before { background: var(--sev-hi); }
+.finding-row.severity-low > b { background: var(--sev-lo); }
+.finding-row.severity-medium > b { background: var(--sev-mid); }
+.finding-row.severity-high > b { background: var(--sev-hi); }
+
+/* Intake on a wide screen: the diagram on the left; the chosen part, findings and the cabin on the right. */
+@media (min-width: 1100px) {
+  .flow-main .inspection-panel { grid-template-columns: minmax(260px, 1fr) minmax(0, 1fr); }
+  .flow-main .inspection-panel > .body-type-picker { grid-column: 1 / -1; grid-row: 1; }
+  .flow-main .inspection-panel > .diagram-stage { grid-column: 1; grid-row: 2 / span 3; position: sticky; top: 16px; }
+  .flow-main .inspection-panel > .element-editor, .flow-main .inspection-panel > .findings-list, .flow-main .inspection-panel > .extra-elements { grid-column: 2; }
+}
+.finding-row > b { color: #FFFFFF; font-weight: 700; }
+/* The act is a paper sheet: light in both themes, as it prints. */
+.document-paper { --text: #16191c; --muted: #5f656a; --line: #d9d6cf; --line-strong: #c8c4bc; --card: #efede8; --soft: #efede8; --pill: #fbfaf7; --pill-ink: #16191c; --ground: #fbfaf7; color-scheme: light; }
+.document-paper .document-table th, .document-paper .document-table td { border-bottom-color: var(--line); }
+.document-paper .document-statement { background: var(--card); }
