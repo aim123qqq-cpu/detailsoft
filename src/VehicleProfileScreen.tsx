@@ -135,8 +135,9 @@ export function VehicleProfileScreen({ vehicleId, onBack, onOpenCustomer, backLa
 
   const { vehicle } = profile;
   return (
-    <section className="screen vehicle-profile-screen" data-testid="vehicle-profile">
+    <section className="screen vehicle-profile-screen flow-split side-left" data-testid="vehicle-profile">
       <button className="details-back" onClick={onBack}>← {backLabel}</button>
+      <div className="flow-side">
       <div className="vehicle-profile-hero">
         <div className="vehicle-profile-mark">⌁</div>
         <div><span>Карточка автомобиля</span><h2>{vehicle.make} {vehicle.model} {vehicle.generation}</h2><p>{[vehicle.color, vehicle.tenantClass ?? 'Класс не задан'].filter(Boolean).join(' · ')}</p></div>
@@ -161,6 +162,7 @@ export function VehicleProfileScreen({ vehicleId, onBack, onOpenCustomer, backLa
         <div className="vehicle-spec-actions"><button onClick={() => setVehicleEditOpen(false)}>Отмена</button><button data-testid="save-vehicle-spec" disabled={busy || (vehicleClasses.length > 0 && !editTenantClass)} onClick={saveVehicleDetails}>Сохранить параметры</button></div>
       </div>}
 
+      </div><div className="flow-main">
       <article className="vehicle-owner-card">
         <div className="vehicle-section-heading"><span>Текущий владелец</span><i>активная связь</i></div>
         {profile.currentOwner ? onOpenCustomer
@@ -198,6 +200,7 @@ export function VehicleProfileScreen({ vehicleId, onBack, onOpenCustomer, backLa
       <div className="vehicle-history-section">
         <div className="vehicle-section-heading"><span>Визиты и заказы</span><i>{profile.visits.length}</i></div>
         {profile.visits.length ? <div className="vehicle-visits">{profile.visits.map((visit) => <div key={visit.id}><span><strong>Заказ {visit.id.replace('order_', '#')}</strong><small>{formatDate(visit.createdAt)} · {visit.customer.name}</small></span><b>{visit.status === 'CLOSED' ? 'Закрыт' : visit.status}</b></div>)}</div> : <p className="vehicle-empty">Визитов пока нет</p>}
+      </div>
       </div>
     </section>
   );

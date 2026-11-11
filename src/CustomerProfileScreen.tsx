@@ -191,8 +191,9 @@ export function CustomerProfileScreen({ customerId, backLabel, onBack, onOpenVeh
   };
 
   return (
-    <section className="screen customer-profile-screen" data-testid="customer-profile">
+    <section className="screen customer-profile-screen flow-split side-left" data-testid="customer-profile">
       <button className="details-back" onClick={onBack}>← {backLabel}</button>
+      <div className="flow-side">
       <div className={`customer-profile-hero ${customer.archived ? 'archived' : ''}`}>
         <b className="customer-initials" aria-hidden="true">{initials(customer.name)}</b>
         <div>
@@ -255,6 +256,7 @@ export function CustomerProfileScreen({ customerId, backLabel, onBack, onOpenVeh
         </form>}
       </article>
 
+      </div><div className="flow-main">
       <article className="customer-section">
         <div className="vehicle-section-heading"><span>Автомобили</span><i>{profile.vehicles.length}</i></div>
         {profile.vehicles.length === 0 && <p className="vehicle-empty">Автомобили не привязаны.</p>}
@@ -362,6 +364,7 @@ export function CustomerProfileScreen({ customerId, backLabel, onBack, onOpenVeh
           </div>
         </div>}
       </article>}
+      </div>
     </section>
   );
 }
