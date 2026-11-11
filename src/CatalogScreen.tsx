@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { api } from './api';
 import { DurationWheel, durationText } from './DurationWheel';
 import { OperationLibrary } from './OperationLibrary';
 import { SimpleServiceForm } from './SimpleServiceForm';
+import { useWide } from './workspace/shared';
 import type { ManagedCatalog, ManagedCatalogItem } from './types';
 
 type Operation = ManagedCatalog['operationLibrary'][number];
 type PriceRow = { operationId?: string; name: string; amount: string; duration: string };
 const money = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 });
+const number = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 });
 
 function itemPrice(item: ManagedCatalogItem, tenantClass: string) {
   // The class's own price, else the '*' default, as on the server.
@@ -28,6 +30,7 @@ export function CatalogScreen({ onBack }: { onBack: () => void }) {
   const [createSectionId, setCreateSectionId] = useState<string | undefined>();
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const wide = useWide();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -47,10 +50,12 @@ export function CatalogScreen({ onBack }: { onBack: () => void }) {
   };
   const startCreate = (type: 'simple' | 'service' | 'package', sectionId?: string) => { setCreateSectionId(sectionId); setCreating(type); };
 
-  if (catalog && creating === 'simple') return <SimpleServiceForm item={null} sections={catalog.sections} vehicleClasses={catalog.vehicleClasses} defaultSectionId={createSectionId} onCancel={() => setCreating(null)} onSaved={saved} onComposite={() => setCreating('service')}/>;
-  if (catalog && (creating === 'service' || creating === 'package')) return <CatalogCreate type={creating} catalog={catalog} defaultSectionId={createSectionId} onCancel={() => setCreating(null)} onOperationCreated={(operation) => setCatalog((current) => current ? { ...current, operationLibrary: [...current.operationLibrary, operation].sort((a, b) => a.name.localeCompare(b.name, 'ru')) } : current)} onCreated={saved}/>;
-  if (catalog && editing?.simple) return <SimpleServiceForm item={editing} sections={catalog.sections} vehicleClasses={catalog.vehicleClasses} onCancel={() => setEditing(null)} onSaved={saved}/>;
-  if (catalog && editing) return <CatalogEditor key={`${editing.id}-${tenantClass}`} item={editing} sections={catalog.sections} operationLibrary={catalog.operationLibrary} tenantClass={tenantClass} onCancel={() => setEditing(null)} onSaved={saved}/>;
+  const form = !catalog ? null : creating === 'simple' ? <SimpleServiceForm item={null} sections={catalog.sections} vehicleClasses={catalog.vehicleClasses} defaultSectionId={createSectionId} onCancel={() => setCreating(null)} onSaved={saved} onComposite={() => setCreating('service')}/>
+    : creating === 'service' || creating === 'package' ? <CatalogCreate type={creating} catalog={catalog} defaultSectionId={createSectionId} onCancel={() => setCreating(null)} onOperationCreated={(operation) => setCatalog((current) => current ? { ...current, operationLibrary: [...current.operationLibrary, operation].sort((a, b) => a.name.localeCompare(b.name, 'ru')) } : current)} onCreated={saved}/>
+    : editing?.simple ? <SimpleServiceForm key={editing.id} item={editing} sections={catalog.sections} vehicleClasses={catalog.vehicleClasses} onCancel={() => setEditing(null)} onSaved={saved}/>
+    : editing ? <CatalogEditor key={`${editing.id}-${tenantClass}`} item={editing} sections={catalog.sections} operationLibrary={catalog.operationLibrary} tenantClass={tenantClass} onCancel={() => setEditing(null)} onSaved={saved}/>
+    : null;
+  if (form && !wide) return form;
 
   const classes = catalog?.vehicleClasses.filter((value) => value !== '*') ?? [];
   const card = (item: ManagedCatalogItem) => {
@@ -65,28 +70,51 @@ export function CatalogScreen({ onBack }: { onBack: () => void }) {
     </article>;
   };
 
-  return <section className="screen catalog-manager" data-testid="catalog-manager">
+  const priceText = (item: ManagedCatalogItem, value: string) => {
+    const price = itemPrice(item, value);
+    if (!price) return '—';
+    return `${item.pricingMode === 'fixed' ? '' : 'от '}${number.format(price.amountMinor / 100)}`;
+  };
+  const kindText = (item: ManagedCatalogItem) => [
+    item.type === 'package' ? `пакет · ${item.operations.length} оп.` : item.simple ? 'услуга' : `составная · ${item.operations.length} оп.`,
+    item.pricingMode === 'inspection' ? 'после осмотра' : '',
+    item.active ? '' : 'не для записи'
+  ].filter(Boolean).join(' · ');
+  const columns = classes.length ? classes : ['*'];
+  const row = (item: ManagedCatalogItem) => {
+    const price = itemPrice(item, columns[0]);
+    return <button key={item.id} type="button" className={`catalog-row ${item.active ? '' : 'archived'} ${editing?.id === item.id ? 'selected' : ''}`} data-testid={`catalog-card-${item.id}`} aria-pressed={editing?.id === item.id} onClick={() => { setCreating(null); setEditing(item); }}>
+      <strong>{item.name}</strong><small>{kindText(item)}</small><span>{price ? durationText(price.durationMinutes) : '—'}</span>
+      {columns.map((value) => <span key={value}>{priceText(item, value)}</span>)}
+    </button>;
+  };
+  const tableHead = <div className="catalog-row catalog-row-head"><span>Название</span><span>Тип</span><span>Время</span>{columns.map((value) => columns.length > 1 ? <button key={value} type="button" className={tenantClass === value ? 'current' : ''} aria-pressed={tenantClass === value} aria-label={`Класс «${value}» для правки цен`} onClick={() => setTenantClass(value)}>{value}</button> : <span key={value}>Цена, ₽</span>)}</div>;
+
+  return <section className={`screen catalog-manager ${wide ? 'catalog-wide' : ''} ${wide && form ? 'with-side' : ''}`} data-testid="catalog-manager" style={wide ? { '--price-columns': columns.length } as CSSProperties : undefined}>
+    <div className="catalog-main">
     <button className="details-back" onClick={onBack}>← Профиль</button>
     <div className="catalog-manager-hero"><span>Каталог центра</span><h2>Услуги и цены</h2><p>Разделы, услуги, время работы и цены. Старые записи и сметы сохраняют свои суммы.</p></div>
     {error && <div className="workspace-state error-state"><strong>Не удалось загрузить каталог</strong><span>{error}</span><button onClick={reload}>Повторить</button></div>}
     {!catalog && !error && <div className="workspace-state"><span className="spinner"/> Загружаем каталог</div>}
     {catalog && <>
-      {kind !== 'operations' && classes.length > 0 && <div className="catalog-class-picker" aria-label="Класс автомобиля"><span>Показывать цены для класса</span><div>{classes.map((value) => <button key={value} className={tenantClass === value ? 'selected' : ''} onClick={() => setTenantClass(value)}>{value}</button>)}</div></div>}
+      {kind !== 'operations' && classes.length > 0 && !wide && <div className="catalog-class-picker" aria-label="Класс автомобиля"><span>Показывать цены для класса</span><div>{classes.map((value) => <button key={value} className={tenantClass === value ? 'selected' : ''} onClick={() => setTenantClass(value)}>{value}</button>)}</div></div>}
       <div className="catalog-toolbar"><div className="workspace-section-tabs catalog-kind-tabs" role="tablist" aria-label="Тип позиции"><button role="tab" aria-selected={kind === 'service'} className={kind === 'service' ? 'selected' : ''} onClick={() => setKind('service')}>Услуги</button><button role="tab" aria-selected={kind === 'package'} className={kind === 'package' ? 'selected' : ''} onClick={() => setKind('package')}>Пакеты</button><button role="tab" data-testid="catalog-operations-tab" aria-selected={kind === 'operations'} className={kind === 'operations' ? 'selected' : ''} onClick={() => setKind('operations')}>Операции</button></div>{kind !== 'operations' && <button className="catalog-create-button" data-testid="create-catalog-item" disabled={!catalog.sections.length} onClick={() => startCreate(kind === 'service' ? 'simple' : 'package')}>{kind === 'service' ? '+ Услуга' : '+ Пакет'}</button>}</div>
       {kind === 'operations' ? <OperationLibrary onChanged={reload}/> : <>
         <label className="catalog-archive-toggle"><input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)}/><span>Показывать архивные</span></label>
-        <CatalogSections sections={catalog.sections} items={items} kind={kind} renderItem={card} onChanged={reload} onCreateIn={(sectionId) => startCreate(kind === 'service' ? 'simple' : 'package', sectionId)}/>
+        <CatalogSections sections={catalog.sections} items={items} kind={kind} renderItem={wide ? row : card} head={wide ? tableHead : null} onChanged={reload} onCreateIn={(sectionId) => startCreate(kind === 'service' ? 'simple' : 'package', sectionId)}/>
       </>}
     </>}
+    </div>
+    {wide && form && <aside className="catalog-side" aria-label="Позиция каталога">{form}</aside>}
   </section>;
 }
 
 const classLabel = (value: string) => value === '*' ? 'все авто' : value;
 
 /** Items grouped by section in the center's order; sections are renamed, moved and removed here. */
-function CatalogSections({ sections, items, kind, renderItem, onChanged, onCreateIn }: {
+function CatalogSections({ sections, items, kind, renderItem, head, onChanged, onCreateIn }: {
   sections: ManagedCatalog['sections']; items: ManagedCatalogItem[]; kind: 'service' | 'package';
-  renderItem: (item: ManagedCatalogItem) => ReactNode; onChanged: () => void; onCreateIn: (sectionId: string) => void;
+  renderItem: (item: ManagedCatalogItem) => ReactNode; head?: ReactNode; onChanged: () => void; onCreateIn: (sectionId: string) => void;
 }) {
   const [renaming, setRenaming] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -106,8 +134,9 @@ function CatalogSections({ sections, items, kind, renderItem, onChanged, onCreat
   const visible = sections.map((section, index) => ({ section, index, items: items.filter((item) => item.category === section.name) }))
     .filter((group) => kind === 'service' || group.items.length);
 
-  return <div className="catalog-sections" data-testid="catalog-sections">
+  return <div className={`catalog-sections ${head ? 'catalog-table' : ''}`} data-testid="catalog-sections">
     {error && <p className="form-error" role="alert">{error}</p>}
+    {head}
     {visible.map(({ section, index, items: sectionItems }) => <section key={section.id} className="catalog-section" data-testid={`catalog-section-${section.id}`} aria-label={section.name}>
       {renaming === section.id
         ? <div className="catalog-section-rename"><input aria-label="Название раздела" data-testid="section-name-input" value={name} maxLength={80} onChange={(event) => setName(event.target.value)}/><button data-testid="save-section-name" disabled={busy || name.trim().length < 2} onClick={() => run(() => api.renameCatalogSection(section.id, name.trim()))}>Сохранить</button><button onClick={() => setRenaming(null)}>Отмена</button></div>

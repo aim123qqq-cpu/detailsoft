@@ -99,6 +99,19 @@ test('a wide screen: the side menu, the day grid and a booking opened beside it'
     assert.ok(services.x + services.width <= schedule.x, 'the columns do not overlap');
     await page.screenshot({ path: resolve('artifacts', '124-wide-new-booking.png') });
 
+    // The catalog is a price table, a column per class; a row opens its editor beside the table.
+    await page.getByTestId('side-catalog').click();
+    await page.getByTestId('catalog-sections').waitFor();
+    assert.ok(await page.locator('.catalog-managed-list .catalog-row').count() > 0);
+    await page.locator('.catalog-managed-list .catalog-row').first().click();
+    await page.locator('.catalog-side .catalog-editor').waitFor();
+    const table = await page.locator('.catalog-main').boundingBox();
+    const editor = await page.locator('.catalog-side').boundingBox();
+    assert.ok(table.x + table.width <= editor.x, 'the table ends before the editor starts');
+    await page.screenshot({ path: resolve('artifacts', '125-wide-catalog.png') });
+    await page.locator('.catalog-side').getByRole('button', { name: '← Каталог' }).click();
+    assert.equal(await page.locator('.catalog-side').count(), 0);
+
     // Management sections name themselves in the header.
     await page.getByTestId('side-settings').click();
     await page.getByRole('heading', { level: 1, name: 'Настройки центра' }).waitFor();
