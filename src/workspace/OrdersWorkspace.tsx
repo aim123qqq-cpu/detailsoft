@@ -166,9 +166,10 @@ function OrderDetails({ item, onBack, onOpenCustomer, onOpenOrder, refreshToken 
   const lastQc = order?.qualityControl.at(-1) ?? null;
 
   return (
-    <section className="screen order-details-screen" data-testid="order-details">
+    <section className="screen order-details-screen flow-split side-left" data-testid="order-details">
       <button className="details-back" onClick={onBack}>← Все заказы</button>
       {loading && !order ? <LoadingState/> : error && !order ? <ErrorState message={error} onRetry={() => setRevision((value) => value + 1)}/> : order && <>
+        <div className="flow-side">
         <div className="order-details-hero">
           <div><span className={`status-pill ${status.group}`}>{status.label}</span><small>#{item.id.replace('order_', '').slice(0, 8)}</small></div>
           <h2>{order.status === 'CLOSED' ? 'Заказ закрыт' : status.label}</h2>
@@ -191,6 +192,7 @@ function OrderDetails({ item, onBack, onOpenCustomer, onOpenOrder, refreshToken 
           <div><span>События</span><strong>{order.auditTrail.length} в журнале</strong></div>
         </div>
 
+        </div><div className="flow-main">
         <ShareOrderButton order={order} vehicle={item.vehicle}/>
         <OrderDocumentsPanel order={order} defaultSigner={item.customer.name} onChanged={() => setRevision((value) => value + 1)}/>
 
@@ -210,6 +212,7 @@ function OrderDetails({ item, onBack, onOpenCustomer, onOpenOrder, refreshToken 
         </section>}
 
         {order.handover && <div className="handover-proof"><strong>Автомобиль выдан</strong><br/>✓ {order.handover.responsible} · {order.handover.note}</div>}
+        </div>
       </>}
     </section>
   );

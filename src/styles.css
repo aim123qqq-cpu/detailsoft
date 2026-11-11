@@ -1828,3 +1828,26 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
   .board-card.ready > span:not(.board-card-top), .board-card.ready small { color: inherit; opacity: .65; }
   .orders-closed { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 }
+
+/* ---------- Order screens: info and work side by side on a wide screen ---------- */
+.flow-side, .flow-main { display: contents; }
+@media (min-width: 1100px) {
+  .app-shell:not(.login-shell) > main:has(.flow-split) { max-width: 1480px; }
+  .flow-split { display: grid; grid-template-columns: minmax(0, 1fr) 380px; grid-auto-flow: dense; align-items: start; gap: 20px; padding-top: 4px; }
+  .flow-split.side-left { grid-template-columns: 380px minmax(0, 1fr); }
+  .flow-split > * { grid-column: 1 / -1; }
+  .flow-split > .flow-main, .flow-split > .flow-side { display: block; min-width: 0; padding: 22px; border-radius: 28px; background: var(--card); box-shadow: var(--shadow); }
+  .flow-split > .flow-main { grid-column: 1; }
+  .flow-split > .flow-side { grid-column: 2; }
+  .flow-split.side-left > .flow-main { grid-column: 2; }
+  .flow-split.side-left > .flow-side { grid-column: 1; }
+  .flow-split:has(> .flow-side.second) > .flow-main { grid-row: span 2; }
+  .flow-main > :first-child, .flow-side > :first-child { margin-top: 0; }
+  /* Docked action bars sit at the end of their column instead of floating. */
+  .flow-main .intake-actions { position: static; width: auto; margin-top: 18px; padding: 0; transform: none; border: 0; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; }
+  .order-details-screen.flow-split { padding-bottom: 40px; }
+}
+@media (min-width: 1100px) {
+  /* Confirmation screens stay a readable column in the middle. */
+  .order-approved, .ready-screen, .closed-screen { max-width: 720px; margin: 0 auto; }
+}

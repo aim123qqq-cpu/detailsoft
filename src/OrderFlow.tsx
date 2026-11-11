@@ -264,13 +264,16 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId =
   );
 
   if (order.status === 'READY' && deliveryOpen) return (
-    <section className="screen delivery-screen" data-testid="order-delivery">
+    <section className="screen delivery-screen flow-split" data-testid="order-delivery">
+      <div className="flow-side">
       <div className="production-top"><span>Выдача автомобиля</span><b>READY</b></div>
       <div className="order-hero"><small>{customer.name}</small><strong>{vehicle.make} {vehicle.model}</strong><span>{[vehicle.plate, vehicle.color].filter(Boolean).join(' · ')}</span></div>
+      </div><div className="flow-main">
       <div className="delivery-photos">
         <div className={!intakePhoto ? 'missing' : ''}>{intakePhoto ? <img src={intakePhoto.dataUrl} alt={`Автомобиль до работ, ${intakePhoto.zone}`}/> : <span className="delivery-photo-empty">Нет фото приёмки</span>}<small>До работ</small></div>
         <label className={!resultPhoto ? 'missing' : ''}>{resultPhoto ? <img src={resultPhoto.dataUrl} alt="Автомобиль после работ"/> : <span className="delivery-photo-empty">{photoUploading ? 'Загрузка…' : '＋ Добавить фото'}</span>}<small>После работ</small><input data-testid="result-photo-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={photoUploading || Boolean(resultPhoto)} onChange={(event) => { void uploadPhoto(event.target.files?.[0], 'intake', 'result'); event.target.value = ''; }}/></label>
       </div>
+      </div><div className="flow-side second">
       <div className="handover-checklist">
         <span className="delivery-label">Перед выдачей</span>
         <button type="button" aria-pressed={customerAccepted} className={customerAccepted ? 'checked' : 'pending'} onClick={() => setCustomerAccepted((value) => !value)}><i>{customerAccepted ? '✓' : '!'}</i><span>Клиент осмотрел результат работ</span></button>
@@ -281,6 +284,7 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId =
       <label className="order-field">Комментарий к выдаче<textarea value={handoverNote} onChange={(event) => setHandoverNote(event.target.value)}/></label>
       {error && <div className="inline-error">{error}</div>}
       <button className="primary-button close-order-button" data-testid="close-order" disabled={loading || !intakePhoto || !resultPhoto || !customerAccepted || !completenessChecked || handoverResponsible.trim().length < 2 || handoverNote.trim().length < 2} onClick={closeOrder}>Выдать автомобиль и закрыть заказ →</button>
+      </div>
     </section>
   );
 
@@ -302,15 +306,18 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId =
   );
 
   if (productFeatures.qualityControl && order.status === 'QC') return (
-    <section className="screen qc-screen" data-testid="order-qc">
+    <section className="screen qc-screen flow-split" data-testid="order-qc">
+      <div className="flow-side">
       <div className="production-top"><span>Контроль качества</span><b>QC</b></div>
       <div className="order-hero"><small>{order.assignment?.masterName} завершил работы</small><strong>{vehicle.make} {vehicle.model}</strong><span>{vehicle.plate} · {order.work?.operations.length} операций</span></div>
+      </div><div className="flow-main">
       <div className="qc-heading"><span>Финальная проверка</span><h2>Проверьте результат</h2><p>Непройденный пункт вернёт заказ мастеру как обязательную доработку.</p></div>
       <div className="qc-checklist">{qcChecks.map((check, index) => <button key={check.code} className={check.passed ? 'passed' : ''} onClick={() => setQcChecks((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, passed: !item.passed } : item))}><i>{check.passed ? '✓' : '!'}</i><span>{check.label}</span><em>{check.passed ? 'Пройдено' : 'Замечание'}</em></button>)}</div>
       <label className="order-field">Ответственный QC<input data-testid="qc-responsible" value={qcResponsible} onChange={(event) => setQcResponsible(event.target.value)}/></label>
       <label className="order-field">Комментарий<textarea value={qcNote} onChange={(event) => setQcNote(event.target.value)}/></label>
       {error && <div className="inline-error">{error}</div>}
       <div className="qc-actions"><button data-testid="qc-rework" disabled={loading || qcChecks.every((item) => item.passed)} onClick={() => submitQc('REWORK')}>Вернуть мастеру</button><button data-testid="qc-pass" disabled={loading || qcChecks.some((item) => !item.passed)} onClick={() => submitQc('PASSED')}>Допустить к выдаче ✓</button></div>
+      </div>
     </section>
   );
 
@@ -318,16 +325,19 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId =
     const completedCount = order.work.operations.filter((operation) => operation.status === 'DONE').length;
     const completion = Math.round(completedCount / order.work.operations.length * 100);
     return (
-      <section className="screen work-screen" data-testid="master-work">
+      <section className="screen work-screen flow-split" data-testid="master-work">
+      <div className="flow-side">
         <div className="production-top"><span>Работы мастера</span><b className={order.work.status === 'PAUSED' ? 'paused' : ''}>{order.work.status === 'PAUSED' ? 'Пауза' : 'В работе'}</b></div>
         <div className="work-vehicle"><span className="work-car-icon">⌁</span><span><small>{vehicle.plate}</small><strong>{vehicle.make} {vehicle.model}</strong><em>{vehicle.color}</em></span><i>{completion}%</i></div>
         <div className="work-progress"><span style={{ width: `${completion}%` }}/></div>
         <div className="master-line"><span className="master-avatar">ДС</span><span><small>Исполнитель</small><strong>{order.assignment?.masterName}</strong></span><em>{completedCount}/{order.work.operations.length}</em></div>
+      </div><div className="flow-main">
         <div className="operation-heading"><span>Чек-лист работ</span><b>{completedCount} выполнено</b></div>
         <div className="work-operations">{order.work.operations.map((operation, index) => <button key={operation.id} data-testid={`work-operation-${index}`} className={`${operation.status === 'DONE' ? 'done' : ''} ${operation.source === 'qc_rework' ? 'rework' : ''}`} disabled={loading || order.work?.status === 'PAUSED'} onClick={() => toggleOperation(operation.id, operation.status === 'DONE')}><i>{operation.status === 'DONE' ? '✓' : index + 1}</i><span><strong>{operation.name}</strong><small>{operation.source === 'qc_rework' ? 'Возврат с контроля качества' : money(operation.amountMinor)}</small></span><em>{operation.status === 'DONE' ? 'Готово' : 'Выполнить'}</em></button>)}</div>
         {order.work.status === 'ACTIVE' && <label className="pause-note">Причина паузы<input value={pauseNote} onChange={(event) => setPauseNote(event.target.value)}/></label>}
         {error && <div className="inline-error">{error}</div>}
         <div className="work-actions"><button data-testid="toggle-work-pause" disabled={loading} onClick={togglePause}>{order.work.status === 'PAUSED' ? '▶ Продолжить' : 'Ⅱ Пауза'}</button><button data-testid="complete-work" disabled={loading || completedCount !== order.work.operations.length || order.work.status === 'PAUSED'} onClick={completeWork}>{productFeatures.qualityControl ? 'Передать в QC →' : 'Завершить работы →'}</button></div>
+      </div>
       </section>
     );
   }
@@ -363,9 +373,11 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId =
   );
 
   return (
-    <section className="screen order-flow" data-testid={`order-${stage}`}>
+    <section className="screen order-flow flow-split" data-testid={`order-${stage}`}>
+      <div className="flow-side">
       <div className="order-status-row"><span>Заказ открыт</span><b>{order.status === 'INTAKE' ? 'Приёмка' : 'Смета'}</b></div>
       <div className="order-hero"><small>{customer.name}</small><strong>{vehicle.make} {vehicle.model} {vehicle.generation}</strong><span>{[vehicle.plate, vehicle.color].filter(Boolean).join(' · ')}</span></div>
+      </div><div className="flow-main">
 
       {stage === 'intake' && <>
         <div className="inspection-tabs" role="group" aria-label="Раздел приёмки">
@@ -414,6 +426,7 @@ export function OrderFlow({ booking, customer, vehicle, onPhaseChange, orderId =
         {error && <div className="inline-error">{error}</div>}
         <div className="decision-actions"><button data-testid="reject-estimate" disabled={loading} onClick={() => decide('REJECTED')}>Отклонено</button><button data-testid="approve-estimate" disabled={loading || !responsible.trim()} onClick={() => decide('APPROVED')}>Согласовано ✓</button></div>
       </>}
+      </div>
     </section>
   );
 }
