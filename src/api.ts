@@ -1,6 +1,6 @@
 import type { AppNotification, AuthProvider, CatalogOperation, LoginRequest, LoginStatus, MessengerProvider, NotificationPrefs, ReminderSettings } from './types';
 import type { CenterRequisites } from './shared/orderDocuments';
-import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogSection, CatalogVariant, CenterRole, CenterSettings, Customer, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, OrderDocument, OrderDocumentContent, OrderDocumentType, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, Permission, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, SimpleServiceInput, TeamMember, TeamRole, Vehicle, VehicleProfile, WorkOrder } from './types';
+import type { AnalyticsOverview, Booking, BookingAvailability, BookingListItem, BookingQuote, CatalogSection, CatalogVariant, CenterRole, CenterSettings, Customer, CustomerListItem, CustomerProfile, EstimateLineInput, EstimateVersion, IntakeFinding, OrderDocument, OrderDocumentContent, OrderDocumentType, Lead, LeadStatus, ManagedCatalog, ManagedCatalogItem, OrderListItem, OrderRecommendation, Permission, PhotoAsset, QuoteSelection, ServiceCatalog, SessionContext, SimpleServiceInput, TeamMember, TeamRole, Vehicle, VehicleProfile, WorkOrder } from './types';
 
 import { ApiRequestError } from './apiError';
 import { localAddPhoto, localAssignMaster, localCloseOrder, localCompleteWork, localCreateEstimate, localCreateOrder, localDecideEstimate, localSaveIntake, localSetPause, localStartWork, localUpdateOperation } from './offline/orderLocal';
@@ -357,6 +357,9 @@ export const api = {
   searchCustomers(phone: string, signal?: AbortSignal, includeArchived = false) {
     return withPack(() => request<{ items: Customer[] }>(`/api/customers?phone=${encodeURIComponent(phone)}${includeArchived ? '&includeArchived=true' : ''}`, { signal }),
       (pack) => ({ items: localSearchCustomers(pack, phone) }));
+  },
+  listCustomers(query: string, filter: 'all' | 'booked' | 'active' | 'archive', signal?: AbortSignal) {
+    return request<{ total: number; items: CustomerListItem[] }>(`/api/customers/list?query=${encodeURIComponent(query)}&filter=${filter}`, { signal });
   },
   getCustomerProfile(customerId: string, signal?: AbortSignal) {
     return request<CustomerProfile>(`/api/customers/${encodeURIComponent(customerId)}/profile`, { signal });

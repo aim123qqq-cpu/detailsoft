@@ -451,7 +451,7 @@ export function createDetailFlowServer({
         // orders and a single booking (no phone) stay readable for every role so masters can work.
         const isGet = request.method === 'GET';
         const readAllowed =
-          isGet && ['/api/customers', '/api/vehicles', '/api/vehicle-catalog/variants'].includes(url.pathname) ? capabilities.manageCustomers
+          isGet && ['/api/customers', '/api/customers/list', '/api/vehicles', '/api/vehicle-catalog/variants'].includes(url.pathname) ? capabilities.manageCustomers
           : isGet && /^\/api\/customers\/[^/]+\/vehicles$/.test(url.pathname) ? capabilities.manageCustomers
           : isGet && url.pathname === '/api/leads' ? capabilities.manageBookings
           : isGet && url.pathname === '/api/bookings' ? capabilities.manageBookings || capabilities.manageIntake
@@ -561,6 +561,11 @@ export function createDetailFlowServer({
           });
         }
 
+        if (request.method === 'GET' && url.pathname === '/api/customers/list') {
+          return sendJson(response, 200, repository.listCustomers(tenantId, {
+            query: url.searchParams.get('query') ?? '', filter: url.searchParams.get('filter') ?? 'all', limit: url.searchParams.get('limit') ?? 200
+          }));
+        }
         if (request.method === 'GET' && url.pathname === '/api/customers') {
           return sendJson(response, 200, { items: repository.searchCustomers(
             tenantId, url.searchParams.get('phone') ?? '', url.searchParams.get('includeArchived') === 'true'

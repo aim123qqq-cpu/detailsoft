@@ -1,4 +1,4 @@
-import { randomUUID, normalizePhone, mapVehicle, clientId, apiTimestamp } from './shared.mjs';
+import { randomUUID, normalizePhone, normalizePlate, normalizeSearch, mapVehicle, clientId, apiTimestamp } from './shared.mjs';
 
 /** Customer search, card, contact changes and archive. Mixed into DetailFlowRepository (server/repository.mjs). */
 export const customersMethods = {
@@ -21,6 +21,48 @@ export const customersMethods = {
       history: this.customerHistory(tenantId, customer.id),
       vehicles: this.listCustomerVehicles(tenantId, customer.id, false).map((vehicle) => ({ ...vehicle, orderCount: this.vehicleOrderCount(tenantId, customer.id, vehicle.id) }))
     }));
+  },
+
+  /**
+   * The customers section: everyone in the center with their cars, visits and what is going on now
+   * (an open order, else the next booking). `query` matches a name, phone digits or a plate.
+   */
+  listCustomers(tenantId, { query = '', filter = 'all', limit = 200 } = {}) {
+    const rows = this.db.prepare(`SELECT c.id, c.name, c.phone_display, c.phone_normalized, c.archived_at,
+        (SELECT COUNT(*) FROM orders o WHERE o.tenant_id = c.tenant_id AND o.customer_id = c.id AND o.status = 'CLOSED') visits,
+        (SELECT MAX(o.created_at) FROM orders o WHERE o.tenant_id = c.tenant_id AND o.customer_id = c.id) last_visit_at,
+        (SELECT o.status FROM orders o WHERE o.tenant_id = c.tenant_id AND o.customer_id = c.id AND o.status <> 'CLOSED'
+          ORDER BY o.created_at DESC LIMIT 1) open_order_status,
+        (SELECT MIN(b.start_at) FROM bookings b WHERE b.tenant_id = c.tenant_id AND b.customer_id = c.id AND b.status = 'CONFIRMED'
+          AND datetime(b.start_at) >= datetime('now')
+          AND NOT EXISTS (SELECT 1 FROM order_workflows w WHERE w.booking_id = b.id)) next_booking_at
+      FROM customers c WHERE c.tenant_id = ? ORDER BY c.archived_at IS NOT NULL, c.name`).all(tenantId);
+    const text = normalizeSearch(String(query ?? ''));
+    const digits = normalizePhone(String(query ?? ''));
+    const plate = normalizePlate(String(query ?? ''));
+    const all = rows.map((row) => {
+      const vehicles = this.listCustomerVehicles(tenantId, row.id, false);
+      return {
+        id: row.id, name: row.name, phoneDisplay: row.phone_display, archived: row.archived_at !== null,
+        visitCount: row.visits, lastVisitAt: apiTimestamp(row.last_visit_at),
+        vehicles: vehicles.map((vehicle) => ({ id: vehicle.id, make: vehicle.make, model: vehicle.model, plate: vehicle.plate })),
+        openOrderStatus: row.open_order_status ?? null, nextBookingAt: row.next_booking_at ?? null,
+        phoneNormalized: row.phone_normalized
+      };
+    });
+    const matches = (item) => !text || normalizeSearch(item.name).includes(text)
+      || (digits.length >= 3 && item.phoneNormalized.includes(digits))
+      || (plate.length >= 2 && item.vehicles.some((vehicle) => normalizePlate(vehicle.plate ?? '').includes(plate)));
+    const inFilter = (item) => filter === 'archive' ? item.archived
+      : item.archived ? false
+      : filter === 'booked' ? Boolean(item.nextBookingAt)
+      : filter === 'active' ? Boolean(item.openOrderStatus)
+      : true;
+    const found = all.filter((item) => matches(item) && (text && filter === 'all' ? true : inFilter(item)));
+    return {
+      total: all.filter((item) => !item.archived).length,
+      items: found.slice(0, Math.max(1, Math.min(500, Number(limit) || 200))).map(({ phoneNormalized, ...item }) => item)
+    };
   },
 
   /**

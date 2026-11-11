@@ -1,7 +1,7 @@
 import type { SessionContext, Vehicle } from '../types';
 import { bodyLabels } from './AddVehicle';
 
-export type Workspace = 'bookings' | 'new' | 'orders' | 'analytics' | 'profile';
+export type Workspace = 'bookings' | 'new' | 'orders' | 'customers' | 'analytics' | 'profile';
 
 export type IconName = 'arrow' | 'search' | 'phone' | 'car' | 'user' | 'calendar' | 'clipboard' | 'plus' | 'check' | 'spark' | 'chart' | 'bell' | 'grid' | 'team' | 'gear' | 'chevron';
 
@@ -41,13 +41,13 @@ export function VehicleCard({ vehicle, onSelect }: { vehicle: Vehicle; onSelect:
   );
 }
 
-export function Header({ step, workspace, onBack, orderTitle, overlayTitle, overlayEyebrow, unread = 0, onBell }: { step: number; workspace: Workspace; onBack: () => void; orderTitle?: string; overlayTitle?: string; overlayEyebrow?: string; unread?: number; onBell?: () => void }) {
-  const workspaceTitle = workspace === 'bookings' ? 'Записи' : workspace === 'analytics' ? 'Статистика' : workspace === 'profile' ? 'Профиль' : 'Заказы';
+export function Header({ step, workspace, onBack, orderTitle, overlayTitle, overlayEyebrow, note, unread = 0, onBell }: { note?: string; step: number; workspace: Workspace; onBack: () => void; orderTitle?: string; overlayTitle?: string; overlayEyebrow?: string; unread?: number; onBell?: () => void }) {
+  const workspaceTitle = workspace === 'bookings' ? 'Записи' : workspace === 'customers' ? 'Клиенты' : workspace === 'analytics' ? 'Статистика' : workspace === 'profile' ? 'Профиль' : 'Заказы';
   return (
     <header className="app-header">
       <button className="icon-button" onClick={onBack} aria-label="Назад"><Icon name="arrow"/></button>
       <div>
-        <span className="eyebrow">{overlayTitle ? overlayEyebrow ?? 'Клиенты и автомобили' : workspace === 'bookings' ? 'Расписание' : workspace === 'orders' ? 'Производство' : workspace === 'analytics' ? 'Управление' : workspace === 'profile' ? 'Аккаунт' : step === 5 ? 'Рабочий заказ' : 'Новая запись'}</span>
+        <span className="eyebrow">{overlayTitle ? overlayEyebrow ?? 'Клиенты и автомобили' : workspace === 'bookings' ? 'Расписание' : workspace === 'customers' ? 'Клиенты и автомобили' : workspace === 'orders' ? 'Производство' : workspace === 'analytics' ? 'Управление' : workspace === 'profile' ? 'Аккаунт' : step === 5 ? 'Рабочий заказ' : 'Новая запись'}{note && !overlayTitle ? ` · ${note}` : ''}</span>
         <h1>{overlayTitle ?? (workspace !== 'new' ? workspaceTitle : step === 1 ? 'Клиент и автомобиль' : step === 2 ? 'Добавить автомобиль' : step === 3 ? 'Услуги' : step === 4 ? 'Дата и время' : orderTitle ?? 'Рабочий заказ')}</h1>
       </div>
       {onBell ? <button className="icon-button bell-button" data-testid="notifications-bell" onClick={onBell} aria-label={unread ? `Уведомления, непрочитанных: ${unread}` : 'Уведомления'}>
@@ -103,6 +103,7 @@ export function Sidebar({ active, manage, session, canBook, onSelect, onManage }
       <nav aria-label="Основная навигация">
         {item('bookings', 'calendar', 'Записи')}
         {item('orders', 'clipboard', 'Заказы')}
+        {(!capabilities || capabilities.manageCustomers) && item('customers', 'user', 'Клиенты')}
         {(!capabilities || capabilities.viewAnalytics) && item('analytics', 'chart', 'Статистика')}
       </nav>
       {capabilities && (capabilities.manageCatalog || capabilities.manageTeam || capabilities.manageSettings) && <nav aria-label="Управление центром">

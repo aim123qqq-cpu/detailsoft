@@ -14,6 +14,7 @@ import { BookingsWorkspace } from './workspace/BookingsWorkspace';
 import { OrdersWorkspace } from './workspace/OrdersWorkspace';
 import { AnalyticsScreen } from './AnalyticsScreen';
 import { ProfileScreen } from './ProfileScreen';
+import { CustomersScreen } from './CustomersScreen';
 import { VehicleProfileScreen } from './VehicleProfileScreen';
 import { CustomerProfileScreen } from './CustomerProfileScreen';
 import type { Booking, BookingQuote, Customer, Lead, OrderTarget, QuoteSelection, SessionContext, Vehicle } from './types';
@@ -199,6 +200,7 @@ export function App() {
     return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', check); };
   }, [memberId]);
   const markedRead = useCallback(() => setUnread(0), []);
+  const [customersTotal, setCustomersTotal] = useState<number | null>(null);
   const openNotifications = () => setOverlays((stack) => stack.some((item) => item.kind === 'notifications') ? stack : [...stack, { kind: 'notifications', id: 'feed' }]);
   // A tap on a notification on this device opens the feed: a new window comes with ?open=notifications,
   // an open one gets a message from the service worker.
@@ -408,7 +410,7 @@ export function App() {
         <SyncBanner online={online}/>
         <Header step={step} workspace={workspace} orderTitle={orderHeader} overlayTitle={overlay ? overlay.kind === 'customer' ? 'Карточка клиента' : overlay.kind === 'vehicle' ? 'Карточка автомобиля' : overlay.kind === 'notifications' ? 'Уведомления' : orderHeader : manageTitle}
           unread={unread} onBell={memberId && overlay?.kind !== 'notifications' ? openNotifications : undefined}
-          overlayEyebrow={overlay?.kind === 'order' ? 'Рабочий заказ' : overlay?.kind === 'notifications' ? 'Для вас' : manageTitle ? 'Управление центром' : undefined} onBack={() => overlay ? closeOverlay() : workspace !== 'new' ? startNewBooking() : profileVehicleId ? setProfileVehicleId(null) : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
+          overlayEyebrow={overlay?.kind === 'order' ? 'Рабочий заказ' : overlay?.kind === 'notifications' ? 'Для вас' : manageTitle ? 'Управление центром' : undefined} note={workspace === 'customers' && customersTotal !== null ? `${customersTotal} ${customersTotal % 10 === 1 && customersTotal % 100 !== 11 ? 'клиент' : customersTotal % 10 >= 2 && customersTotal % 10 <= 4 && (customersTotal % 100 < 12 || customersTotal % 100 > 14) ? 'клиента' : 'клиентов'}` : undefined} onBack={() => overlay ? closeOverlay() : workspace !== 'new' ? startNewBooking() : profileVehicleId ? setProfileVehicleId(null) : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
       </div>
       <main id="main-content" tabIndex={-1}>
         {overlay?.kind === 'customer' && <CustomerProfileScreen
@@ -429,6 +431,7 @@ export function App() {
           ? <BookingsWorkspace onNew={startNewBooking} onLeadConvert={startLeadBooking} onOpenCustomer={openCustomerProfile} onOpenOrder={openOrderWorkspace} refreshToken={workspaceRefresh}/>
           : <NoAccess section="Раздел «Записи»"/>)}
         {workspace === 'orders' && <OrdersWorkspace onOpenCustomer={openCustomerProfile} onOpenOrder={openOrderWorkspace} refreshToken={workspaceRefresh}/>}
+        {workspace === 'customers' && (!session || session.capabilities.manageCustomers ? <CustomersScreen onOpenCustomer={openCustomerProfile} onTotal={setCustomersTotal} refreshToken={workspaceRefresh}/> : <NoAccess section="Раздел «Клиенты»"/>)}
         {workspace === 'analytics' && (analyticsAllowed ? <AnalyticsScreen/> : <NoAccess section="Раздел «Статистика»"/>)}
         {workspace === 'new' && !newBookingAllowed && <NoAccess section="Раздел «Новая запись»"/>}
         {workspace === 'profile' && <ProfileScreen key={profileTarget.n} open={profileTarget.open} onSignIn={() => setAuthGate('login')} onSection={(section) => setProfileTarget((current) => ({ open: section ?? undefined, n: current.n }))}/>}

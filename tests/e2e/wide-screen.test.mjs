@@ -72,6 +72,18 @@ test('a wide screen: the side menu, the day grid and a booking opened beside it'
     await page.locator('.orders-closed .order-card').first().click();
     await page.getByTestId('order-details').waitFor();
 
+    // Customers: the whole list, a search by name, and the card one click away.
+    await page.getByTestId('side-customers').click();
+    await page.getByTestId('customer-row-cust_alexey').waitFor();
+    await page.getByTestId('customers-search').fill('zzzz');
+    await page.getByText('Никого не нашли').waitFor();
+    await page.getByTestId('customers-search').fill('мороз');
+    await page.getByTestId('customer-row-cust_alexey').waitFor();
+    await page.screenshot({ path: resolve('artifacts', '123-wide-customers.png') });
+    await page.getByTestId('customer-row-cust_alexey').click();
+    await page.getByRole('heading', { level: 1, name: 'Карточка клиента' }).waitFor();
+    await page.getByRole('button', { name: 'Назад' }).first().click();
+
     // Management sections name themselves in the header.
     await page.getByTestId('side-settings').click();
     await page.getByRole('heading', { level: 1, name: 'Настройки центра' }).waitFor();

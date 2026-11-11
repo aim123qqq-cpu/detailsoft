@@ -24,6 +24,20 @@ export type Customer = {
   vehicles: Array<Vehicle & { orderCount?: number }>;
 };
 
+/** A row of the customers section. */
+export type CustomerListItem = {
+  id: string;
+  name: string;
+  phoneDisplay: string;
+  archived: boolean;
+  visitCount: number;
+  lastVisitAt: string | null;
+  vehicles: Array<{ id: string; make: string; model: string; plate: string }>;
+  /** The open order, if any; it takes over the next booking. */
+  openOrderStatus: WorkOrder['status'] | null;
+  nextBookingAt: string | null;
+};
+
 export type CustomerMatch = { id: string; name: string; phoneDisplay: string; archived: boolean };
 
 type VehicleSummary = Pick<Vehicle, 'id' | 'make' | 'model' | 'generation' | 'plate' | 'color' | 'bodyType'>;
