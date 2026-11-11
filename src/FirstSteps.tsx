@@ -28,6 +28,7 @@ export function FirstSteps({ onOpen, refreshToken }: { onOpen: (target: SetupTar
   return (
     <section className="first-steps" data-testid="first-steps" aria-labelledby="first-steps-title">
       <h2 id="first-steps-title">Первые шаги</h2>
+      <div className="first-steps-progress" aria-label={`Готово ${steps.filter((step) => step.done).length} из ${steps.length}`}>{steps.map((step) => <i key={step.target} className={step.done ? 'done' : ''}/>)}</div>
       <p>Часы работы центра — в <button className="first-steps-link" onClick={() => onOpen('settings')}>«Графике центра»</button>.</p>
       <ol>
         {steps.map((step, index) => (

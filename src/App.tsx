@@ -460,7 +460,7 @@ export function App() {
         {workspace === 'new' && newBookingAllowed && step === 1 && !profileVehicleId && (
           <section className="screen" aria-label="Поиск клиента и автомобиля">
             {activeLead && <div className="lead-conversion-banner"><span>Обращение · {leadChannelLabels[activeLead.channel]}</span><strong>{activeLead.contactName}</strong><small>Выберите клиента и автомобиль — обращение закроется после создания записи.</small></div>}
-            {session?.capabilities.manageSettings && !activeLead && <FirstSteps onOpen={openSetupStep}/>}
+            {session?.capabilities.manageSettings && !activeLead && !wideBooking && <FirstSteps onOpen={openSetupStep}/>}
             <div className="context-line"><span className="live-dot"/> {session?.tenant.name ?? 'DetailFlow'} <span>·</span> Сегодня, {new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</div>
             <div className="section-block compact">
               <label className="section-label">Канал обращения</label>
@@ -549,6 +549,7 @@ export function App() {
           </div>
           <button className="secondary-action" data-testid="nb-change-customer" onClick={() => { setStep(1); setServiceSelections([]); setBookingQuote(null); }}>Другой клиент или автомобиль</button>
         </section>}
+        {wideBooking && step === 1 && session?.capabilities.manageSettings && !activeLead && <FirstSteps onOpen={openSetupStep}/>}
         {wideBooking && step === 1 && <section className="nb-placeholder nb-col2"><h2 className="nb-step"><i>2</i>Услуги</h2><p>Найдите клиента и выберите автомобиль — здесь появятся услуги с ценами для его класса.</p></section>}
         {wideBooking && step !== 4 && <section className="nb-placeholder nb-col3"><h2 className="nb-step"><i>3</i>Время</h2><p>{step === 1 ? 'Сначала клиент и услуги.' : 'Отметьте услуги и нажмите «Выбрать время».'}</p></section>}
         {workspace === 'new' && newBookingAllowed && (step === 3 || (wideBooking && step === 4)) && selectedVehicle && (

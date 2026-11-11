@@ -2058,3 +2058,18 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
 .document-paper { --text: #16191c; --muted: #5f656a; --line: #d9d6cf; --line-strong: #c8c4bc; --card: #efede8; --soft: #efede8; --pill: #fbfaf7; --pill-ink: #16191c; --ground: #fbfaf7; color-scheme: light; }
 .document-paper .document-table th, .document-paper .document-table td { border-bottom-color: var(--line); }
 .document-paper .document-statement { background: var(--card); }
+/* First steps: a progress bar; on a wide screen the steps are cards above the booking columns. */
+.first-steps-progress { display: none; }
+@media (min-width: 1100px) {
+  .nb-wide > .first-steps { grid-column: 1 / -1; grid-row: 1; margin: 0; padding: 0; border: 0; background: none; }
+  .nb-wide:has(> .first-steps) > section[aria-label="Поиск клиента и автомобиля"], .nb-wide:has(> .first-steps) > .nb-col2, .nb-wide:has(> .first-steps) > .nb-col3 { grid-row: 2; }
+  .nb-wide > .first-steps h2 { font-size: 34px; font-weight: 500; letter-spacing: -.04em; }
+  .first-steps-progress { display: flex; gap: 4px; width: 420px; max-width: 100%; margin: 2px 0 8px; }
+  .first-steps-progress i { flex: 1; height: 4px; border-radius: 2px; background: var(--line-strong); }
+  .first-steps-progress i.done { background: var(--text); }
+  .nb-wide > .first-steps ol { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .nb-wide > .first-steps li button { height: 100%; min-height: 150px; flex-direction: column; align-items: flex-start; gap: 14px; padding: 20px; border-radius: 26px; background: var(--card); box-shadow: var(--shadow); }
+  .nb-wide > .first-steps li.done button { background: color-mix(in srgb, var(--card) 55%, transparent); box-shadow: none; }
+  .nb-wide > .first-steps b { font-size: 19px; font-weight: 600; }
+  .nb-wide > .first-steps li.done i { color: #fff; background: var(--muted); }
+}
