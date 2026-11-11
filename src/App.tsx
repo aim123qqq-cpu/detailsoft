@@ -91,6 +91,8 @@ export function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [online, setOnline] = useState(() => navigator.onLine);
+  // A new set of services in the wide layout restarts the time column.
+  const [quoteRevision, setQuoteRevision] = useState(0);
   // Wide screens get the side menu, narrow ones the bottom bar; the same breakpoint as in styles.css.
   const [wide, setWide] = useState(() => window.matchMedia('(min-width: 1100px)').matches);
   useEffect(() => {
@@ -366,7 +368,9 @@ export function App() {
   };
 
   // A management section opened in the profile gives the header its own title.
-  const manageTitle = workspace === 'profile' && profileTarget.open ? { catalog: 'Каталог', team: 'Команда и роли', settings: 'Настройки центра' }[profileTarget.open] : undefined;
+  // A wide screen shows the customer, services and time of a new booking side by side.
+  const wideBooking = wide && workspace === 'new' && (!session || session.capabilities.manageBookings) && !profileVehicleId && (step === 1 || step === 3 || step === 4);
+  const manageTitle = wideBooking ? 'Записать клиента' : workspace === 'profile' && profileTarget.open ? { catalog: 'Каталог', team: 'Команда и роли', settings: 'Настройки центра' }[profileTarget.open] : undefined;
   const newBookingAllowed = !session || session.capabilities.manageBookings;
   const bookingsAllowed = !session || session.capabilities.manageBookings || session.capabilities.manageIntake;
   const analyticsAllowed = !session || session.capabilities.viewAnalytics;
@@ -410,7 +414,7 @@ export function App() {
         <SyncBanner online={online}/>
         <Header step={step} workspace={workspace} orderTitle={orderHeader} overlayTitle={overlay ? overlay.kind === 'customer' ? 'Карточка клиента' : overlay.kind === 'vehicle' ? 'Карточка автомобиля' : overlay.kind === 'notifications' ? 'Уведомления' : orderHeader : manageTitle}
           unread={unread} onBell={memberId && overlay?.kind !== 'notifications' ? openNotifications : undefined}
-          overlayEyebrow={overlay?.kind === 'order' ? 'Рабочий заказ' : overlay?.kind === 'notifications' ? 'Для вас' : manageTitle ? 'Управление центром' : undefined} note={workspace === 'customers' && customersTotal !== null ? `${customersTotal} ${customersTotal % 10 === 1 && customersTotal % 100 !== 11 ? 'клиент' : customersTotal % 10 >= 2 && customersTotal % 10 <= 4 && (customersTotal % 100 < 12 || customersTotal % 100 > 14) ? 'клиента' : 'клиентов'}` : undefined} onBack={() => overlay ? closeOverlay() : workspace !== 'new' ? startNewBooking() : profileVehicleId ? setProfileVehicleId(null) : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
+          overlayEyebrow={overlay?.kind === 'order' ? 'Рабочий заказ' : overlay?.kind === 'notifications' ? 'Для вас' : manageTitle ? (wideBooking ? 'Новая запись' : 'Управление центром') : undefined} note={workspace === 'customers' && customersTotal !== null ? `${customersTotal} ${customersTotal % 10 === 1 && customersTotal % 100 !== 11 ? 'клиент' : customersTotal % 10 >= 2 && customersTotal % 10 <= 4 && (customersTotal % 100 < 12 || customersTotal % 100 > 14) ? 'клиента' : 'клиентов'}` : undefined} onBack={() => overlay ? closeOverlay() : workspace !== 'new' ? startNewBooking() : profileVehicleId ? setProfileVehicleId(null) : step === 1 ? setQuery('') : setStep(step === 5 ? 4 : step === 4 ? 3 : 1)}/>
       </div>
       <main id="main-content" tabIndex={-1}>
         {overlay?.kind === 'customer' && <CustomerProfileScreen
@@ -426,7 +430,7 @@ export function App() {
         {overlay?.kind === 'vehicle' && <VehicleProfileScreen key={overlay.id} vehicleId={overlay.id} backLabel="Назад" onBack={closeOverlay} onOpenCustomer={openCustomerProfile}/>}
         {overlay?.kind === 'order' && <OrderWorkspaceLoader key={`${overlay.id}-${overlay.orderId ?? 'new'}`} target={overlay} onPhaseChange={setOrderHeader} onBack={closeOverlay}/>}
         {/* Workspaces stay mounted under a profile so lists and opened details keep their state. */}
-        <div className="workspace-layer" hidden={Boolean(overlay)}>
+        <div className={`workspace-layer ${wideBooking ? 'nb-wide' : ''}`} hidden={Boolean(overlay)}>
         {workspace === 'bookings' && (bookingsAllowed
           ? <BookingsWorkspace onNew={startNewBooking} onLeadConvert={startLeadBooking} onOpenCustomer={openCustomerProfile} onOpenOrder={openOrderWorkspace} refreshToken={workspaceRefresh}/>
           : <NoAccess section="Раздел «Записи»"/>)}
@@ -520,7 +524,17 @@ export function App() {
 
         {workspace === 'new' && newBookingAllowed && step === 2 && selectedCustomer && <AddVehicle customer={selectedCustomer} onCancel={() => setStep(1)} onCreated={(vehicle) => chooseVehicle(vehicle, selectedCustomer)}/>}
 
-        {workspace === 'new' && newBookingAllowed && step === 3 && selectedVehicle && (
+        {wideBooking && step >= 3 && selectedCustomer && selectedVehicle && <section className="screen nb-customer" aria-label="Клиент и автомобиль">
+          <h2 className="nb-step"><i>1</i>Клиент</h2>
+          <div className="nb-chosen">
+            <span><strong>{selectedCustomer.name}</strong><small>{selectedCustomer.phoneDisplay} · канал: {channel}</small></span>
+            <div className="nb-chosen-car"><span className="plate">{selectedVehicle.plate}</span><b>{selectedVehicle.make} {selectedVehicle.model}</b><Icon name="check" size={18}/></div>
+          </div>
+          <button className="secondary-action" data-testid="nb-change-customer" onClick={() => { setStep(1); setServiceSelections([]); setBookingQuote(null); }}>Другой клиент или автомобиль</button>
+        </section>}
+        {wideBooking && step === 1 && <section className="nb-placeholder nb-col2"><h2 className="nb-step"><i>2</i>Услуги</h2><p>Найдите клиента и выберите автомобиль — здесь появятся услуги с ценами для его класса.</p></section>}
+        {wideBooking && step !== 4 && <section className="nb-placeholder nb-col3"><h2 className="nb-step"><i>3</i>Время</h2><p>{step === 1 ? 'Сначала клиент и услуги.' : 'Отметьте услуги и нажмите «Выбрать время».'}</p></section>}
+        {workspace === 'new' && newBookingAllowed && (step === 3 || (wideBooking && step === 4)) && selectedVehicle && (
           <ServicesStep
             vehicle={selectedVehicle}
             initialSelections={serviceSelections}
@@ -528,12 +542,14 @@ export function App() {
             onContinue={(selections, quote) => {
               setServiceSelections(selections);
               setBookingQuote(quote);
+              setQuoteRevision((value) => value + 1);
               setStep(4);
             }}
           />
         )}
         {workspace === 'new' && newBookingAllowed && step === 4 && selectedVehicle && selectedCustomer && bookingQuote && (
           <ScheduleStep
+            key={quoteRevision}
             customer={selectedCustomer}
             vehicle={selectedVehicle}
             channel={channel}

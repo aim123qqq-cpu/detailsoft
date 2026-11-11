@@ -1966,3 +1966,31 @@ button.found-owner { width: 100%; min-height: 44px; padding: 0; border: 0; color
   .team-wide > .roles-panel, .team-wide > .role-editor { grid-column: 2; grid-row: 1; }
   .team-wide .team-summary { margin-top: 0; }
 }
+
+/* ---------- New booking on a wide screen: customer, services, time side by side ---------- */
+.nb-customer, .nb-placeholder { display: none; }
+@media (min-width: 1100px) {
+  .app-shell:not(.login-shell) > main:has(.nb-wide) { max-width: 1680px; }
+  .nb-wide { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 16px; padding-top: 4px; }
+  .nb-wide > .screen, .nb-wide > .nb-placeholder { display: block; min-width: 0; margin: 0; padding: 22px; border-radius: 28px; background: var(--card); box-shadow: var(--shadow); animation: none; }
+  .nb-wide > section[aria-label="Поиск клиента и автомобиля"], .nb-wide > .nb-customer { grid-column: 1; grid-row: 1; }
+  .nb-wide > .services-catalog-screen, .nb-wide > .nb-col2 { grid-column: 2; grid-row: 1; }
+  .nb-wide > .schedule-screen, .nb-wide > .booking-confirmed, .nb-wide > .nb-col3 { grid-column: 3; grid-row: 1; }
+  .nb-step { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; font-size: 20px; font-weight: 500; letter-spacing: -.02em; }
+  .nb-step i { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: var(--pill-ink); background: var(--pill); font-size: 14px; font-style: normal; font-weight: 700; }
+  .nb-placeholder p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+  .nb-placeholder { min-height: 220px; }
+  .nb-chosen { display: grid; gap: 12px; padding: 16px; border-radius: 22px; background: var(--soft); }
+  .nb-chosen > span { display: grid; gap: 3px; }
+  .nb-chosen strong { font-size: 17px; font-weight: 600; }
+  .nb-chosen small { color: var(--muted); font-size: 13px; }
+  .nb-chosen-car { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 2px solid var(--text); border-radius: 16px; background: var(--card); }
+  .nb-chosen-car b { flex: 1; font-weight: 600; }
+  .nb-customer .secondary-action { width: 100%; margin-top: 12px; }
+  /* The car is already shown in the customer column. */
+  .nb-wide .booking-vehicle, .nb-wide .schedule-intro > span { display: none; }
+  .nb-wide .catalog-intro, .nb-wide .schedule-intro { margin-top: 0; }
+  .nb-wide .quote-dock { position: sticky; bottom: 16px; left: auto; width: auto; margin-top: 16px; transform: none; }
+  .nb-wide .date-strip { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .nb-wide .time-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

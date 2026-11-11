@@ -84,6 +84,21 @@ test('a wide screen: the side menu, the day grid and a booking opened beside it'
     await page.getByRole('heading', { level: 1, name: 'Карточка клиента' }).waitFor();
     await page.getByRole('button', { name: 'Назад' }).first().click();
 
+    // A new booking: customer, services and time stand side by side.
+    await page.getByTestId('side-new').click();
+    await page.getByTestId('main-search').fill('+7 913 123-45-67');
+    await page.locator('.vehicle-card').first().click();
+    await page.getByTestId('services-screen').waitFor();
+    assert.equal(await page.getByTestId('nb-change-customer').isVisible(), true, 'the chosen customer stays on screen');
+    await page.locator('[data-testid^="offering-"]').first().click();
+    await page.getByTestId('choose-time').click();
+    await page.getByTestId('schedule-screen').waitFor();
+    assert.equal(await page.getByTestId('services-screen').isVisible(), true, 'services stay beside the time');
+    const services = await page.getByTestId('services-screen').boundingBox();
+    const schedule = await page.getByTestId('schedule-screen').boundingBox();
+    assert.ok(services.x + services.width <= schedule.x, 'the columns do not overlap');
+    await page.screenshot({ path: resolve('artifacts', '124-wide-new-booking.png') });
+
     // Management sections name themselves in the header.
     await page.getByTestId('side-settings').click();
     await page.getByRole('heading', { level: 1, name: 'Настройки центра' }).waitFor();
